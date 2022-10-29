@@ -28,27 +28,28 @@ system("taskkill /?")
 # ---- to kill ----
 # system('taskkill /FI "WINDOWTITLE eq <file-name> - Excel" /F')
 
-# create two txt files
 library(magrittr)
-tibble::tribble(~x, 1, 2, 2,3) %>%
-  write.csv("./tsst.txt")
 
-tibble::tribble(~x, 1, 2, 2,3) %>%
-  write.csv("./test.txt")
+# create two txt files
+ex_data <- tibble::tribble(~x, 1, 2, 2, 3)
+write.csv(ex_data, "./data/raw/test1.txt")
+write.csv(ex_data, "./data/raw/test2.txt")
 
 # open both outside of rstudio
-shell.exec(here::here("tsst.txt"))
-shell.exec(here::here("test.txt"))
+for (i in 1) {
+  shell.exec(here::here("data", "raw", "test1.txt"))
+  shell.exec(here::here("data", "raw", "test2.txt"))
+}
 
-# finds both open .txt files 
+# finds both open .txt files in tasklist
 system('tasklist /FI "IMAGENAME eq notepad.exe" /V')
 
-# finds the file called tsst (2-ways)
-system('tasklist /FI "WINDOWTITLE eq tsst - Notepad" /V')
-system('tasklist /FI "WINDOWTITLE eq tsst - *" /V') # * is wildcard
+# finds the file called test1 (2-ways)
+system('tasklist /FI "WINDOWTITLE eq test1 - Notepad" /V')
+system('tasklist /FI "WINDOWTITLE eq test1 - *" /V') # * is wildcard
 
-# will kill only tsst files
-system('taskkill /FI "WINDOWTITLE eq tsst - Notepad*" /F')
+# will kill only test1 file, and leave test2 open
+system('taskkill /FI "WINDOWTITLE eq test1 - Notepad*" /F')
 
 
 
