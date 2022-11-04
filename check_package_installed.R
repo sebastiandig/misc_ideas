@@ -7,7 +7,7 @@ is_inst <- function(pkg, prt = FALSE) {
     pkg[i, 2] <- nzchar(system.file(package = pkg[i, 1]))
     
   }
-  if (prt) print(pkg)
+  if (prt)print(pkg)
   
   # if has package 
   return(pkg)
@@ -25,3 +25,5 @@ packes_no <- packes_has[packes_has$has == FALSE,]
 install.packages(packes_no[,1])
 
 print(is_inst(packes))
+
+
