@@ -43,3 +43,26 @@ oldpar <- par(no.readonly = TRUE)
   par(oldpar)
 }
 
+
+# ---- attach() ----
+# attach adds whatever you add to search path, like library or global environ
+{ 
+  # Create example data
+  data1 <- data.frame(x1 = c(1, 2, 3, 4, 5),	
+                      x2 = c(6, 7, 8, 9, 0),
+                      x3 = c(1, 2, 5, 4, 5))
+  
+  # Try to print x1
+  tryCatch({print(x1)}, 
+           error = function(e) {
+             print("Does not print!")
+             message(sprintf("Will look something like:\n%s", e[["message"]]))
+             })
+  # Error: object 'x1' not found
+
+  # attach data
+  attach(data1)										
+  print(x1)
+  detach(data1)
+  rm(data1)
+}
