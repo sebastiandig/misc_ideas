@@ -20,7 +20,6 @@
 # ---- print LaTeX in plots tab ----
 # save old par
 oldpar <- par(no.readonly = TRUE)
-
 { 
   # example latex
   ex   <-  c(
@@ -46,6 +45,9 @@ oldpar <- par(no.readonly = TRUE)
 
 # ---- attach() ----
 # attach adds whatever you add to search path, like library or global environ
+# this can be var, functions, etc
+# if you do an obj var, you can then search column names
+# i.e. instead of data1$x1, it would be x1 after attach(data1)
 { 
   # Create example data
   data1 <- data.frame(x1 = c(1, 2, 3, 4, 5),	
@@ -65,4 +67,24 @@ oldpar <- par(no.readonly = TRUE)
   print(x1)
   detach(data1)
   rm(data1)
+}
+
+# ---- read multiple sheets from excel ----
+# Need path, then read sheet, map over each sheet from the path, then conver to
+# tibble. Can use left_join afterwards if wanted
+# TODO: add filter for names if needed
+{  
+  library("magrittr")
+  path <- readxl::readxl_example("datasets.xlsx")
+  path <- path %>% 
+    readxl::excel_sheets(.) %>% 
+    purrr::set_names(., .) %>% 
+    purrr::map(readxl::read_excel, path = path) %>%
+    tibble::as_tibble_col(., column_name = "datasets")
+  print(path)
+  print(path$datasets$iris)
+  print(path$datasets$mtcars)
+  
+  rm(path)
+  detach("package:magrittr")
 }
