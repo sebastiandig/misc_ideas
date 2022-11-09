@@ -88,3 +88,15 @@ oldpar <- par(no.readonly = TRUE)
   rm(path)
   detach("package:magrittr")
 }
+
+# ---- repeat string concatenated ----
+# useful for na in read_xlsx(., na = c())
+{
+# repeats `-` and adds `-` * n 
+strrep("-", 1:20) 
+na_skip <- c("NA", "Skipped", "skipped", "na", "n/a", "n./a", "n.a", "Flow", "na",
+             strrep("-", 1:20))
+print(strrep("-", 1:20) )
+print(na_skip)
+rm(na_skips)
+}
