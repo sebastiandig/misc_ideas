@@ -1,0 +1,45 @@
+---
+title: "ggplot Tips"
+author: "Sebastian DiGeronimo"
+date: '2022-11-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+# ---- ggplot create ggproto ----
+# you can make a list of element objects
+{
+  library("ggplot2")
+  library("magrittr")
+  
+  test_gg <- list(geom_point(), theme_bw())
+  (mtcars %>% 
+    ggplot(aes(x = hp, y = mpg, linetype = as.factor(cyl))) +
+    geom_line() +
+    test_gg[1] +
+    labs(title = "Test") + 
+    test_gg[2]) %>%
+    print()
+  
+  # useful in a function
+  test_plt <- function(.x, type) {
+    test_gg <- list(geom_point(), theme_bw())
+    .x  %>% 
+      ggplot(aes(x = hp, y = mpg, linetype = as.factor(cyl))) +
+      geom_line() +
+      labs(title = "Test function") + 
+      test_gg[type]
+  }
+  test_plt(mtcars, 1) %>% print()
+  test_plt(mtcars, 2) %>% print()
+
+  rm(test_plt, test_gg)
+  detach("package:ggplot2")
+  detach("package:magrittr")
+}
+```
