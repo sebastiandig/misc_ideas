@@ -44,11 +44,9 @@ test_plt(mtcars, 1) %>% print()
 test_plt(mtcars, 2) %>% print()
 
 rm(test_plt, test_gg)
-pkg <- c("package:ggplot2", "package:magrittr")
-detach(pkg)
-detach(c("package:ggplot2", "package:magrittr"))
-detach("package:ggplot2")
-detach("package:magrittr")
+pacman::p_unload("all")
+
+
 ```
 
 ## Get components from a plot
@@ -91,6 +89,5 @@ wrap_elements(get_plot_component(p1, "ylab-l")) +
   p3 + 
   plot_layout(widths = c(3, 1, 3, 1, 40))
 
-
+pacman::p_unload("all")
 ```
-
