@@ -1,4 +1,11 @@
 
+
+# ---- detect OS ----
+# might be helpful when trying packages on other system
+{
+  pacman::p_detectOS()
+}
+
 # ---- wrap code in {} ----  
 # will run as block, instead of line by line
 {
@@ -15,12 +22,16 @@
   header2 <- cli::rule(center = crayon::yellow("Hello World"))
   print(header1)
   print(header2)
+  
+  rm(header1, header2)
 }
 
 # ---- print LaTeX in plots tab ----
+# TODO: fix latex symbols that aren't rendering
 # save old par
 oldpar <- par(no.readonly = TRUE)
 { 
+  library("latex2exp")
   # example latex
   ex   <-  c(
     paste0("$a = \\frac {a \\times(x \\cdot b^T)}",
@@ -40,6 +51,9 @@ oldpar <- par(no.readonly = TRUE)
   
   # return old par
   par(oldpar)
+  
+  rm(ex, x, y, oldpar)
+  pacman::p_unload("all")
 }
 
 
@@ -65,6 +79,7 @@ oldpar <- par(no.readonly = TRUE)
   # attach data
   attach(data1)										
   print(x1)
+  print("Now prints fine")
   detach(data1)
   rm(data1)
 }
@@ -86,7 +101,7 @@ oldpar <- par(no.readonly = TRUE)
   print(path$datasets$mtcars)
   
   rm(path)
-  detach("package:magrittr")
+  pacman::p_unload("all")
 }
 
 # ---- repeat string concatenated ----
@@ -116,5 +131,5 @@ oldpar <- par(no.readonly = TRUE)
     print()
   
   rm(na_skip)
-  detach("package:magrittr")
+  pacman::p_unload("all")
 }
