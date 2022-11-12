@@ -9,37 +9,88 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Create list of ggplot elements
+You can use this to create a base set of options to be used in 
+whatever plot you want
+
+Also -
+This can be used to select between a few different option if creating
+a function. 
 ```{r}
 # ---- ggplot create ggproto ----
 # you can make a list of element objects
-{
-  library("ggplot2")
-  library("magrittr")
-  
+library("ggplot2")
+library("magrittr")
+
+test_gg <- list(geom_point(), theme_bw())
+(mtcars %>% 
+  ggplot(aes(x = hp, y = mpg, linetype = as.factor(cyl))) +
+  geom_line() +
+  test_gg[1] +
+  labs(title = "Test") + 
+  test_gg[2]) %>%
+  print()
+
+# useful in a function
+test_plt <- function(.x, type) {
   test_gg <- list(geom_point(), theme_bw())
-  (mtcars %>% 
+  .x  %>% 
     ggplot(aes(x = hp, y = mpg, linetype = as.factor(cyl))) +
     geom_line() +
-    test_gg[1] +
-    labs(title = "Test") + 
-    test_gg[2]) %>%
-    print()
-  
-  # useful in a function
-  test_plt <- function(.x, type) {
-    test_gg <- list(geom_point(), theme_bw())
-    .x  %>% 
-      ggplot(aes(x = hp, y = mpg, linetype = as.factor(cyl))) +
-      geom_line() +
-      labs(title = "Test function") + 
-      test_gg[type]
-  }
-  test_plt(mtcars, 1) %>% print()
-  test_plt(mtcars, 2) %>% print()
-
-  rm(test_plt, test_gg)
-  detach("package:ggplot2")
-  detach("package:magrittr")
+    labs(title = "Test function") + 
+    test_gg[type]
 }
+test_plt(mtcars, 1) %>% print()
+test_plt(mtcars, 2) %>% print()
+
+rm(test_plt, test_gg)
+pkg <- c("package:ggplot2", "package:magrittr")
+detach(pkg)
+detach(c("package:ggplot2", "package:magrittr"))
+detach("package:ggplot2")
+detach("package:magrittr")
 ```
+
+## Get components from a plot
+This can be used to see what components exist in your plot.
+Then you can select which to extract when plotting multiple things
+on top of each other
+
+Seems like you first need to create a plot where everything is on
+the same scale, then create other plots where they are on their 
+respective scales and are just extracting that single element
+```{r}
+library("ggplot2")
+library("cowplot")
+library("patchwork")
+
+dat <- iris
+dat$Sepal.Length <- dat$Sepal.Length * 100
+dat$Petal.Width <- dat$Petal.Width * 1000
+
+p1 <- ggplot(dat, aes(Sepal.Width, Sepal.Length)) + 
+  geom_point() + theme(axis.line = element_line())
+p2 <- ggplot(dat, aes(Sepal.Width, Petal.Width)) + geom_point() +
+  theme(axis.line = element_line())
+
+p3 <- ggplot(dat, aes(Sepal.Width, Petal.Length)) + 
+  geom_point(aes(color = "Petal.Length")) +
+  geom_point(aes(y = Sepal.Length/100, color = "Sepal.Length")) +
+  geom_point(aes(y = Petal.Width / 1000, color = "Petal.Width")) +
+  theme(axis.line = element_line(),
+        plot.margin = margin(10, 10, 10, 30))
+
+
+p1
+p2
+p3
+wrap_elements(get_plot_component(p1, "ylab-l")) +
+  wrap_elements(get_y_axis(p1)) +
+  wrap_elements(get_plot_component(p2, "ylab-l")) +
+  wrap_elements(get_y_axis(p2)) +
+  p3 + 
+  plot_layout(widths = c(3, 1, 3, 1, 40))
+
+
+```
+
