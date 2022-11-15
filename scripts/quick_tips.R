@@ -1,12 +1,19 @@
 
-
+# ============================================================================ #
 # ---- detect OS ----
+# ============================================================================ #
 # might be helpful when trying packages on other system
-{
-  pacman::p_detectOS()
-}
+pacman::p_detectOS()
 
+# ============================================================================ #
+# ---- detect if using R interactive or not ----
+# ============================================================================ #
+# can be useful if running script in background and can't give input info
+interactive()
+
+# ============================================================================ #
 # ---- wrap code in {} ----  
+# ============================================================================ #
 # will run as block, instead of line by line
 {
   print(c(1,2,3))
@@ -14,7 +21,14 @@
   lines(stats::lowess(cars))
 }
 
+# ============================================================================ #
+# ---- Ghost Script location for font embedding ----
+# ============================================================================ #  
+# Sys.setenv(R_GSCMD = "C:/Program Files/gs/gs10.00.0/bin/gswin64c.exe")
+
+# ============================================================================ #
 # ---- make line with text as output to console ----
+# ============================================================================ #
 {
   header1 <- cli::rule(
     left = crayon::bold("Something important"),
@@ -26,12 +40,18 @@
   rm(header1, header2)
 }
 
+# ============================================================================ #
 # ---- print LaTeX in plots tab ----
+# ============================================================================ #
 # TODO: fix latex symbols that aren't rendering
 # save old par
 oldpar <- par(no.readonly = TRUE)
 { 
   library("latex2exp")
+  # NOTE: for some reason, need to Global options -> General -> Graphics -> 
+  # backend -> Cairo to get certain symbols to render in plot viewer pane
+  
+  # saving plot seems to have no issue
   # example latex
   ex   <-  c(
     paste0("$a = \\frac {a \\times(x \\cdot b^T)}",
@@ -52,12 +72,15 @@ oldpar <- par(no.readonly = TRUE)
   # return old par
   par(oldpar)
   
-  rm(ex, x, y, oldpar)
+ rm(ex, x, y, oldpar)
   pacman::p_unload("all")
+  
 }
 
 
+# ============================================================================ #
 # ---- attach() ----
+# ============================================================================ #
 # attach adds whatever you add to search path, like library or global environ
 # this can be var, functions, etc
 # if you do an obj var, you can then search column names
@@ -84,7 +107,9 @@ oldpar <- par(no.readonly = TRUE)
   rm(data1)
 }
 
+# ============================================================================ #
 # ---- read multiple sheets from excel ----
+# ============================================================================ #  
 # Need path, then read sheet, map over each sheet from the path, then conver to
 # tibble. Can use left_join afterwards if wanted
 # TODO: add filter for names if needed
@@ -104,7 +129,9 @@ oldpar <- par(no.readonly = TRUE)
   pacman::p_unload("all")
 }
 
+# ============================================================================ #
 # ---- repeat string concatenated ----
+# ============================================================================ #  
 # useful for na in read_xlsx(., na = c())
 {
   library("magrittr")
@@ -132,4 +159,20 @@ oldpar <- par(no.readonly = TRUE)
   
   rm(na_skip)
   pacman::p_unload("all")
+}
+
+
+# ============================================================================ #
+# ---- rescaling for plots ----
+# ============================================================================ #  
+{
+  scal <- function(.x, .y) {
+    
+    .x_range <- range(.x)
+    .y_range <- range(.y)
+    
+    out <- (.y_range[2] - .y_range[1]) * (.x - .x_range[1]) / 
+            (.x_range[2] - .x_range[1]) + .y_range[1]
+    result <- list(c(.x_range, .y_range), out)
+  }
 }
