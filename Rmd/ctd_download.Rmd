@@ -1,0 +1,115 @@
+---
+title: "CTD download from ERDDAP"
+author: "Sebastian DiGeronimo"
+date: "2023-01-10"
+output: html_document
+---
+
+# Steps:
+1. Make sure to download libraries if you don't have
+  i.e. install.packages("purrr")
+2. Check database URL
+3. Change folder location if needed
+  - the code will add cruise specific folders within that location and their 
+    station files
+4. Create folders
+5. Run function on cruise IDs
+
+
+# Load libraries
+```{r setup}
+library("purrr")    # used to loop through lists
+library("rerddap")  # used to access different ERDDAPs
+library("dplyr")    # used to manipulate variables
+library("here")     # used to get relative directory location to a project
+library("glue")
+library("fs")
+```
+
+# Set database
+Once you find an ERDDAP with the data you want, you can change the location here
+```{r set-database}
+# this database contains CTD data from Walton Smith Cruises
+database <- "https://gcoos5.geos.tamu.edu/erddap/"
+Sys.setenv(RERDDAP_DEFAULT_URL = database)
+```
+
+# Set folder location and create vector of cruise IDs
+```{r loc-ids}
+# folder
+loc <- here("data", "raw", "ctd")
+
+# cruise IDs
+cruiseID <- c("WS16074", "WS16130", "WS16263", "WS16319", "WS17086", "WS17170",
+              "WS17282", "WS18008", "SAV1803", "WS18120", "SAV18173", "WS18218",
+              "WS18285", "WS18351", "WS19028", "WS19119", "WS19210", "WS19266",
+              "WS19322", "WS20006", "WS20231", "WS20278", "WS20342", "WS21032",
+              "WS21093")
+```
+
+# Create folder for cruises
+```{r create-dir}
+# create folder if doesn't exist
+here(loc, cruiseID) %>%
+  fs::dir_create()
+```
+
+# Function to query and download CTD data from each cruise
+This takes in cruise IDs and queries the ERDDAP to find data. Next, it will
+download if CTD files don't exist
+```{r query-function}
+ctd_downloads <- function(IDS, path, verbose = TRUE) {
+  
+  message(paste("Starting cruise:", IDS))
+  
+  # query cruise ID 
+  results <- tryCatch({
+    ed_search_adv(query = IDS)
+  }, error = function(e) {
+    if (verbose) message("Did not find any files!")
+    return(NULL)
+    break
+  })
+  
+  # show results of cruise
+  if (verbose) print(results)
+
+  # loop through each station for the cruise and download if doesn't exist
+  for (j in seq(results$info$dataset_id)) {
+      
+      # extract filename from query
+      filename  <- results$info$dataset_id[j]
+      
+      # create out file path
+      file_path <- here(path, IDS, glue("{filename}.csv"))
+      
+      # skip already downloaded files
+      if (fs::file_exists(file_path)) {
+        if (verbose) cat("Skipping file file:", filename, "\n--------\n\n")
+        next
+      }
+      
+      if (verbose) cat("Downloading file:", filename, "\n--------\n\n")
+      
+      # get data
+      out <- info(filename)
+
+      ctd_data <- tabledap(out, url = eurl(), store = disk())
+      
+      # save data
+      write.csv(ctd_data, file_path)
+  }
+  
+  if (verbose) {
+  cat("Finished cruise", IDS, "\n\n---------------------------------------\n\n")
+  }
+}
+```
+
+# Run ctd_downloads function and try each cruise ID for existing data
+```{r}
+for (i in seq(cruiseID)) {
+  try(ctd_downloads(cruiseID[i], loc), silent = TRUE)
+}
+```
+
