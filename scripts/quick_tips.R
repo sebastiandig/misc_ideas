@@ -208,6 +208,8 @@ oldpar <- par(no.readonly = TRUE)
 # ============================================================================ #
 # ---- rescaling for plots ----
 # ============================================================================ #  
+# better implementation ggh4x
+# ggh4x::help_secondary(data = .x, primary = , secondary = )
 {
   scal <- function(.x, .y) {
     
