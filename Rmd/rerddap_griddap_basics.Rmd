@@ -1,0 +1,44 @@
+---
+title: "ERDDAP using GRIDDAP"
+author: "Sebastian DiGeronimo"
+date: "2023-01-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("rerddap")
+```
+
+# Set database
+```{r set-database}
+database <- "https://upwell.pfeg.noaa.gov/erddap/"
+Sys.setenv(RERDDAP_DEFAULT_URL = database)
+```
+
+# Query data
+```{r query-data}
+test <- ed_search_adv(query = "5km coral daily")
+
+inform <- info(test$info$dataset_id[1])
+
+time <- c("2017-01-01", "2017-01-02")
+lat  <- c(22., 51.)
+lon  <- c(-140, -105)
+
+# download to temp file
+data_results <- griddap(
+                        inform, time = time, 
+                        latitude = lat, 
+                        longitude = lon,
+                        fields = "CRW_SSTANOMALY",
+                        fmt = "csv")
+
+```
+# Save data
+```{r save-data}
+str(data_results)
+
+write.csv(data_results, here::here("data", "raw", "sst_anom_test.csv"))
+```
+
