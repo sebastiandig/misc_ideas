@@ -149,7 +149,6 @@ oldpar <- par(no.readonly = TRUE)
 } 
 
 
-
 # ============================================================================ #
 # ---- read multiple sheets from excel ----
 # ============================================================================ #  
@@ -162,7 +161,11 @@ oldpar <- par(no.readonly = TRUE)
   path <- path %>% 
     readxl::excel_sheets(.) %>% 
     purrr::set_names(., .) %>% 
-    purrr::map(readxl::read_excel, path = path) %>%
+    purrr::map(readxl::read_excel, 
+               path = path,
+               .name_repair = "unique_quiet" # another tip, removes "New names"
+                                  # for read_csv - name_repair = "unique_quiet"
+               ) %>%
     tibble::as_tibble_col(., column_name = "datasets")
   print(path)
   print(path$datasets$iris)
