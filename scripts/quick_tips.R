@@ -224,3 +224,84 @@ oldpar <- par(no.readonly = TRUE)
     result <- list(c(.x_range, .y_range), out)
   }
 }
+
+
+# ============================================================================ #
+# ---- anonymous function ----
+# ============================================================================ #
+# My understanding is its a way of creating a functions to be used in one 
+# instance and never again. My experience is using it in `dplyr::summarise()` 
+# within `dplyr::across()` (i.e. `dplyr::summarise(dplyr::across())`).
+# 
+# Three ways (anonymous or lambda):
+# anonymous 1 (<4.1 R): ~ fun(.x)
+# anonymous 2 (<4.1 R): function(x) fun(x)
+# lambda (>4.1 R): \(x) fun(x) 
+#         - This version is similar to Python using lambda notation, where the 
+#           \(x) x is similar to Python: lambda x: x
+#           
+# ex lambda (R): 
+# (\(x) x + 1)(2) 
+# [1] 3
+# 
+# ex lambda (Python): 
+# (lambda x: x + 1)(2)
+# 3
+# 
+{
+  dplyr::select(mtcars, 1) |>
+    dplyr::summarise(
+      dplyr::across(
+        mpg, 
+        .fns = list(
+          avg    = mean, # <- normal
+          anon   = function(.x) mean(.x, na.rm = TRUE), # <- anonymous  
+          lambda = (\(x) mean(x, na.rm = TRUE)))) # <- lambda 
+    )
+  
+  # this will get you a warning after dplyr 1.1.0
+    dplyr::select(mtcars, 1) |>
+    dplyr::summarise(
+      dplyr::across(
+        mpg,
+        .fn = list(mean = mean,
+                    sum = sum),
+        na.rm = TRUE # <- this is the issue where its seen as `...` in `across`
+                     # and needs to be place explicitly for the functions that 
+                     # will be using it.
+                     # 
+                     # Annoying, but I understand that a function may not use
+                     # `...` and cause issues later like in 
+                     # `mean(x, ...)` vs. `sqrt(x)`
+                     # across would mean(x, na.rm = T) and sqrt(x, na.rm = T)
+                     # which will create and error
+                     
+        # Warning message:
+        #   There was 1 warning in `dplyr::summarise()`.
+        # ℹ In argument: `dplyr::across(everything(), mean, na.rm = TRUE)`.
+        # Caused by warning:
+        #   ! The `...` argument of `across()` is deprecated as of dplyr 1.1.0.
+        # Supply arguments directly to `.fns` through an anonymous function instead.
+        # 
+        # # Previously
+        # across(a:b, mean, na.rm = TRUE)
+        # 
+        # # Now
+        # across(a:b, \(x) mean(x, na.rm = TRUE))
+        
+        # fix:
+        # .fn = list(
+        #   # anon version
+        #   mean_anon = ~ mean(.x, na.rm = TRUE),
+        #   sum_anon = ~ sum(.x, na.rm = TRUE),
+        #   sqrt_anon = ~ sqrt(sum(.x)),
+        #   # lam version
+        #   mean_lam = (\(y) mean(y, na.rm = TRUE)),
+        #   sum_lam = (\(y) sum(y, na.rm = TRUE)),
+        #   sqrt_lam = (\(y) sqrt(sum(y)))
+        #   )
+        )
+    )
+  
+  
+}
