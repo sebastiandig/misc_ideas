@@ -1,10 +1,34 @@
 # ============================================================================ #
 # ---- Save list of all libraries ----
 # ============================================================================ #  
-writeLines(pacman::p_lib(), 
-           glue::glue("D:/list_of_R_packages",
-                      format(Sys.time(), '_%Y-%m-%d'),
-                      ".csv"))
+# save method
+# # 1. using writelines into csv
+# writeLines(pacman::p_lib(), 
+#            glue:here::here("data",
+#                            glue::glue("packages",
+#                                       format(Sys.time(), '_%Y-%m-%d'),
+#                                       ".rds"))
+#            )
+
+# 2. using saveRDS to save result, same output from pacman::p_lib
+fs::dir_create(here::here("data", "pkg_ls"))
+saveRDS(pacman::p_lib(), 
+        file = here::here("data", "pkg_ls",
+                    glue::glue("packages",
+                         format(Sys.time(), '_%Y-%m-%d'),
+                         ".rds"))
+        )
+
+# read method for saveRDS
+x <- 
+  (fs::dir_ls(here::here("data", "pkg_ls"),
+              regexp = "packages") |>
+  sort(decreasing = TRUE))[1] |>
+  readRDS()
+
+x <- 
+  devtools::package_info("installed", include_base = TRUE) |>
+  tibble::as_tibble()
 
 # ============================================================================ #
 # ---- detect OS ----
