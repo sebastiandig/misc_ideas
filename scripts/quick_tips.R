@@ -11,24 +11,50 @@
 #            )
 
 # 2. using saveRDS to save result, same output from pacman::p_lib
+# fs::dir_create(here::here("data", "pkg_ls"))
+# saveRDS(pacman::p_lib(), 
+#         file = here::here("data", "pkg_ls",
+#                     glue::glue("packages_pac",
+#                          format(Sys.time(), '_%Y-%m-%d'),
+#                          ".rds"))
+#         )
+# 
+# # read method for saveRDS
+# x <- 
+#   (fs::dir_ls(here::here("data", "pkg_ls"),
+#               regexp = "packages") |>
+#   sort(decreasing = TRUE))[1] |>
+#   readRDS()
+
+# 3. 
 fs::dir_create(here::here("data", "pkg_ls"))
-saveRDS(pacman::p_lib(), 
+x <- 
+  devtools::package_info("installed", include_base = TRUE) |>
+  tibble::as_tibble() |>
+  dplyr::select(package, ondiskversion, source) |>
+  dplyr::mutate(
+    source_loc = dplyr::case_when(
+      stringr::str_detect(source, "Git") ~ 
+        stringr::str_extract(source, ".*\\((.*)@.*", group = 1),
+      .default = package
+    )
+  )
+
+saveRDS(x, 
         file = here::here("data", "pkg_ls",
-                    glue::glue("packages",
-                         format(Sys.time(), '_%Y-%m-%d'),
-                         ".rds"))
-        )
+                          glue::glue("packages_dev",
+                          format(Sys.time(), '_%Y-%m-%d'),
+                          ".rds"))
+)
 
 # read method for saveRDS
 x <- 
   (fs::dir_ls(here::here("data", "pkg_ls"),
-              regexp = "packages") |>
-  sort(decreasing = TRUE))[1] |>
+              regexp = "packages_dev") |>
+     sort(decreasing = TRUE))[1] |>
   readRDS()
 
-x <- 
-  devtools::package_info("installed", include_base = TRUE) |>
-  tibble::as_tibble()
+
 
 # ============================================================================ #
 # ---- detect OS ----
