@@ -355,3 +355,42 @@ oldpar <- par(no.readonly = TRUE)
   
   
 }
+
+
+# ============================================================================ #
+# ---- Using `...` in function call and extract them in order ----
+# ============================================================================ #  
+# I use this when making a function that uses the `tidyverse` variable names
+# like in dplyr::select(.data = x, col1, col2), where col1 and col2 are not in
+# quotes are would be the `...` in the function, i.e. dplyr::select(.data, ...).
+
+# This is is helpful if you have an expected number of columns, but want to 
+# limit them in some way. 
+
+# x = data.frame or tibble
+# ... = two column names with or without quotes
+test_fun <- function(x, ...) {
+
+  arg <- match.call(expand.dots = FALSE)$...
+  
+  arg_len <- length(arg)
+  
+  print(arg_len)
+  
+  if (arg_len < 2) stop("`arg` needs to have more than 1 column name")
+  if (arg_len > 2) stop("`arg` needs to have less than 3 column name")
+  
+  col1 <- arg[[1]]
+  col2 <- arg[[2]]
+  
+  
+  dplyr::mutate(x, 
+         adds = {{ col1 }} + {{ col2 }},
+         .keep = "used")
+  
+}
+
+
+test_fun(x = dplyr::storms, year, month)
+
+rm(test_fun)
