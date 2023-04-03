@@ -368,29 +368,36 @@ oldpar <- par(no.readonly = TRUE)
 # limit them in some way. 
 
 # x = data.frame or tibble
+# new_col = new name for column, uses `:=` to set with embraces
 # ... = two column names with or without quotes
-test_fun <- function(x, ...) {
 
+test_fun <- function(x, new_col, ...) {
+  
+  # extract `...` as list of dots
   arg <- match.call(expand.dots = FALSE)$...
   
+  # get length of ... args
   arg_len <- length(arg)
   
   print(arg_len)
   
+  # needs to have more than 1 and less than 3
   if (arg_len < 2) stop("`arg` needs to have more than 1 column name")
   if (arg_len > 2) stop("`arg` needs to have less than 3 column name")
   
+  # set cols 1 and 2 to the 2 `...` inputs
   col1 <- arg[[1]]
   col2 <- arg[[2]]
   
-  
+  # use `{{}}` embrace notation in a function call to substitute in
   dplyr::mutate(x, 
-         adds = {{ col1 }} + {{ col2 }},
+         add1 = {{ col1 }} + {{ col2 }},
+         {{ new_col }} := {{ col1 }} + {{ col2 }},
          .keep = "used")
   
 }
 
 
-test_fun(x = dplyr::storms, year, month)
+test_fun(x = dplyr::storms, "add2", year, month)
 
 rm(test_fun)
