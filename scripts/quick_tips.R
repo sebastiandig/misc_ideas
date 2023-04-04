@@ -401,3 +401,34 @@ test_fun <- function(x, new_col, ...) {
 test_fun(x = dplyr::storms, "add2", year, month)
 
 rm(test_fun)
+
+
+# ============================================================================ #
+# ---- Snippet for `case_when` using quasi-quotation ----
+# ============================================================================ #  
+# Not sure if this will be useful
+ 
+# this would normally be a separate data.frame with the same names as the one 
+# to be modified
+name <- dplyr::starwars
+
+(names(name)[2]) # <-- has quote around name
+# [1] "height"
+noquote(names(name)[2]) # <-- has no quote around name, will be used in mutate
+# [1] height
+
+
+dplyr::mutate(
+  dplyr::starwars,
+  .keep = "used",
+  
+  # quasi-quotation to get unquoted name from a vector 
+  # i.e. `!! noquote(names(name)[2]) :=`
+  !! noquote(names(name)[2]) :=  dplyr::case_when(
+    mass > 75 ~ 1,
+    
+    # default is also from a name in a vector
+    # i.e. !!{sym(names(name)[3])}, here it is `mass`
+    .default =  !!{sym(names(name)[3])}
+  )
+)
