@@ -432,3 +432,31 @@ dplyr::mutate(
     .default =  !!{sym(names(name)[3])}
   )
 )
+
+
+# ============================================================================ #
+# ---- Test if have Internet ----
+# ============================================================================ #
+# This is useful if you have an automated process and need internet to run it.
+# I'm not sure what would happen if you didn't have internet when running a 
+# script, but this at least will try it first and you can have it give a 
+# custom error or stop, etc
+
+# ---- check if have internet
+# curl::has_internet()
+if (curl::has_internet()) {
+  message("Good to go!")
+} else {
+  "No Internet"
+}
+
+# ---- pingr::is_online(), from CRAN
+pingr::is_online()
+
+# ---- check specific URL has internet
+try(is.character(RCurl::getURL("www.google.com"))) == TRUE
+RCurl::url.exists("www.google.com") # <-- better 
+!as.logical(system("ping -n 1 www.google.com"))
+pingr::is_up("www.google.com")
+
+
