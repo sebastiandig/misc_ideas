@@ -27,39 +27,99 @@
 #   readRDS()
 
 # 3. 
+# create directory to save 
 fs::dir_create(here::here("data", "pkg_ls"))
+
 x <- 
+  # get all packages info with base R
   devtools::package_info("installed", include_base = TRUE) |>
+  
+  # convert to tibble for manipulation
   tibble::as_tibble() |>
+  
+  # select columns 
   dplyr::select(package, ondiskversion, source) |>
+  
+  # set where package was downloaded from
+  # CRAN: <package_name>
+  # GitHub/others: <user_name>/<package_name>
   dplyr::mutate(
     source_loc = dplyr::case_when(
       stringr::str_detect(source, "Git") ~ 
         stringr::str_extract(source, ".*\\((.*)@.*", group = 1),
+        # stringr::str_extract(source, ".*\\((.*)\\).*", group = 1), # <-- includes version
       .default = package
     )
   )
 
+# ex 
+# acepack 1.4.1 CRAN (R 4.2.1)                                                           
+# addinit 0.3.0 Github (dreamRs/addinit@c8d4bd1986b79a4c51eb1939b7af78c2dbb1425c) 
+
+# source_loc would look like (everything after `@` is version):
+# source_loc
+# acepack
+# dreamRs/addinit --or--
+# dreamRs/addinit@c8d4bd1986b79a4c51eb1939b7af78c2dbb1425c <-- if want version
+
+
+# save as date saved file, to not overwrite previous saves
 saveRDS(x, 
-        file = here::here("data", "pkg_ls",
-                          glue::glue("packages_dev",
-                          format(Sys.time(), '_%Y-%m-%d'),
-                          ".rds"))
+        file = here::here(
+          "data", "pkg_ls", # <-- folder to save file
+          glue::glue("packages_dev", # <-- prefix 
+                     format(Sys.time(), '_%Y%m%d'), # <-- add date
+                     ".rds")) # <-- save as rds file for quick loading
 )
 
+# ============================================================================ #
+# ---- Check Packages in Updated R to Previous R  ----
+# ============================================================================ #  
+# To be used after previous tip and updated R
+
 # read method for saveRDS
+# only useful if packages were moved, if not, you won't have any so use base R
+# x <- 
+#   (fs::dir_ls(here::here("data", "pkg_ls"),
+#               regexp = "packages_dev") |>
+#      sort(decreasing = TRUE))[1] |>
+#   readRDS()
+
+# base R if repeat above
 x <- 
-  (fs::dir_ls(here::here("data", "pkg_ls"),
-              regexp = "packages_dev") |>
-     sort(decreasing = TRUE))[1] |>
+  # get pkg list
+  list.files("./data/pkg_ls/", full.names = TRUE) |>
+  
+  # add time
+  file.info(extra_cols = FALSE)
+
+# sort and extract most recent and readRDS
+x <- 
+  (x[order(x$mtime, decreasing = TRUE),] |>
+  rownames())[1] |>
   readRDS()
 
+# find packages not included in current version of R that you had previously
+y <- x[!x$package %in% .packages(TRUE),]
 
+# download first from CRAN then GitHub
+if (nrow(y) > 0) {
+  try(install.packages(y[agrep("CRAN", y$source), ]))
+  try(devtools::install_github(y[agrep("Git", y$source), ]))
+} else {
+  message("No packages to download")
+  rm(x, y)
+  }
 
 # ============================================================================ #
-# ---- detect OS ----
+# ---- Detect OS ----
 # ============================================================================ #
 # might be helpful when trying packages on other system
+
+# using base R, this is the code using in pacman, so not necessary
+Sys.info()[["sysname"]]
+
+# using pacman
 pacman::p_detectOS()
 
 # ============================================================================ #
@@ -68,8 +128,22 @@ pacman::p_detectOS()
 # can be useful if running script in background and can't give input info
 interactive()
 
+# useful in functions or projects like:
+# test if interactive, then stops executions if not in interactive mode
+if (interactive()) stop("This must be in interactive mode to be used!")
+
+# same as above instaed of calling `if` directly 
+stopifnot(
+  "This must be in interactive mode to be used!" = 
+    interactive() == TRUE)
+
+stopifnot(
+  "This must be in interactive mode to be used!" = 
+    interactive())
+
+
 # ============================================================================ #
-# ---- wrap code in {} ----  
+# ---- wrap code in {} `curly braces` ----  
 # ============================================================================ #
 # will run as block, instead of line by line
 {
@@ -139,7 +213,7 @@ oldpar <- par(no.readonly = TRUE)
 # ---- attach() ----
 # ============================================================================ #
 # attach adds whatever you add to search path, like library or global environ
-# this can be var, functions, etc
+# this can be variables, functions, etc
 # if you do an obj var, you can then search column names
 # i.e. instead of data1$x1, it would be x1 after attach(data1)
 { 
@@ -176,7 +250,7 @@ oldpar <- par(no.readonly = TRUE)
   # is the same as, but nicer than
   mtcars$mpg[mtcars$cyl == 8  &  mtcars$disp > 350]
   
-  with(data.frame(u = c(5,10,15,20,30,40,60,80,100),
+  with(data.frame(u    = c(5,10,15,20,30,40,60,80,100),
                   lot1 = c(118,58,42,35,27,25,21,19,18),
                   lot2 = c(69,35,26,21,18,16,13,12,12)),
        list(summary(glm(lot1 ~ log(u), family = Gamma)),
@@ -184,9 +258,10 @@ oldpar <- par(no.readonly = TRUE)
   
   # instead of 
   x <-
-    data.frame(u = c(5,10,15,20,30,40,60,80,100),
+    data.frame(u    = c(5,10,15,20,30,40,60,80,100),
                lot1 = c(118,58,42,35,27,25,21,19,18),
                lot2 = c(69,35,26,21,18,16,13,12,12))
+  # dont need x in next lines
   summary(glm(lot1 ~ log(u), x, family = Gamma))
   summary(glm(lot2 ~ log(u), x, family = Gamma))
   
@@ -197,7 +272,6 @@ oldpar <- par(no.readonly = TRUE)
   
   rm(x)
 } 
-
 
 # ============================================================================ #
 # ---- read multiple sheets from excel ----
@@ -228,14 +302,16 @@ oldpar <- par(no.readonly = TRUE)
 # ============================================================================ #
 # ---- repeat string concatenated ----
 # ============================================================================ #  
-# useful for na in read_xlsx(., na = c())
+# useful for many different representations of NA in read_xlsx(., na = c())
 {
   library("magrittr")
   # repeats `-` and adds `-` * n 
-  strrep("-", 1:20) 
-  na_skip <- c("NA", "Skipped", "skipped", "na", "n/a", "n./a", "n.a", "Flow", "na",
+  print(strrep("-", 1:20))
+  
+  na_skip <- c("NA", "Skipped", "skipped", "na", "n/a", "n./a", "n.a", "Flow", 
+               "na",
                strrep("-", 1:20))
-  print(strrep("-", 1:20) )
+  
   print(na_skip)
   
   message("Before `na_skip`")
