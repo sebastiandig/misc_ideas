@@ -31,6 +31,8 @@ Once you find an ERDDAP with the data you want, you can change the location here
 ```{r set-database}
 # this database contains CTD data from Walton Smith Cruises
 database <- "https://gcoos5.geos.tamu.edu/erddap/"
+# database <- "https://upwell.pfeg.noaa.gov/erddap/" 
+# for underway data: ed_search_adv("walton smith" )
 Sys.setenv(RERDDAP_DEFAULT_URL = database)
 ```
 
