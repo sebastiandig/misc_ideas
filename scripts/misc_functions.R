@@ -132,6 +132,8 @@ save_csv <- function(
         verbose       = TRUE,
         time_stamp_fmt = "%Y%m%d_%H%M%S") {
     
+    library("cli")
+  
     # ---- checking input parameters
     if (is.null(.data)) {
         cli::cli_abort(
@@ -225,3 +227,26 @@ save_csv <- function(
     # ---- end of function
 }
 
+
+##%######################################################%##
+#                                                          #
+####                   Save gg Plots                    ####
+#                                                          #
+##%######################################################%##
+file_sv <- function(plt, filename, device = c("jpeg", "svg"), 
+                    height = 15, width = 30, ...) {
+  device <- match.arg(device)
+  
+  height <- if (is.null(height)) 3.71 else height
+  
+  cowplot::save_plot(
+    filename    = filename,
+    plot        = plt,
+    base_height = height,
+    base_width  = width,
+    device      = device,
+    ...
+  )
+  
+  # ---- end of function
+}
