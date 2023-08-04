@@ -536,3 +536,23 @@ RCurl::url.exists("www.google.com") # <-- better
 pingr::is_up("www.google.com")
 
 
+# ============================================================================ #
+# ---- Ignore Open Files ----
+# ============================================================================ #  
+fs::dir_ls(
+  path = here::here("data", "raw"),
+recurse = FALSE,
+type    = "file",
+# included ^[^~]* to not match ~, means that a file is opened
+# regexp  = "^[^~]*\\.xlsx$"
+regexp  = "\\.xlsx$"
+)
+
+fs::dir_ls(
+  path = here::here("data", "raw"),
+recurse = FALSE,
+type    = "file",
+# included ^[^~]* to not match ~, means that a file is opened
+# regexp  = "^[^~]*\\.xlsx$"
+regexp  = "^[^~]*\\.xlsx$"
+)
