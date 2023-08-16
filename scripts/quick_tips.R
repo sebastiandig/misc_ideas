@@ -556,3 +556,24 @@ type    = "file",
 # regexp  = "^[^~]*\\.xlsx$"
 regexp  = "^[^~]*\\.xlsx$"
 )
+
+
+# ============================================================================ #
+# ---- Test if to save or not ----
+# ============================================================================ #  
+# choose to save or not
+# when not set, it will ask to set if in interactive mode 
+# else will set to FALSE
+# 
+# sv <- FALSE
+# sv <- TRUE
+sv <- NULL
+
+if (is.null(sv) & interactive()) {
+  sv <- menu(c("Save", "DO NOT SAVE"))
+  sv <- ifelse(sv == 1, TRUE, FALSE)
+} else if (is.null(sv) & !interactive()) {
+  sv <- FALSE
+}
+
+
