@@ -1,4 +1,4 @@
-
+#fdd
 # check if package is installed, and install if not
 is_inst <- function(pkg, prt = FALSE) {
   pkg <- as.data.frame(cbind(package = pkg, has = NA))
