@@ -609,15 +609,23 @@ if (is.null(sv) & interactive()) {
 # to save for next time, save an ".Rprofile" file and 
 # copy/paste options(continue = "<whatever>"). This can be done for either
 # a single project or for all projects. 
+# 
+# NOTE: if you use on "user" level, but a "project" level ".Rprofile" exists, 
+# you will need to add `source("<path to user level>/.Rprofile")` to use. When R
+# starts up, it will only use one ".Rprofile" and it will be the one closest
+# to the project.
+# Take a look: ?Startup
 
 # 1. project level 
   # This will only affect the current user's computer unless ".Rprofile" is 
   # controlled with git
-  usethis::edit_r_profile(scope = "project")
-  
+  # usethis::edit_r_profile(scope = "project")
+  # copy/paste options(continue = "<whatever>")
+
 # 2. global level
   # This will only affect the current user's computer
-  usethis::edit_r_profile(scope = "user")
+  # usethis::edit_r_profile(scope = "user")
+  # copy/paste options(continue = "<whatever>")
 
 # ============================================================================ #
 # ---- Set option `prompt` to something else ----
@@ -644,92 +652,118 @@ if (is.null(sv) & interactive()) {
   getOption("continue") |> print()
 }
 
-  # to save for next time, save an ".Rprofile" file and 
-  # copy/paste options(prompt = "<whatever>"). This can be done for either
-  # a single project or for all projects. 
-  
-  # 1. project level 
+# to save for next time, save an ".Rprofile" file and 
+# copy/paste options(prompt = "<whatever>"). This can be done for either
+# a single project or for all projects. 
+# 
+# NOTE: if you use on "user" level, but a "project" level ".Rprofile" exists, 
+# you will need to add `source("<path to user level>/.Rprofile")` to use. When R
+# starts up, it will only use one ".Rprofile" and it will be the one closest
+# to the project.
+# Take a look: ?Startup
+
+# 1. project level 
   # This will only affect the current user's computer unless ".Rprofile" is 
   # controlled with git
   # usethis::edit_r_profile(scope = "project")
-  
-  # 2. global level
+  # copy/paste options(prompt = "<whatever>")
+
+# 2. global level
   # This will only affect the current user's computer
   # usethis::edit_r_profile(scope = "user")
-  
+  # copy/paste options(prompt = "<whatever>")  
+
 # This more advanced examples is from: 
 #   <https://lapsedgeographer.london/2020-11/custom-r-prompt/>
 # 
 # Here, when a project is git controlled, you may have the prompt be the branch
 # that you are currently on and check if your branch is ahead
+# Format:
+#   "[HH:MM <location of project directory> @<branch name> <other characters>] >" 
+#   Other characters:
+#     - ⬆ = file has been committed and can be pushed
+#     - M = a file has been modified
+#     - ✘ = untracked files exists and can be commited
+#     - O = other files have some status
+#     TODO: can add to other files like D = deleted files, R = renamed, etc
+#
+# 
+# .First <- function() {
 #   
-# chg_prompt <- function(...) {
-#   
-#   # get project path
-#   proj_path <- here::here()
-# 
-#   # get git branch
-#   git_branch <-
-#     suppressWarnings(
-#       system(
-#         "git rev-parse --abbrev-ref HEAD",
-#         ignore.stderr = TRUE,
-#         intern = TRUE
-#       )
-#     )
-# 
-#   git_msg <- ""
-# 
-#   # if branch exists
-#   if (length(git_branch) != 0) {
-#     # initialize message
-#     git_msg <- paste0(" ", proj_path, " @", git_branch)
-# 
-#     # extract status
-#     git_status <-
+#   chg_prompt <- function(...) {
+#     
+#     # get project path
+#     proj_path <- here::here()
+#     
+#     # get git branch
+#     git_branch <-
 #       suppressWarnings(
 #         system(
-#           "git status -sb",
+#           "git rev-parse --abbrev-ref HEAD",
 #           ignore.stderr = TRUE,
 #           intern = TRUE
 #         )
 #       )
-# 
-#     # check if ahead
-#     if (any(grepl("ahead", git_status))) {
-#       git_msg <- paste(git_msg, "⬆︎")
+#     
+#     git_msg <- ""
+#     
+#     # if branch exists
+#     if (length(git_branch) != 0) {
+#       # initialize message
+#       git_msg <- paste0(" ", proj_path, " @", git_branch)
+#       
+#       # extract status
+#       git_status <-
+#         suppressWarnings(
+#           system(
+#             "git status -sb",
+#             ignore.stderr = TRUE,
+#             intern = TRUE
+#           )
+#         )
+#       
+#       # check if ahead
+#       if (any(grepl("ahead", git_status))) {
+#         git_msg <- paste(git_msg, "⬆︎")
+#       }
+#       
+#       # check if modified files
+#       if (any(grepl("^ M", git_status[-1]))) {
+#         git_msg <- paste(git_msg, "︎M")
+#       }
+#       
+#       # check if untracked
+#       if (any(grepl("^??", git_status[-1]))) {
+#         git_msg <- paste(git_msg, "✘")
+#       }
+#       
+#       # check other
+#       if (any(!grepl("ahead|^ M|^??", git_status[-1]))) {
+#         git_msg <- paste(git_msg, "O")
+#       }
 #     }
-# 
-#     # check if modified files
-#     if (any(grepl("^ M", git_status[-1]))) {
-#       git_msg <- paste(git_msg, "︎M")
-#     }
-# 
-#     # check if untracked
-#     if (any(grepl("^??", git_status[-1]))) {
-#       git_msg <- paste(git_msg, "✘")
-#     }
-# 
-#     # check other
-#     if (any(!grepl("ahead|^ M|^??", git_status[-1]))) {
-#       git_msg <- paste(git_msg, "O")
-#     }
+#     
+#     console_msg <-
+#       paste0(
+#         "[",
+#         format(Sys.time(), "%H:%M"),
+#         git_msg,
+#         "] > "
+#       )
+#     
+#     
+#     options(prompt = console_msg)
+#     
+#     invisible(TRUE)
+#     
+#     # ---- end of function chg_prompt
 #   }
-# 
-#   console_msg <-
-#     paste0(
-#       "[",
-#       format(Sys.time(), "%H:%M"),
-#       git_msg,
-#       "] > "
-#     )
-# 
-# 
-#   options(prompt = console_msg)
 #   
-#   invisible(TRUE)
+#   chg_prompt()
 #   
-#   # ---- end of function chg_prompt
+#   addTaskCallback(chg_prompt)
+#   
+#   options(continue = " ")
 # }
-# chg_prompt()
+
 
