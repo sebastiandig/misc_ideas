@@ -577,3 +577,41 @@ if (is.null(sv) & interactive()) {
 }
 
 
+# ============================================================================ #
+# ---- Set option `continue` to something else ----
+# ============================================================================ #  
+# By default, the continue character is "+", which is not great if you want to 
+# copy/paste code to a script. You can redefine this as " " leading to easier
+# copy/paste. You can set it at the current runtime, project runtime or global
+# runtime. 
+
+# rstudio default
+{
+  old_continue <- getOption("continue") # whatever its currently set to
+  options(continue = "+ ") # set default in case it's already changed
+  og_continue <- getOption("continue")
+  print(og_continue)
+  # "+ "
+}
+
+# change default, but this won't save if restart R
+{
+  options(continue = " ")
+  new_continue <- getOption("continue")
+  print(new_continue)
+  # " "
+}
+
+# to save for next time, save an ".Rprofile" file and 
+# copy/paste options(continue = "<whatever>"). This can be done for either
+# a single project or for all projects. 
+
+# 1. project level 
+  # This will only affect the current user's computer unless ".Rprofile" is 
+  # controlled with git
+  usethis::edit_r_profile(scope = "project")
+  
+# 2. global level
+  # This will only affect the current user's computer
+  usethis::edit_r_profile(scope = "user")
+
