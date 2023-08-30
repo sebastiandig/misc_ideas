@@ -589,18 +589,22 @@ if (is.null(sv) & interactive()) {
 {
   old_continue <- getOption("continue") # whatever its currently set to
   options(continue = "+ ") # set default in case it's already changed
-  og_continue <- getOption("continue")
-  print(og_continue)
+  getOption("continue") |> 
+    print()
   # "+ "
 }
 
 # change default, but this won't save if restart R
 {
   options(continue = " ")
-  new_continue <- getOption("continue")
-  print(new_continue)
+  getOption("continue") |> 
+    print()
   # " "
+
+  options(old_continue)
+  getOption("continue") |> print()
 }
+
 
 # to save for next time, save an ".Rprofile" file and 
 # copy/paste options(continue = "<whatever>"). This can be done for either
@@ -615,3 +619,77 @@ if (is.null(sv) & interactive()) {
   # This will only affect the current user's computer
   usethis::edit_r_profile(scope = "user")
 
+# ============================================================================ #
+# ---- Set option `prompt` to something else ----
+# ============================================================================ # 
+# This options sets what is waiting in the console before you start typing.
+# The default is "> ". You can change the default in the same way as "continue".
+
+# rstudio default
+{
+  old_prompt <- getOption("prompt") # whatever its currently set to
+  options(prompt = "> ") # set default in case it's already changed
+  getOption("prompt") |>
+    print()
+  # "+ "
+}
+
+# change default, but this won't save if restart R
+{
+  options(prompt = " ")
+  getOption("prompt") |>
+    print()
+  # " "
+  options(old_prompt)
+  getOption("continue") |> print()
+}
+
+  # to save for next time, save an ".Rprofile" file and 
+  # copy/paste options(prompt = "<whatever>"). This can be done for either
+  # a single project or for all projects. 
+  
+  # 1. project level 
+  # This will only affect the current user's computer unless ".Rprofile" is 
+  # controlled with git
+  usethis::edit_r_profile(scope = "project")
+  
+  # 2. global level
+  # This will only affect the current user's computer
+  usethis::edit_r_profile(scope = "user")
+  
+# This more advanced examples is from: 
+#   <https://lapsedgeographer.london/2020-11/custom-r-prompt/>
+# 
+# Here, when a project is git controlled, you may have the prompt be the branch
+# that you are currently on and check if your branch is ahead
+#   
+# git_branch <- suppressWarnings(system("git rev-parse --abbrev-ref HEAD",
+#                                       ignore.stderr = TRUE, intern = TRUE))
+# 
+# if (length(git_branch) != 0) {
+#   git_msg <- paste0(" @", git_branch)
+#   git_status <- suppressWarnings(system("git status -s",
+#                                         ignore.stderr = TRUE, intern = TRUE))
+#   git_ahead <- suppressWarnings(system("git status -sb",
+#                                        ignore.stderr = TRUE, intern = TRUE))
+#   git_ahead_chk <- grepl("ahead", git_ahead)
+#   
+#   if (length(git_status) != 0) {
+#     git_msg <- paste0(git_msg, " ✘")
+#   } else if (git_ahead_chk) {
+#     git_msg <- paste0(git_msg, " ⬆︎")
+#   }
+#   
+# } else {
+#   git_msg <- ""
+# }
+# 
+# console_msg <- paste0("[",
+#                       format(Sys.time(), "%H:%M"),
+#                        "/",
+#                       git_msg,
+#                       "] > ")
+# 
+# 
+# options(prompt = console_msg)
+  
