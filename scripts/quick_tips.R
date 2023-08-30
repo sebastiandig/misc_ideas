@@ -651,11 +651,11 @@ if (is.null(sv) & interactive()) {
   # 1. project level 
   # This will only affect the current user's computer unless ".Rprofile" is 
   # controlled with git
-  usethis::edit_r_profile(scope = "project")
+  # usethis::edit_r_profile(scope = "project")
   
   # 2. global level
   # This will only affect the current user's computer
-  usethis::edit_r_profile(scope = "user")
+  # usethis::edit_r_profile(scope = "user")
   
 # This more advanced examples is from: 
 #   <https://lapsedgeographer.london/2020-11/custom-r-prompt/>
@@ -663,41 +663,73 @@ if (is.null(sv) & interactive()) {
 # Here, when a project is git controlled, you may have the prompt be the branch
 # that you are currently on and check if your branch is ahead
 #   
-git_branch <- suppressWarnings(system("git rev-parse --abbrev-ref HEAD",
-                                      ignore.stderr = TRUE, intern = TRUE))
+# chg_prompt <- function(...) {
+#   
+#   # get project path
+#   proj_path <- here::here()
+# 
+#   # get git branch
+#   git_branch <-
+#     suppressWarnings(
+#       system(
+#         "git rev-parse --abbrev-ref HEAD",
+#         ignore.stderr = TRUE,
+#         intern = TRUE
+#       )
+#     )
+# 
+#   git_msg <- ""
+# 
+#   # if branch exists
+#   if (length(git_branch) != 0) {
+#     # initialize message
+#     git_msg <- paste0(" ", proj_path, " @", git_branch)
+# 
+#     # extract status
+#     git_status <-
+#       suppressWarnings(
+#         system(
+#           "git status -sb",
+#           ignore.stderr = TRUE,
+#           intern = TRUE
+#         )
+#       )
+# 
+#     # check if ahead
+#     if (any(grepl("ahead", git_status))) {
+#       git_msg <- paste(git_msg, "⬆︎")
+#     }
+# 
+#     # check if modified files
+#     if (any(grepl("^ M", git_status[-1]))) {
+#       git_msg <- paste(git_msg, "︎M")
+#     }
+# 
+#     # check if untracked
+#     if (any(grepl("^??", git_status[-1]))) {
+#       git_msg <- paste(git_msg, "✘")
+#     }
+# 
+#     # check other
+#     if (any(!grepl("ahead|^ M|^??", git_status[-1]))) {
+#       git_msg <- paste(git_msg, "O")
+#     }
+#   }
+# 
+#   console_msg <-
+#     paste0(
+#       "[",
+#       format(Sys.time(), "%H:%M"),
+#       git_msg,
+#       "] > "
+#     )
+# 
+# 
+#   options(prompt = console_msg)
+#   
+#   invisible(TRUE)
+#   
+#   # ---- end of function chg_prompt
+# }
+# chg_prompt()
 
-if (length(git_branch) != 0) {
-  git_msg <- paste0(" @", git_branch)
-  git_status <- suppressWarnings(system("git status -s",
-                                        ignore.stderr = TRUE, intern = TRUE))
-  git_ahead <- suppressWarnings(system("git status -sb",
-                                       ignore.stderr = TRUE, intern = TRUE))
-  git_ahead_chk <- grepl("ahead", git_ahead)
-  
-  git_behind <- suppressWarnings(system("git status -sb",
-                                       ignore.stderr = TRUE, intern = TRUE))
-  if (any(git_ahead_chk)) {
-    git_msg <- paste0(git_msg, " ⬆︎")
-  }
-  
-  if (any(git_behind_chk)) {
-    git_msg <- paste0(git_msg, " ↓")
-  }
-  
-  if (length(git_status) != 0) {
-    git_msg <- paste0(git_msg, " ✘")
-  }
-
-
-  } else {
-    git_msg <- ""
-    }
-
-console_msg <- paste0("[",
-                      format(Sys.time(), "%H:%M"),
-                      git_msg,
-                      "] > ")
-
-
-options(prompt = console_msg)
-  
