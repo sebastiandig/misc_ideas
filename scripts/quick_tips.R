@@ -663,33 +663,41 @@ if (is.null(sv) & interactive()) {
 # Here, when a project is git controlled, you may have the prompt be the branch
 # that you are currently on and check if your branch is ahead
 #   
-# git_branch <- suppressWarnings(system("git rev-parse --abbrev-ref HEAD",
-#                                       ignore.stderr = TRUE, intern = TRUE))
-# 
-# if (length(git_branch) != 0) {
-#   git_msg <- paste0(" @", git_branch)
-#   git_status <- suppressWarnings(system("git status -s",
-#                                         ignore.stderr = TRUE, intern = TRUE))
-#   git_ahead <- suppressWarnings(system("git status -sb",
-#                                        ignore.stderr = TRUE, intern = TRUE))
-#   git_ahead_chk <- grepl("ahead", git_ahead)
-#   
-#   if (length(git_status) != 0) {
-#     git_msg <- paste0(git_msg, " ✘")
-#   } else if (git_ahead_chk) {
-#     git_msg <- paste0(git_msg, " ⬆︎")
-#   }
-#   
-# } else {
-#   git_msg <- ""
-# }
-# 
-# console_msg <- paste0("[",
-#                       format(Sys.time(), "%H:%M"),
-#                        "/",
-#                       git_msg,
-#                       "] > ")
-# 
-# 
-# options(prompt = console_msg)
+git_branch <- suppressWarnings(system("git rev-parse --abbrev-ref HEAD",
+                                      ignore.stderr = TRUE, intern = TRUE))
+
+if (length(git_branch) != 0) {
+  git_msg <- paste0(" @", git_branch)
+  git_status <- suppressWarnings(system("git status -s",
+                                        ignore.stderr = TRUE, intern = TRUE))
+  git_ahead <- suppressWarnings(system("git status -sb",
+                                       ignore.stderr = TRUE, intern = TRUE))
+  git_ahead_chk <- grepl("ahead", git_ahead)
+  
+  git_behind <- suppressWarnings(system("git status -sb",
+                                       ignore.stderr = TRUE, intern = TRUE))
+  if (any(git_ahead_chk)) {
+    git_msg <- paste0(git_msg, " ⬆︎")
+  }
+  
+  if (any(git_behind_chk)) {
+    git_msg <- paste0(git_msg, " ↓")
+  }
+  
+  if (length(git_status) != 0) {
+    git_msg <- paste0(git_msg, " ✘")
+  }
+
+
+  } else {
+    git_msg <- ""
+    }
+
+console_msg <- paste0("[",
+                      format(Sys.time(), "%H:%M"),
+                      git_msg,
+                      "] > ")
+
+
+options(prompt = console_msg)
   
