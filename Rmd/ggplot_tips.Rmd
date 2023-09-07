@@ -91,3 +91,79 @@ wrap_elements(get_plot_component(p1, "ylab-l")) +
 
 pacman::p_unload("all")
 ```
+
+
+## Plot a cirlc around a point
+Base Plot and ggplot
+
+Calculate points around a circle from 0 - 360 degrees at 1 degree increments
+
+$$
+(x_{coord}, y_{coord}) = \text{location} \\
+r = \text{radius,} \\
+\theta = \text{degrees,} \\
+rads = \theta \times \frac{\pi}{180} \\
+x_{component} = x_{coord} + r \times cos(rads) \\
+y_{component} = y_{coord} + r \times cos(rads) \\
+
+plot(x_{component}, y_{component}) \text{ for a circle}
+$$
+
+
+```{r, fig.height=15, fig.width=15}
+# center location of circle
+x_loc <-  data.frame(x = 5, y = 5)
+
+# radius
+sd <- 6
+bearing <- seq(0, 360, by = 1) * pi/180
+circle <- 
+  cbind(
+    cx = x_loc[,1] + sd * cos(bearing), 
+    cy = x_loc[,2] + sd * sin(bearing)
+    )
+
+plot(
+  x_loc,
+  type = "p",
+  xlim = range(circle[,1]),
+  ylim = range(circle[,2])
+  )
+lines(circle, col = "red", lwd = 2)
+
+
+library(ggplot2) 
+
+ggplot() +
+  geom_point(
+    data  = x_loc, 
+    aes(x, y),
+    color = "green", 
+    size  = 10
+    ) +
+  geom_path(
+    data      = as.data.frame(circle),
+    aes(cx, cy),
+    color     = "red",
+    linewidth = 1
+    ) +
+  geom_point(
+    data  = as.data.frame(circle[seq(1, nrow(circle)) %% 2 == 1, ]),
+    aes(cx, cy), 
+    color = "orange",
+    size  = 4
+    ) +
+  labs(title = paste0(
+    "A circle for you, center = (", 
+    x_loc[1,1], 
+    ",",
+    x_loc[1,2], 
+    "), radius = ",
+    sd),
+    x = NULL,
+    y = NULL) +
+  theme_classic() +
+  theme(title = element_text(size = 30))
+
+pacman::p_unload("all")
+```
