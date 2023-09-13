@@ -768,3 +768,40 @@ if (is.null(sv) & interactive()) {
 
 
 
+# ============================================================================ #
+# ---- Excel Date and Time Conversion ----
+# ============================================================================ # 
+# added Sept 13, 2023
+#  
+# Convert excel storage of date to a date object
+# i.e. 44639 to 2022-03-19
+# 
+# Convert excel storage of time to a time object
+# 0.48263889 to 11:35:00 GMT
+# 
+# Combine date and time to date-time
+# i.e. 2022-03-19 and 11:35:00 GMT to 2022-03-19 11:35:00 GMT/UTC
+{
+  library(magrittr)
+  # 2022-03-19 11:35:00 GMT/UTC
+  
+  # 2022-03-19
+  ex_date <- 
+    44639 %T>% # from excel
+    print() %>% 
+    janitor::excel_numeric_to_date() %T>% 
+    print()
+  
+  # 11:35:00 GMT
+  ex_time <- 
+    (0.48263889 + 1 ) %T>% # from excel
+    print() %>% 
+    janitor::excel_numeric_to_date(include_time = TRUE, tz = "GMT") %T>% 
+    print() %>% 
+    hms::as_hms() %T>% 
+    print()
+  
+  
+  lubridate::ymd_hms(glue::glue("{ex_date} {ex_time}"))
+  pacman::p_unload(magrittr)
+}
