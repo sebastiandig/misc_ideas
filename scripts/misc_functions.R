@@ -245,7 +245,7 @@ save_csv <- function(
   data_f <- eval(data_f$file_expr)
   
   if (verbose) {
-    cli::cli_h1("Data Variable Name: {.var {save_name}}")
+    cli::cli_h1("Base File Name: {.var {save_name}}")
     cli::cli_alert_info(
       c("File Information:\n",
         "Rows:      {nrow(.data)}\n",
