@@ -167,3 +167,54 @@ ggplot() +
 
 pacman::p_unload("all")
 ```
+
+# Add log ticks to x or y axes
+```{r}
+library(ggplot2)
+
+ggplot(mtcars, 
+       aes(
+         x = disp,
+         y = mpg
+       )
+       ) +
+  geom_point() +
+  labs(title = "Raw",
+       x = "Raw disp",
+       y = "Raw mpg")
+
+ggplot(mtcars, 
+       aes(
+         disp, y = log(mpg))
+       ) +
+  geom_point() +
+  labs(title = "Log Transformed Y",
+       x = "Raw disp",
+       y = "Log mpg")
+
+ggplot(mtcars, 
+       aes(x = disp, 
+           y = log(mpg))
+       ) +
+  geom_point() +
+  annotation_logticks(side = "l") +
+  ylim(0, 5) +
+  labs(title = "Log Transformed Y with Log Axis Ticks",
+       x = "Raw disp",
+       y = "Log mpg")
+
+ggplot(mtcars, 
+       aes(x = log(disp), 
+           y = log(mpg))
+       ) +
+  geom_point() +
+  annotation_logticks(side = "lb") +
+  ylim(0, 5) +
+  xlim(0, 7) +
+  labs(title = "Log Transformed X and Y with Log Axis Ticks",
+       x = "Log disp",
+       y = "Log mpg")
+
+pacman::p_unload("all")
+```
+
