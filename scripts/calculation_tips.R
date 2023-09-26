@@ -6,13 +6,12 @@
 # 
 # ============================================================================ #  
 
-
 ##%######################################################%##
 #                                                          #
-####                  Upwelling Indice                  ####
+####               Bakun Upwelling Indice               ####
 #                                                          #
 ##%######################################################%##
-#' Upwelling Indice
+#' Bakun Upwelling Indice
 #'
 #' Using the x- and y- components of Ekman Transport plus coastline angle, the
 #' upwelling index can be calculated. Using NOAA CoastWatch ERRDAP, a global 
