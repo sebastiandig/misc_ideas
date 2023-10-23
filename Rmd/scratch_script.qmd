@@ -1,0 +1,456 @@
+---
+title: "A script for test"
+author: "Sebastian Di Geronimo"
+date: "2023-10-07"
+format: html
+---
+
+# 1.0 ---- Summary of Document ----
+- 3.0: Illustration of projecting data points
+
+
+# 2.0 ---- Setup ----
+
+## 2.1 Load Libraries
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  # broom # optional
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+```
+
+# 3.0 ---- Illustration of projecting data points ----
+From: 
+\cite{shaliziAdvancedDataAnalysis2021}
+“Figure 15.1” ([Shalizi, 2021, p. 321](https://www.stat.cmu.edu/~cshalizi/ADAfaEPoV/))
+
+Illustration of projecting data points $ \vec x $  (black dots) on to an 
+arbitrary line through the space (blue, dashed), represented by a unit 
+vector $ \vec w $ along the line (also blue but solid). The blue dots are the 
+projections on to the blue line,$ (\vec x~\dot~\vec w)\dot~\vec w $ ; the gray 
+lines are the vector residuals,$ \vec x~-~(\vec x~\dot~\vec w)\dot~\vec w $. 
+These are not the residuals from regressing one of the components of the data 
+vector on the other.
+
+
+```{r section-3.0}
+demo.theta <- runif(10, min    = 0, max = pi/2) 
+demo.x <- cbind(cos(demo.theta), sin(demo.theta)) 
+demo.x <- scale(demo.x, center = TRUE, scale = FALSE) 
+
+demo.w <- c(cos(-3 * pi/8), sin(-3 * pi/8)) 
+
+# x * y * x
+# [10 x 2] * [2 x 1] * [10 x 2]
+projection <- demo.x %*% demo.w %*% demo.w 
+
+{
+plot(demo.x, 
+     xlab = expression(x^1), 
+     ylab = expression(x^2), 
+     xlim = c(-1, 1), 
+     ylim = c(-1, 1))
+arrows(0, 0, demo.w[1], demo.w[2], col = "blue") 
+text(demo.w[1], demo.w[2], pos = 4, labels = expression(w)) 
+abline(0, b = demo.w[2]/demo.w[1], col = "blue", lty = "dashed") 
+
+points(projections, pch = 16, col = "blue") 
+segments(x0 = demo.x[, 1], y0 = demo.x[, 2], x1 = projections[, 1], y1 = projections[, 2], col = "grey")
+}
+```
+# 4.0 ---- Trelliscope Test ----
+
+from [trelliscope](https://github.com/trelliscope/trelliscope)
+web: [trelliscope reference manual](https://trelliscope.org/trelliscope/)
+
+Supersedes: [trelliscopejh](https://github.com/hafen/trelliscopejs)
+  - although has a nice looking interface: 
+    - [JS version](https://hafen.github.io/trelliscopejs/articles/trelliscopejs.html#-ggplot2-interface-facet-trelliscope)
+
+
+Not to be confused with: [trelliscope](https://github.com/delta-rho/trelliscope)
+
+```{r trelliscope}
+shelf(trelliscope)
+
+szn <- c("Winter", "Spring", "Summer", "Autumn")
+
+# rstudioapi::selectDirectory()
+file_dir <- here("..", "new_MBON_phytoplankton_pigments", "data", "plots", "map", "ratio")
+
+test <-
+  file_dir %>%
+  dir_ls() %>%
+  tibble(img_src = .) %>%
+  # slice(1:2) %>%
+  mutate(
+    .before = 1,
+    id      = row_number(), 
+    base    = basename(img_src),
+    base    = path_ext_remove(base),
+    season  = str_extract(base, ".*_ratio_(.*)_20", group = 1),
+    season  = str_to_title(season),
+    season  = fct(season, szn),
+    pigment = str_extract(base, "mbon_pigm_(.*)_ratio", group = 1),
+    ) %>% 
+  as_trelliscope_df(
+    name = "Display Pigments", 
+    key_sig = "img_src",
+    key_cols = c("season", "pigment"),
+    tags = "base_name"
+    ) %>%
+    set_default_layout(ncol = 2, page = 2) %>%
+    add_inputs(
+      input_checkbox(
+        name = "Checkbox Input",
+        label = "A space to add custom button inputs",
+        options = c("yes", "no")
+      )
+    )
+
+show_info(test)
+view_trelliscope(test) 
+
+
+# here("C:\\Users", "spd19", "AppData", "Local", "Temp", "Rtmpsf3mnt", "file65f4368151a3", "index.html") |> shell.exec()
+```
+```{r}
+test2 <- 
+  mars_rover %>%
+  slice_sample(prop = 0.01) %>%
+  rename("rando" = img_src) %>%
+  as_trelliscope_df(name = "test2")
+
+show_info(test2)
+```
+
+
+```{r}
+# Use `as_trelliscope_df()` to convert panel metadata to a special
+# trelliscope data frame
+library(ggplot2)
+library(dplyr)
+
+panel_dat <-
+  (
+  ggplot(gap, aes(year, life_exp)) +
+    geom_point() +
+    facet_panels(vars(country, continent))
+  ) |>
+    as_panels_df()
+
+meta_dat <- 
+  summarise(
+    gap,
+    .by = c(country, continent),
+    mean_life_exp = mean(life_exp),
+    min_life_exp = min(life_exp),
+    max_life_exp = max(life_exp),
+    mean_gdp = mean(gdp_percap)
+  )
+
+joined_dat <- 
+  left_join(panel_dat, meta_dat) |>
+  as_trelliscope_df(name = "life_expectancy", path = tempfile())
+
+if (FALSE) {
+view_trelliscope(joined_dat)
+}
+
+
+trell <- 
+  joined_dat |>
+# as_trelliscope_df(name = "Select Images") |>
+  add_inputs(
+    # input_radio(
+    #   name = "Radio Input",
+    #   label = "A space to add custom ranking for sorting",
+    #   options = c("yes", "no")
+    # ),
+    input_select(
+      name = "Select Input",
+      label = "A space to add custom dropdown inputs",
+      options = c("yes", "no"),
+      active = TRUE
+    ),
+    # input_checkbox(
+    #   name = "Checkbox Input",
+    #   label = "A space to add custom button inputs",
+    #   options = c("yes", "no")
+    # ),
+    vars = c("continent", "country")
+  )
+
+view_trelliscope(trell)
+
+
+here("data") %>%
+  dir_ls(regexp = "_2trel") %>%
+  read_csv() 
+```
+
+
+```{r}
+shelf(trelliscope)
+# rstudioapi::selectDirectory()
+file_dir <- 
+  here("C:\\Users", "spd19", "Box", "Davidson_Fellowship_2022", "SAMPLING", 
+       "FEBRUARY_2023", "Mairim", "photo") 
+
+save_csv_name <- 
+  str_extract(file_dir, ".*((?i)sampling)/(.*)", group = 2) %>%
+  str_replace_all("/", "_") %>%
+  str_to_lower() %T>% print()  
+  
+nat_files <-
+  file_dir %>%
+  dir_ls(regexp = "\\.JPG") %>%
+  tibble(src_img = .) %>%
+  # slice(1:15) %>%
+  mutate(
+    .before = 1,
+    id      = str_extract(src_img, "GOPR(\\d+)\\.JPG", group = 1)
+    ) %>%
+  mutate(
+    dir_og = dirname(src_img),
+    loc  = str_extract(src_img, "SAMPLING/(.*20\\d{2})/(.*)/photo", group = 2),
+    time = str_extract(src_img, "SAMPLING/(.*20\\d{2})", group = 1),
+    time = str_to_title(time),
+    time = str_replace(time, "_", " ")
+  )  %T>% print() %>%
+  as_trelliscope_df(name = str_c(save_csv_name, "_to_remove")) %>%
+  set_default_layout(ncol = 4, page = 2) %>%
+  add_inputs(
+    input_radio(
+      name = "remove_bad_images",
+      label = "Yes images will be removed, no imagaes will be saved",
+      options = c("yes", "no"),
+      active = TRUE
+    ),
+    vars = c("dir_og", "src_img", "loc", "time")
+  )
+
+view_trelliscope(nat_files)
+
+```
+
+```{r}
+files_mv <- 
+  here("data") %>%
+  dir_ls(regexp = "(?i)photo_to_remove") %>%
+  str_subset("_1") %>%
+  read_csv(show_col_types = FALSE) %>%
+  janitor::clean_names() %>%
+  mutate(
+    # .keep = "used",
+    reg = basename(src_img),
+    # og_loc2 = dirname(dir_og),
+    file_rm = map2_chr( 
+      .x = dir_og,
+      .y = reg,
+      ~ dir_ls(.x, regexp = .y)),
+    # new_loc = str_c(dirname(dir_og), "bad", sep = "/"),
+    new_loc = str_c(here("data"), "bad", sep = "/")
+  ) %T>% print()
+
+
+dir_create(unique(files_mv$new_loc))
+
+files_mv  %>%
+  filter(str_detect(remove_bad_images, "(?i)yes"))  %>%
+  nest(.by = c(dir_og, new_loc)) %$%
+  walk2(
+    .x = new_loc,
+    .y = data,
+    \(.x, .y) {
+     cli::cli_alert_info("Moving files to {.path {.x}}") 
+     cli::cat_bullet(basename(.y$file_rm))
+     
+     if (menu(c("Yes, move files", "No, don't move files")) == 1) {
+       cli::cli_alert_info("Moving files!")
+       dir_create(unique(.x))
+      file_copy(.y$file_rm, .x)
+      # file_move(.y$file_rm, .y$new_loc)
+       
+     }
+     
+    }
+  )
+
+
+```
+
+
+```{r}
+dir_create(here("data", "bad2"))
+
+here("data", "bad") %>%
+  dir_ls() %T>% print() %>% 
+  file_move(., here("data", "bad2"))
+  
+```
+
+# 5.0 ---- Test Formula Notation ----
+
+From [datacamp](https://www.datacamp.com/tutorial/r-formula-tutorial)
+
+Section: `How to Concatenate Formulae`
+
+```{r formula-notation}
+i <- "y ~ x"
+j <- "y ~ x + x1"
+k <- "y ~ x + x1 + x2"
+
+l <- c(i, j, k)
+
+lapply(l, as.formula)
+l
+
+class(j)
+class(as.formula(j))
+class(y ~ x)
+
+identical(as.formula(i), y ~ x)
+
+```
+
+# 6.0 ---- Test model.frame function ----
+
+from [datacamp](https://www.datacamp.com/tutorial/r-formula-tutorial)
+
+Section: `Modeling Functions`
+
+Returns a dataframe that match the formula columns
+- this may do some preprocessing of the data like log transformations
+
+Subset can be added to filter the data further
+
+```{r model-frame}
+# use model.frame with the iris data set 
+
+iris
+model.frame(Sepal.Length ~ Sepal.Width, data = iris)
+model.frame(
+  Sepal.Length ~ Sepal.Width * Petal.Length, 
+  data = iris)
+model.frame(
+  Sepal.Length ~ log(Sepal.Width) * Petal.Length, 
+  data = iris)
+
+model.frame(
+  Sepal.Length ~ Sepal.Width * Petal.Length, 
+  data = iris,
+  subset = Species == "setosa" # extra filtering
+  )
+```
+
+
+# 7.0 ---- Test `adespatial` ----
+
+```{r test-adespatial}
+vignette("tutorial", package = "adespatial")
+```
+
+
+
+
+# 8.0 ---- Test Kernal Density Estimation ----
+
+```{r test-kde}
+# equation for kernel density estimation
+
+kernel_test <- function(radius, .dist) {
+  
+   max(0, radius^2 - .dist^2)
+  
+    # ---- end of function kernel_test
+}
+
+tibble(x = 1:10) %>%
+  mutate(
+    .dist = 5,
+    radius = 2,
+    kernel = map2_dbl(radius, .dist, kernel_test)
+  ) 
+
+```
+
+
+# 9.0 ---- Test `openxlsx2` Formula Builder ----
+
+Using `openxslx2::add_formula`
+- basically you create an array formula where you use first col first row to
+  first column last row to create an array formula
+  i.e. "< column X > < row Y > : < column X > < row Z >" 
+
+- then add the dimensions to put the results of the formula
+  - same rows as formula but different columns
+    i.e. dim = "< column XX > < row Y > : < column XX > < row Z >" 
+  - NOTE: its recommended to have the same length (i.e. row 1 - 10 for both 
+    formula and result)
+    - they don't have to be the same though, but at least the same number of 
+      rows (i.e. formula rows A1:A3 with results A4:A6)
+    - if not same number of rows, the formula will stop wherever the row number
+      stops
+
+
+```{r}
+shelf(openxlsx2)
+
+set.seed(123)
+# 3 x 5 matrix of random numbers from 0 to 1
+dat <- matrix(runif(15), nrow = 3, ncol = 5) %T>% print()
+
+# Create artificial xlsx file
+wb <- 
+  wb_workbook()$
+  add_worksheet()$
+  add_data(x = dat, col_names = FALSE)
+  
+# see startind wb
+wb_to_df(wb, col_names = FALSE, , show_formula = TRUE)
+
+# add formulas to individual rows
+wb <- 
+  wb$
+  add_formula(x = "SUM(A2, B2)", dims = "F2")$
+  add_formula(x = "A1 + B1", dims = "F1")$
+  add_formula(x = "A3 * B3", dims = "F3")
+  
+# these formulas won't be evaluated until saved and opened in excel
+wb_to_df(wb, col_names = FALSE, show_formula = TRUE)
+wb$open()
+
+# add array formulas
+# run the same operations to many rows
+# the formula will only show at the first instance of the formula but will be
+# evaluated for all rows once saved
+wb <- 
+  wb_workbook()$
+  add_worksheet()$
+  add_data(x = dat, col_names = FALSE)$
+  add_formula(x = "A1:A3 * B1:B3", 
+              dims = "F1:F3",
+              # dims = "A4:A5", # can be evaluated anywhere 
+              array = TRUE) 
+  
+wb_to_df(wb, col_names = FALSE, show_formula = TRUE)
+
+wb$open()
+
+unshelf(openxlsx2)
+```
+
