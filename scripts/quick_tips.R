@@ -813,3 +813,33 @@ if (is.null(sv) & interactive()) {
   lubridate::ymd_hms(glue::glue("{ex_date} {ex_time}"))
   pacman::p_unload(magrittr)
 }
+
+# ============================================================================ #
+# ---- cliExtra ----
+# ============================================================================ #  
+# 2021-09-13
+# may be an alternative to using if (verbose) print("message")
+# bsically if set cliExtras::cli_quiet(quiet = TRUE) then no messages will be
+# displayed when called from `cli`
+# this does not affect `message()` or `print()`
+test_fn <- function(verbose = FALSE) {
+  cliExtras::cli_quiet(quiet = verbose)
+  cli::cli_alert_info(
+    "{.arg verbose} is {.val {verbose}}"
+  )
+  
+  cli::cli_alert_info(
+    "hi how are ya? {.kbd ENTER}"
+  )
+  
+  message("message test")
+  print("print test")
+}
+
+
+test_fn(FALSE)
+test_fn(TRUE)
+
+rm(test_fn)
+
+# ============================================================================ #
