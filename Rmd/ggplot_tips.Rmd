@@ -5,6 +5,8 @@ date: '2022-11-11'
 output: html_document
 ---
 
+
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -169,7 +171,7 @@ pacman::p_unload("all")
 ```
 
 # Add log ticks to x or y axes
-```{r}
+```{r add-log-tick}
 library(ggplot2)
 
 ggplot(mtcars, 
@@ -217,4 +219,15 @@ ggplot(mtcars,
 
 pacman::p_unload("all")
 ```
+# Fun: `stat_function` and `geom_stat`
+```{r stat-geom-func}
+library("ggplot2")
+ggplot() +
+  xlim(-10, 10) +
+  stat_function(fun = dnorm, geom = "point", n = 20, color = "red") +
+  geom_function(fun = dnorm, n = 100) +
+  geom_function(fun = dnorm, n = 100, args = list(mean = 4, sd = 1), 
+                xlim = c(0, 10))
 
+pacman::p_unload("all")
+```
