@@ -858,6 +858,9 @@ rm(test_fn)
 if (FALSE) {
   
   usethis::edit_r_environ("project")
+  # use "user" if you want to set .Renvrion for all projects on your computer
+  # and will only access them if using the `Sys.getenv()` function
+  # usethis::edit_r_environ("user")
   
   # add the following line and a comment as to what it is:
   environment_parameter = "<key value pair>"
