@@ -843,3 +843,36 @@ test_fn(TRUE)
 rm(test_fn)
 
 # ============================================================================ #
+
+
+
+# ============================================================================ #
+# ---- Using .Renviron for Global Variables ----
+# ============================================================================ #
+# 2021-09-13
+# From: <https://www.dartistics.com/renviron.html>
+# .Renviron is a file that can be used to store environment variables
+# NOTE: make sure to add `.Renviron` to `.gitignore` when using Git
+
+# To setup:
+if (FALSE) {
+  
+  usethis::edit_r_environ("project")
+  
+  # add the following line and a comment as to what it is:
+  environment_parameter = "<key value pair>"
+  # save and restart R
+  
+  # to use:
+  Sys.getenv("environment_parameter")
+  
+  # OR this can be set as a variable in the global environment
+  # NOTE: you may add this to `.Rprofile` to have it load automatically when
+  # restarting R
+  global_var <- Sys.getenv("environment_parameter")
+  global_var
+  
+}
+
+
+# ============================================================================ #
