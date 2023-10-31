@@ -231,3 +231,43 @@ ggplot() +
 
 pacman::p_unload("all")
 ```
+
+
+# Test `earowang/sugrrants` Package
+
+vignette: [sugrrants](https://pkg.earo.me/sugrrants/articles/frame-calendar.html)
+
+Stands for "SUpporting GRaphs with R for ANalysing Time Series"
+
+Uses `ggplot2` and `cowplot` to make graphs in a sort of "calendar" view.
+
+This may be useful when have daily data and want to see how it changes over time.
+
+
+```{r ex-sugrrants}
+# librarian::shelf(
+#   quiet = TRUE,
+#   earowang/sugrrants, 
+#   dplyr,
+#   magrittr)
+
+# plot example of `sugrrants` using hourly data
+hourly_peds %>%
+  filter(Date < as.Date("2016-05-01")) %T>% print() %>% 
+  ggplot(aes(x = Time, y = Hourly_Counts, colour = Sensor_Name)) +
+  geom_line() +
+  facet_calendar(~ Date) + # a variable contains dates
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+
+# plot temporal autocorrelation
+hourly_peds %>%
+  filter(Sensor_ID == 13)  %T>% print() %>%
+  ggplot(aes(x = after_stat(lag), y = Hourly_Counts)) +
+  geom_acf()
+
+# pacman::p_unload("all")
+
+```
+
