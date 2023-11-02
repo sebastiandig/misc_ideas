@@ -35,7 +35,7 @@ last_mod <-  function(fpath, check = TRUE) {
     
     return(fpath[which.max(ftime)]) 
     
-    # ---- end of function
+    # ---- end of function last_mod
 }
 
 ##%######################################################%##
@@ -166,7 +166,7 @@ file_expr <- function(loc       = here::here("data", "metadata", "aphia_id"),
     file_loc  = loc
   )
   
-  # ---- end of function
+  # ---- end of function file_expr
 }
 
 ##%######################################################%##
@@ -314,7 +314,7 @@ save_csv <- function(
   
   if (verbose) cli::cli_alert_success("Saved!\n\n")
   
-  # ---- end of function
+  # ---- end of function save_csv
 }
 
 
@@ -324,8 +324,9 @@ save_csv <- function(
 ####                   Save gg Plots                    ####
 #                                                          #
 ##%######################################################%##
-file_sv <- function(plt, filename, device = c("jpeg", "svg"), 
+file_sv <- function(plt, filename, device = c("jpeg", "svg", "png"), 
                     height = 15, width = 30, ...) {
+  
   device <- match.arg(device)
   
   height <- if (is.null(height)) 3.71 else height
@@ -339,7 +340,7 @@ file_sv <- function(plt, filename, device = c("jpeg", "svg"),
     ...
   )
   
-  # ---- end of function
+  # ---- end of function file_sv
 }
 
 
@@ -351,24 +352,44 @@ file_sv <- function(plt, filename, device = c("jpeg", "svg"),
 ##%######################################################%##
 #' Source Files from a Folder
 #'
-#' This function sources all files from a folder. You will be able to select
-#' which files to source. You can override this by setting `file_select = "all"`
-#' or `file_select` to a character vector of files to source.
+#' This function sources all selected files from a folder. 
+#' 
+#' You will be able to select which files to source. You can override this by 
+#' setting `file_select = "all"` or `file_select` to a character vector of files 
+#' to source. Setting the specific files will require the file extensions and 
+#' correct spelling. This feature is most useful if you want to source the same
+#' files after every time you restart your R session.
 #'
 #' @param path Path to folder.
 #' @param pattern Pattern to match files.
 #' @param file_select Files to source.
 #'                    - `NULL` to select files from a list.
-#'                    - `character` to select files from a list.
+#'                    - `character` vector to select files from a list.
 #'                    - `all` to source all files.
 #' @param show_graphic logical, show graphic to select files.
 #' @param envir Environment to source files.
 #'
 #' @author Sebastian Di Geronimo (November 02, 2023)
 #'
-#' @return RETURN_DESCRIPTION
+#' @return `NULL`
 #' @examples
-#' # ADD_EXAMPLES_HERE
+#' 
+#' # source a script from a folder to attach to the global environment
+#' source_all(here::here("scripts"), pattern = "misc_functions", "all")
+#' 
+#' # Alternatively, create a new environment and attach the functions
+#' new_env <- new.env()
+#' 
+#' # add the source files to the new environment
+#' source_all(
+#'   path        = here::here("scripts"), 
+#'   pattern     = "misc_functions", 
+#'   file_select = "all", 
+#'   envir       = new_env)
+#' attach(new_env)
+#' 
+#' # to remove new environment
+#' detach(new_env)
 #' 
 source_all <- function(
     path,
@@ -397,6 +418,7 @@ source_all <- function(
     "Sourcing files:\n",
     sep = ""
   )
+  
   for (file in files) {
     cat("-", basename(file), "\n")
     
@@ -411,5 +433,7 @@ source_all <- function(
   }
 
   invisible()
+  
+  # ---- end of function source_all
 }
 
