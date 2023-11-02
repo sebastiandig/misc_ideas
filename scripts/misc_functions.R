@@ -341,3 +341,75 @@ file_sv <- function(plt, filename, device = c("jpeg", "svg"),
   
   # ---- end of function
 }
+
+
+
+##%######################################################%##
+#                                                          #
+####             Source Files from a Folder             ####
+#                                                          #
+##%######################################################%##
+#' Source Files from a Folder
+#'
+#' This function sources all files from a folder. You will be able to select
+#' which files to source. You can override this by setting `file_select = "all"`
+#' or `file_select` to a character vector of files to source.
+#'
+#' @param path Path to folder.
+#' @param pattern Pattern to match files.
+#' @param file_select Files to source.
+#'                    - `NULL` to select files from a list.
+#'                    - `character` to select files from a list.
+#'                    - `all` to source all files.
+#' @param show_graphic logical, show graphic to select files.
+#' @param envir Environment to source files.
+#'
+#' @author Sebastian Di Geronimo (November 02, 2023)
+#'
+#' @return RETURN_DESCRIPTION
+#' @examples
+#' # ADD_EXAMPLES_HERE
+#' 
+source_all <- function(
+    path,
+    pattern      = NULL,
+    file_select  = NULL,
+    show_graphic = FALSE,
+    envir        = parent.frame()) {
+  
+  files <- fs::dir_ls(path, regexp = pattern)
+
+  # select script from a list
+  if (is.null(file_select)) {
+    file_select <-
+      select.list(
+        c(basename(files), "all"),
+        multiple = TRUE,
+        graphics = show_graphic
+      )
+  }
+
+  if (any(file_select != "all")) {
+    files <- here::here(path, file_select)
+  }
+
+  cat("From Folder: ", path, "\n",
+    "Sourcing files:\n",
+    sep = ""
+  )
+  for (file in files) {
+    cat("-", basename(file), "\n")
+    
+    if (!fs::file_exists(file)) {
+      cli::cli_alert_danger(
+        c("File {.path {file}} does not exist. {col_red(\"Skipping file!\")}\n"))
+      cli::cli_alert_info("Check path, spelling and file extension.")
+      next
+    }
+    
+    source(file, local = envir)
+  }
+
+  invisible()
+}
+
