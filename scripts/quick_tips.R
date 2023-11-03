@@ -851,6 +851,7 @@ rm(test_fn)
 # ============================================================================ #
 # 2021-09-13
 # From: <https://www.dartistics.com/renviron.html>
+# Also good info: <https://rstats.wtf/r-startup.html>
 # .Renviron is a file that can be used to store environment variables
 # NOTE: make sure to add `.Renviron` to `.gitignore` when using Git
 
