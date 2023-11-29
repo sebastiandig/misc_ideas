@@ -93,10 +93,19 @@ last_mod <-  function(fpath, check = TRUE) {
 #' @examples
 #' # ADD_EXAMPLES_HERE
 #' 
-file_expr <- function(loc       = here::here("data", "metadata", "aphia_id"),
+file_expr <- function(loc = NULL, #loc       = here::here("data", "metadata", "aphia_id"),
                       file_base = "aphia_taxa",
                       exts      = "csv",
                       time_stamp_fmt = "%Y%m%d_%H%M%S") {
+  
+  # ---- libraries
+  library(glue)
+  library(stringr)
+  library(tibble)
+  library(lubridate)
+  library(here)
+  library(rlang)
+  library(magrittr)
   
   # ---- help for deciding time stamp format
   if (!is.null(time_stamp_fmt) && str_detect(time_stamp_fmt, "help")) {
@@ -352,6 +361,7 @@ save_gg <- function(
   
   library(cli)
   library(cliExtras)
+  library(fs)
   
   cli_quiet(!verbose)
   
@@ -390,11 +400,11 @@ save_gg <- function(
       exts = device,
       time_stamp_fmt
     )
-  
+
   data_f <- 
     data_f  %$% 
     eval(file_expr)
-  
+
   cli_h1("ggplot Object Data Name: {.var {save_name}}")
   cli_alert_info(
     c(
