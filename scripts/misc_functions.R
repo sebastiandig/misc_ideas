@@ -317,22 +317,127 @@ save_csv <- function(
   # ---- end of function save_csv
 }
 
-
-
 ##%######################################################%##
 #                                                          #
 ####                   Save gg Plots                    ####
 #                                                          #
 ##%######################################################%##
-file_sv <- function(plt, filename, device = c("jpeg", "svg", "png"), 
-                    height = 15, width = 30, ...) {
+#' Save ggplots
+#' 
+#' ggplot objects can be saved using "jpeg" or "svg" device. 
+#'
+#'
+#' @param plt DESCRIPTION.
+#' @param filename DESCRIPTION.
+#' @param device DESCRIPTION.
+#' @param height DESCRIPTION.
+#' @param width DESCRIPTION.
+#' @param ... DESCRIPTION.
+#'
+#' @return RETURN_DESCRIPTION
+#' @examples
+#' # ADD_EXAMPLES_HERE
+save_gg <- function(
+    plt, 
+    save_location  = NULL,
+    save_name      = NULL,
+    overwrite      = FALSE,
+    verbose        = TRUE,
+    time_stamp_fmt = "%Y%m%d_%H%M%S",
+    device         = c("jpeg", "svg"), 
+    height         = 15, 
+    width          = 30, 
+    ...
+) {
+  
+  library(cli)
+  library(cliExtras)
+  
+  cli_quiet(!verbose)
+  
+  # ---- checking input parameters
+  if (is.null(.data)) {
+    cli_abort(
+      c("Check input, {.var {col_yellow(\".data\")}} is `NULL`.", 
+        "{col_red(\"Stopping\")}"))
+  }
+  if (is.null(save_location)) {
+    cli_abort(
+      c("Check input, {.var {col_yellow(\"save_location\")}} is `NULL`.",
+        "{col_red(\"Stopping\")}"))
+  }
+  if (is.null(save_name)) {
+    cli_abort(
+      c("Check input, {.var {col_yellow(\"save_name\")}} is `NULL`.",
+        "{col_red(\"Stopping\")}"))
+  }
+  if (is.null(overwrite)) {
+    cli_abort(
+      c("Check input, {.var {col_yellow(\"overwrite\")}} is `NULL`.",
+        "{col_red(\"Stopping\")}"))
+  }
+  
   
   device <- match.arg(device)
   
   height <- if (is.null(height)) 3.71 else height
   
+  # ---- file name
+  data_f <- 
+    file_expr(
+      save_location,
+      save_name,
+      exts = device,
+      time_stamp_fmt
+    )
+  
+  data_f <- 
+    data_f  %$% 
+    eval(file_expr)
+  
+  cli_h1("ggplot Object Data Name: {.var {save_name}}")
+  cli_alert_info(
+    c(
+      "Location:  {.file {save_location}}\n",
+      "File Name: {.file {basename(data_f)}}")
+  )
+  
+  # ---- check if folder exists and create otherwise
+  if (!dir_exists(save_location)) {
+    cli_alert_info("{col_green(\"Creating\")} folder location!")
+    
+    fs::dir_create(save_location)
+  }
+  
+  # ---- check if need to create file
+  create_f <- 
+    fs::dir_ls(
+      save_location,
+      regexp = save_name
+    )  %>%
+    rlang::is_empty()
+  
+  if (!create_f && !overwrite) {
+    # return early if no need to create
+    cli_alert_info(
+      "File exist and {.emph is not} being {col_green(\"overwritten\")}!\n"
+    )
+    return(invisible())
+  }
+  
+  if (!create_f && overwrite ) { 
+    cli_alert_info(
+      "File exist and {.emph is} being {col_red(\"overwritten\")}!")
+  } else if (create_f ) { 
+    cli_alert_info("File does not exists, {col_green(\"creating\")}!")
+  }
+  
+  
+  # ---- saving file
+  cli_alert_info("Saving file!")
+  
   cowplot::save_plot(
-    filename    = filename,
+    filename    = data_f,
     plot        = plt,
     base_height = height,
     base_width  = width,
@@ -340,10 +445,8 @@ file_sv <- function(plt, filename, device = c("jpeg", "svg", "png"),
     ...
   )
   
-  # ---- end of function file_sv
+  # ---- end of function save_gg
 }
-
-
 
 ##%######################################################%##
 #                                                          #
