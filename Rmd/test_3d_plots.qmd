@@ -1,0 +1,79 @@
+---
+title: "Test 3D Plotting and Co-pilot"
+author: "Sebastian Di Geronimo"
+date: "2023-10-11"
+format: html
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+# 2.0 ---- Setup ----
+
+## 2.1 Load Libraries
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  plotly
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+```
+
+# 3.0 ---- 3D Plots ----
+
+```{r load-data}
+# make a three column tibble with 10 rows of randomly sampled data
+n <- 100
+dat <- tibble(
+  x = rnorm(n),
+  y = rnorm(n),
+  z = rnorm(n)
+)
+  
+# make 3D plot using df
+dat %>% 
+  plot_ly(x = ~x, y = ~y, z = ~z) %>% 
+  add_markers() %>%
+  add_mesh()
+
+# make a 3D surface plot using df
+plot_ly(z = ~volcano) %>% 
+  add_surface()
+
+# make a 3D surface plot using a matrix
+n <- 10
+dat2 <- 
+  matrix(
+    ncol = n,
+    nrow = n,
+    rnorm(n*n)
+    ) 
+
+plot_ly(z = ~dat2) %>% 
+  add_surface()
+
+# equation for parabola in 3D
+x <- seq(-2, 2, length.out = 20)
+y <- seq(-2, 2, length.out = 20)
+dat3 <- 
+  expand.grid(x = x, y = y) %>% 
+  mutate(z = x^2 + y^2)
+dat3 %>% 
+  plot_ly(x = ~x, y = ~y, z = ~z) %>% 
+  add_mesh()
+
+```
+
+
+
