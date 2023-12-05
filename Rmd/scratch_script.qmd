@@ -20,7 +20,6 @@ librarian::shelf(
   quiet = TRUE,
   librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
   forcats, lubridate, glue, fs, magrittr, here,
-  # broom # optional
   
   # additional
   
@@ -407,7 +406,7 @@ Using `openxslx2::add_formula`
       stops
 
 
-```{r}
+```{r xlsx-formula}
 shelf(openxlsx2)
 
 set.seed(123)
@@ -454,3 +453,168 @@ wb$open()
 unshelf(openxlsx2)
 ```
 
+# 10.0 ---- Determine absoprtion, scattering and backscattering cross section ----
+
+From [@stramski2001]
+
+$$
+
+\begin{align}
+& \text{Note: this is in}~\mu \text{m and need to conver to m by} \times 10^{-12}  \\
+& \text{Absorption} \\
+& \text{Detritus:}~\sigma_{a,~det} = 8.791 \times 10^{-4} \times e^{(-0.00847~\times~\lambda)} \\
+& \text{Minerals:}~\sigma_{a,~min} = 1.013 \times 10^{-3} \times e^{(-0.00846~\times~\lambda)} \\
+& \text{Bubbles:}~\sigma_{a,~bub} = 0 \\
+\\ 
+& \text{Scattering} \\
+& \text{Detritus:}~\sigma_{b,~det} = 0.1425 \times \lambda^{-0.9445} \\
+& \text{Minerals:}~\sigma_{b,~min} =  0.7712 \times \lambda^{-0.97164} \\
+& \text{Bubbles:}~\sigma_{b,~bub} =  4607.873~(\pm5.555) \\
+\\ 
+& \text{Backcattering} \\
+& \text{Detritus:}~\sigma_{bb,~det} = 5.881 \times \lambda^{-0.8997} \\
+& \text{Minerals:}~\sigma_{bb,~min} = 1.790 \times 10^{-2} \times \lambda^{-0.9140} \\
+& \text{Bubbles:}~\sigma_{bb,~bub} =  55.359~(\pm0.373) \\
+\end{align}
+
+$$
+
+```{r stramski-test}
+func_list <- list(
+  
+  # ---- Absorption ---- #
+  # detritus
+  a_det = function(lambda, part_conc) {
+    8.791e-4 * exp(-0.00847 * lambda) * part_conc * 1e-12
+  },
+  # minerals
+  a_min = function(lambda, part_conc) {
+    1.013e-3 * exp(-0.00846 * lambda) * part_conc * 1e-12
+  },
+  # bubbles
+  a_bub = 0,
+  
+  # ---- Scattering ---- #
+  # detritus
+  b_det = function(lambda, part_conc) {
+    0.1425 * (lambda ^ -0.9445) * part_conc * 1e-12
+  },
+  # minerals
+  b_min = function(lambda, part_conc) {
+    0.7712 * (lambda ^ -0.97164) * part_conc * 1e-12
+  },
+  # bubbles
+  b_bub = function(part_conc) {
+    4607.873 * part_conc * 1e-12
+  },
+  
+  # ---- Backscattering ---- #
+  # detritus
+  bb_det = function(lambda, part_conc) {
+    5.881 * (lambda ^ -0.8997) * part_conc * 1e-12
+  },
+  # minerals
+  bb_min = function(lambda, part_conc) {
+    1.790e-2 * (lambda ^ -0.9140) * part_conc * 1e-12
+  },
+  # bubbles
+  bb_bub = function(part_conc) {
+    55.359 * part_conc * 1e-12
+  }
+)
+
+
+# ---- Dataframe ---- #
+spectral_data <- 
+  tibble(
+    # wavelength
+    lambda = seq(350, 750, 1),
+    
+    # absorption
+    a_det = func_list$a_det(lambda, 8.25e13),
+    a_min = func_list$a_min(lambda, 2.75e13),
+    a_bub = func_list$a_bub,
+    
+    # scattering
+    b_det = func_list$b_det(lambda, 8.25e13),
+    b_min = func_list$b_min(lambda, 2.75e13),
+    b_bub = func_list$b_bub(1.775e6),
+    
+    # backscattering
+    bb_det = func_list$bb_det(lambda, 8.25e13),
+    bb_min = func_list$bb_min(lambda, 2.75e13),
+    bb_bub = func_list$bb_bub(1.775e6),
+    
+    # backscattering ratio
+    bb_b_det = bb_det / b_det,
+    bb_b_min = bb_min / b_min,
+    bb_b_bub = bb_bub / b_bub
+  ) %T>% 
+  print()
+
+# ---- Plot ---- #
+# Elements
+func_list$plt_elements <- list(
+  labs(
+    x = "Wavelength (nm)",
+    color = "Components"
+  ),
+  # facet_wrap(~ component, scales = "free_y"),
+  scale_color_manual(
+    labels = c("Bubbles", "Detritus", "Minerals"),
+    values = c("red", "blue", "green")
+    ),
+  coord_cartesian(ylim = c(0, NA)),
+  theme_bw()
+)
+
+
+# Absorption
+spectral_data %>%
+  pivot_longer(
+    cols = starts_with("a_"),
+    names_to = "component",
+    values_to = "absorption"
+  ) %>%
+  ggplot(aes(x = lambda, y = absorption)) +
+  geom_line(aes(color = component)) +
+  labs(y = "Absorption (m^-1)") +
+  func_list$plt_elements
+
+# Scattering
+spectral_data %>%
+  pivot_longer(
+    cols = starts_with("b_"),
+    names_to = "component",
+    values_to = "scattering"
+  ) %>%
+  ggplot(aes(x = lambda, y = scattering)) +
+  geom_line(aes(color = component)) +
+  labs(y = "Scattering (m^-1)") +
+  func_list$plt_elements
+
+# Backscattering
+spectral_data %>%
+  pivot_longer(
+    cols = matches("bb_(bub|min|det)"),
+    names_to = "component",
+    values_to = "backscattering"
+  ) %>%
+  ggplot(aes(x = lambda, y = backscattering)) +
+  geom_line(aes(color = component)) +
+  labs(y = "Backscattering (m^-1)") +
+  func_list$plt_elements
+
+# Backscattering ratio
+spectral_data %>%
+  pivot_longer(
+    cols = starts_with("bb_b_"),
+    names_to = "component",
+    values_to = "backscattering_ratio"
+  ) %>%
+  ggplot(aes(x = lambda, y = backscattering_ratio)) +
+  geom_line(aes(color = component)) +
+  labs(y = "Backscattering ratio") +
+  func_list$plt_elements
+
+```
