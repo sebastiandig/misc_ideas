@@ -618,3 +618,132 @@ spectral_data %>%
   func_list$plt_elements
 
 ```
+
+
+# 11. ---- Pressure vs Depth Calculations ----
+
+This was an interesting calculatino for the difference of pressure (dB) to real
+depth (m). 
+
+The calculation:
+[Practical Conversion of Pressure to Depth](https://journals.ametsoc.org/view/journals/phoc/11/4/1520-0485_1981_011_0573_pcoptd_2_0_co_2.xml)
+
+
+$$ 
+
+\begin{align}
+
+& z = (1 - c_1) \times p - (c_2 \times p^2)  \\
+& c_1 = (5.92 + 5.25 \times \sin^2\phi) \times 10^{-3} \\
+&  c_2 = 2.21 \times 10^{-6} \\
+& z = \text{depth in meters}~(m) \\
+& \phi = \text{latidude in degrees}~(^{\circ}) \\
+
+\end{align}
+
+$$
+
+```{r, fig.width=30, fig.asp=0.5}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+# shelf(conflicted) # may be needed if won't allow loading of certain packages
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+```
+
+
+```{r pressure-depth-calc, fig.width=20, fig.asp=0.5}
+# pressure from 0 to 500 dB
+pres <- seq(0, 1000, 0.5)
+
+# latidude from 0 to 90
+phi  <- rep(0:90, each = length(pres))
+phi  <- seq(0, 90, by = 10)
+
+depth_data <- 
+  # match all phi with all pres
+  expand.grid(phi = phi, pres = pres) %>%
+  mutate(
+    
+    # degrees
+    phi2 = phi,
+    
+    # radians
+    phi = phi * pi / 180,
+    
+    # calculate c1
+    c1 = map_dbl(
+      phi,
+      \(phi) (5.92 + 5.25 * sin(phi)^2) * 10^-3
+    ),
+    
+    # calculate depth
+    z = map2_dbl(
+      pres, 
+      c1,
+      \(p, c1) (1 - c1) * p - c2 * p^2),
+    
+    # calculate difference in depth and pressure
+    diff = z - pres,
+    row = row_number()
+    ) %T>% print() 
+
+# line plot z and phi 
+(
+  depth_data %>%
+  ggplot(aes(x = row, group = phi)) +
+  geom_line(aes(y = pres), color = "red", alpha = 0.5) +
+  geom_line(aes(y = z), alpha = 0.5) +
+  scale_y_reverse() + 
+  facet_wrap(~phi2, ncol = 3)
+   
+  
+ ) %>%
+  plotly::ggplotly()
+
+# scatter plot z vs phi 
+(
+  depth_data %>%
+  ggplot(aes(x = pres, y = z, group = phi)) +
+  geom_abline(slope = 1, color = "red") +
+  geom_point(size = 0.25, alpha = 0.5) +
+  labs(
+    x = "Pressure (dB)",
+    y = "Depth (m)"
+  ) +
+  facet_wrap(~phi2, ncol = 3) +
+  coord_cartesian(xlim = c(0, NA), ylim = c(0, NA), expand = FALSE)
+   
+  
+ ) %>%
+  plotly::ggplotly()
+
+# scatter plot of z - phi
+(
+  depth_data %>%
+  ggplot(aes(x = pres, y = diff, group = phi)) +
+  geom_abline(slope = 0, color = "red") +
+  geom_point(size = 0.25, alpha = 0.5) +
+  labs(
+    x = "Pressure (dB)",
+    y = "Difference"
+  ) +
+  facet_wrap(~phi2, ncol = 3) 
+   
+  
+ ) %>%
+  plotly::ggplotly()
+```
