@@ -880,3 +880,33 @@ if (FALSE) {
 
 
 # ============================================================================ #
+
+
+
+# ============================================================================ #
+# ---- Change GitHub Language ----
+# ============================================================================ #
+# Dec 06, 2023
+# Sometimes projects are labeled as `HTML` if using `Rmd` or `Qmd`
+# A way around this is to create a `.gitattributes` file to ignore everything
+# except `.R`
+# Info from:
+# <https://stackoverflow.com/questions/34713765/github-changes-repository-to-the-wrong-language>
+
+if (FALSE) {
+  # create file
+  fs::file_create(here::here(".gitattributes"))
+  
+  # add code to file
+  cat(
+    "* linguist-vendored",
+    "*.R linguist-vendored=false", 
+    sep    = "\n",
+    file   = here::here(".gitattributes"),
+    append = TRUE
+  )
+  
+}
+
+
+# ============================================================================ #
