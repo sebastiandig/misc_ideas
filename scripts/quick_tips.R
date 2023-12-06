@@ -900,6 +900,7 @@ if (FALSE) {
   # add code to file
   cat(
     "* linguist-vendored",
+    # "*.<change the prog lang here> linguist-vendored=false", 
     "*.R linguist-vendored=false", 
     sep    = "\n",
     file   = here::here(".gitattributes"),
