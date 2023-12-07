@@ -112,4 +112,35 @@ if (FALSE) {
 
 }
 
+# ============================================================================ #
+# ---- Open Chrome with Specific User Profile and URL ----
+# ============================================================================ #
+# Dec 07, 2023
+# This will open a new tab at the specified user profile to the specific URL
 
+# ---- Use `shell()` to Run CMD Commands
+# Basic structure:
+# shell("start chrome /profile-directory=\"<profile name here>\" https://www.<unquoted website name>") 
+# - start - tells CMD that will run a program
+# - chrome - specify `chrome` application
+# - /profile-directory= to select profile (default: `default`)
+# - URL with `https://www.`
+
+# if need help determining the profile name
+# 1. open chrome and select the profile 
+shell("start chrome")  
+# 2. enter URL: `chrome://version/`
+# 3. find the "Profile Path"
+# 4. copy the name after "User Data"; this is the profile name
+
+# ---- Open chrome to profile and URL
+# after finding the profile name, change name after `/profile-directory=`
+# - NOTE: this needs to include `\"` to escape the `"`
+# shell("start chrome /profile-directory=\"<profile name here>\" https://www.<unquoted website name>") 
+
+# example for two different profiles
+if (FALSE) {
+  shell("start chrome /profile-directory=\"Default\" https://www.google.com") 
+  shell("start chrome /profile-directory=\"Profile 1\" https://www.google.com") 
+}
+# ============================================================================ #
