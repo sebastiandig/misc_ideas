@@ -51,3 +51,4 @@ upwell <- function(ektrx, ektry, coast_angle) {
   return(perp/10)
 }
 
+
