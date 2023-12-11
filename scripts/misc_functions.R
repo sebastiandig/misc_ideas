@@ -550,3 +550,77 @@ source_all <- function(
   # ---- end of function source_all
 }
 
+
+##%######################################################%##
+#                                                          #
+####      Rendering Quarto File to Specific Folder      ####
+#                                                          #
+##%######################################################%##
+#' Rendering Quarto File to Specific Folder
+#'
+#' The was created to render a quarto file to a specific folder. This is useful
+#' because the default behavior is to render the file to the same folder as the
+#' input file. This function will also create the folder if it does not exist.
+#' 
+#' This function is a wrapper around `quarto::render()` and was inspired from:
+#' <https://stackoverflow.com/questions/73802144/how-do-i-change-the-default-output-location-of-the-quarto-document-in-rstudio>
+#'
+#' @param input_file The input `qmd` file to render
+#' @param output_path The folder path to save files
+#' @param file_ext The file extension to save the file as
+#' @param ... Additional arguments passed to `quarto::render()`
+#'
+#' @return RETURN_DESCRIPTION
+#'
+#' @author shafee (September 22, 2022)
+#' @author Sebastian Di Geronimo (December 11, 2023)
+#'
+#' @examples
+#' # ADD_EXAMPLES_HERE
+#'
+render_qmd <- function(input_file, output_path, file_ext, ...) {
+  
+  # libraries
+  library(cli)
+  library(fs)
+  library(xfun)
+  library(stringr)
+  
+  
+  # check if input file is quarto file
+  if (!stringr::str_detect(input_file, "\\.qmd$")) {
+    cli::cli_alert_danger(
+      c("Input file {.path {input_file}} is not a quarto file. ",
+        "{col_red(\"Skipping file!\")}\n"))
+    cli::cli_alert_info("Check path, spelling and file extension.")
+    return(invisible())
+  }
+  
+  # Extract input file name (without the file-extension)
+  file_name <- xfun::sans_ext(input_file)
+  cli::cli_h1("File Name: {.path {basename(input_file)}}")
+  cli::cli_alert_info("Output Location: {.path {output_path}}")
+  cli::cli_alert_info("Output File Extension: {.strong {file_ext}}")
+  
+  # render the input document, output file and folder will be in same directory 
+  # as input file
+  cli::cli_alert_info("Rendering quarto document")
+  quarto::quarto_render(input = input_file, output_format = file_ext, ...)
+  
+  # create folder if doesnt exists
+  fs::dir_create(output_path)
+  
+  # move output file
+  file_name <- 
+    fs::dir_ls(dirname(input_file), regexp = file_name, type = "file") |>
+    stringr::str_subset("\\.qmd", negate = TRUE)
+  cli::cli_alert_info("Moving file to output directory!")
+  fs::file_move(file_name, output_path)
+  
+  # copy `<file name>_files` folder to the output directory
+  dir_name <-  paste0(xfun::sans_ext(file_name), "_files")
+  cli::cli_alert_info("Copying {.path {basename(dir_name)}} folder to output directory!")
+  fs::dir_copy(dir_name, paste0(output_path, "/", basename(dir_name)), overwrite = TRUE) 
+  
+  cli::cli_alert_success("Done!")
+}
