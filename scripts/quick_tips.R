@@ -911,3 +911,33 @@ if (FALSE) {
 
 
 # ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Benchmark Functions ----
+# ============================================================================ #
+# Dec 13, 2023
+# Note: this is better than using `bench::mark()` if they do not need to be 
+# equal. 
+# I used this to test 2 saving methods to see speed difference.
+microbenchmark::microbenchmark(
+  times   = 1000L,
+  control = list(order = "inorder", warmup = 20),
+  {
+    # method 1: mean
+    x <- c(1:500)
+    sum(x) / length(x)
+  },
+  {
+    # method 2: mean
+    x <- c(1:500)
+    mean(x)
+  },
+  {
+    # method 3: another function, that will not be equal
+    x <- c(1:500)
+    median(x)
+  }
+)
+
+# ============================================================================ #
