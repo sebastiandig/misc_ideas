@@ -909,35 +909,128 @@ if (FALSE) {
   
 }
 
-
 # ============================================================================ #
 
 
 # ============================================================================ #
-# ---- Benchmark Functions ----
+# ---- Benchmark with Equal Results ----
+# ============================================================================ #
+# Dec 14, 2023
+# `bench::mark()` requires results to be EQUAL
+# will run:
+bench::mark(
+  # method 1: mean
+  "mean" = {
+    x <- 1:500
+    sum(x) / length(x) # result 250.5
+  },
+  # method 2: median, that will not be equal
+  "median" = {
+    x <- 1:500
+    median(x) # result 250
+  }
+)
+# will not run:
+bench::mark(
+  # method 1: mean
+  "mean" = {
+    x <- 1:500
+    sum(x) / length(x) # result 250.5
+  },
+  # method 2: median, that will not be equal
+  "median" = {
+    x <- 1:501
+    median(x) # result 251
+  }
+)
+# ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Benchmark with Non-equal Results ----
 # ============================================================================ #
 # Dec 13, 2023
-# Note: this is better than using `bench::mark()` if they do not need to be 
-# equal. 
 # I used this to test 2 saving methods to see speed difference.
+# 
+# using `microbenchmark::microbenchmark()`
+# - Note: this is different than using `bench::mark()` because the results do 
+#   not need to be equal unless added `check = "<flag>"`
+# 
+
 microbenchmark::microbenchmark(
   times   = 1000L,
   control = list(order = "inorder", warmup = 20),
-  {
-    # method 1: mean
-    x <- c(1:500)
-    sum(x) / length(x)
+  # check = "equal",      # check equality using `all.equal()`
+  # check = "equivalent", # check equality using `all.equal()`
+  # check = "identical",  # check equality using `identical()`
+  
+  # method 1: mean hard
+  "mean-hard" = {
+    x <- 1:500
+    x <- sum(x) / length(x) # result 250.5
   },
-  {
-    # method 2: mean
-    x <- c(1:500)
-    mean(x)
+  
+  # method 2: mean easy
+ "mean-easy" = {
+    x2 <- 1:500
+    mean(x2) # result 250.5
   },
-  {
-    # method 3: another function, that will not be equal
-    x <- c(1:500)
-    median(x)
+ 
+  # method 3: median, NOTE: will not be equal
+  "median" = {
+    x3 <- 1:501
+    median(x3) # result 251
   }
 )
 
+# Dec 14, 2023
+# alternate using `bench::workout_expressions()`
+# - this will time multiple expressions for ONE iteration, but need to be 
+#   wrapped in `list()`
+# - To add a name to the `exprs` result, either name each element in the list or 
+#   give a vector to the `description` with each name 
+{
+  loop <- 10000
+  bench::workout_expressions(
+    list(
+      # method 1A: mean
+      "mean-hard-one-iter" = {
+        set.seed(1)
+        x2 <- runif(500)
+        x2 <- sum(x2) / length(x2)
+      },
+      # method 1B: mean loop
+      "mean-hard-loop" = {
+        set.seed(1)
+        for (i in seq(loop)) {
+          x3 <- runif(500)
+          x3 <- sum(x3) / length(x3)
+        }
+      },
+      # method 2A: mean easy
+      "mean-easy-one-iter" = {
+        x4 <- runif(500)
+        x4 <- mean(x4) # result 250.5
+      },
+      # method 2B: mean easy loop
+      "mean-easy-loop" = {
+        for (i in seq(loop)) {
+          x5 <- runif(500)
+          x5 <- mean(x5) # result 250.5
+        }
+      },
+      # method 3: median
+      "median" = {
+        for (i in seq(loop)) {
+          x6 <- runif(500)
+          x6 <- median(x6)
+        }
+      }
+    )
+  ) |>
+    print()
+  rm(list = c("loop", "i", paste0("x", c(2:6))))
+}
 # ============================================================================ #
+
+
