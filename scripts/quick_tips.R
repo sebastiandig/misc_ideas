@@ -1043,12 +1043,16 @@ microbenchmark::microbenchmark(
 # to export variables in a list to a named variables in the global environment.
 # ~~~~~~~~~~~~~~~~~
 #
-# This was motivated by the want to export variables that are listed from a 
-# function call to the the global environment. I wanted something similar to 
-# *Python* or *MatLab* when functions are run that you can assign the output to 
-# a variable. 
-# NOTE: This will only go one level deep but, either rerun or maybe edit to go 
-# deeper. 
+# This was motivated to have something similar to *Python* or *MatLab* when 
+# functions are run that you can assign the output to a variable.
+# 
+# This will export variables from a list to the global environment. The most 
+# useful case is using a list output from a function as input.
+# 
+# NOTE: 
+# - This will only go one level deep but, either rerun or maybe edit to go 
+#   deeper. 
+# 
 if (FALSE) {
   create_vars_from_fun <- function(input_list, prefix = TRUE, overwrite = FALSE) {
     
@@ -1067,9 +1071,14 @@ if (FALSE) {
     
     # check list names is not `NULL`
     var_names <- names(input_list)
-  
+    var_check <- var_names == "" # check if any list names are ""
+    
     if (is.null(var_names)) {
+      # all unnamed elements of list are given sequential numbers  
       var_names <- paste0("var_", seq_along(input_list)) 
+    } else if (any(var_check)) {
+      # unnamed elements of list are given position numbers
+      var_names[which(var_check)] <- paste0("var_", which(var_names == ""))
     }
     
     # check prefix is a character or logical
@@ -1125,6 +1134,9 @@ if (FALSE) {
     # }
      
     return(invisible())
+    
+    # ---- end of function create_vars_from_fun
+    
   }
 
   # example
@@ -1144,6 +1156,9 @@ if (FALSE) {
   # clean up  
   rm(list = ls())
   
+  test2 <- list(x = c(1,2), c("foo", "bar"))
+  create_vars_from_fun(test2)
+  create_vars_from_fun(list(x = c(1,2)))
 }
 
 # ============================================================================ #
