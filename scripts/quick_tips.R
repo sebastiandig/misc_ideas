@@ -1033,4 +1033,117 @@ microbenchmark::microbenchmark(
 }
 # ============================================================================ #
 
+# ============================================================================ #
+# ---- Export Variables from Function ----
+# ============================================================================ #
+# Dec 15, 2023
+# WARNING: 
+# ~~~~~~~~
+# this is probably NOT recommended to do because will use the `<<-` or `assign()` 
+# to export variables in a list to a named variables in the global environment.
+# ~~~~~~~~~~~~~~~~~
+#
+# This was motivated by the want to export variables that are listed from a 
+# function call to the the global environment. I wanted something similar to 
+# *Python* or *MatLab* when functions are run that you can assign the output to 
+# a variable. 
+# NOTE: This will only go one level deep but, either rerun or maybe edit to go 
+# deeper. 
+if (FALSE) {
+  create_vars_from_fun <- function(input_list, prefix = TRUE, overwrite = FALSE) {
+    
+    # check input is a list
+    if (!is.list(input_list)) {
+      stop("Input must be a list")
+    }
 
+    # check list is a named variable from the parent environment
+    # if not, will set to "anon" = anonymous
+    if (!exists(deparse(substitute(input_list)), envir = parent.frame())) {
+      x_name <- "anon"
+    } else {
+      x_name <- deparse(substitute(input_list))
+    }
+    
+    # check list names is not `NULL`
+    var_names <- names(input_list)
+  
+    if (is.null(var_names)) {
+      var_names <- paste0("var_", seq_along(input_list)) 
+    }
+    
+    # check prefix is a character or logical
+    if (is.character(prefix)) {
+      var_names <- paste(prefix, var_names, sep = "_") # custom name
+    } else if (prefix) {
+      var_names <- paste(x_name, var_names, sep = "_") # using input var name
+    } else {
+      warning("`prefix = FALSE`: variables create are the names of the the list (not recommended).")
+      var_names <- var_names # no prefix
+    }
+    
+    # check vars to be created don't already exist in the parent environment
+    check_vars <- var_names %in% ls(envir = parent.frame())
+    
+    if (!overwrite && any(check_vars)) {
+      var_names[which(check_vars)]
+      stop(
+        paste(
+          "\b\bCannot create variables that already exist in global environment:",
+          paste(var_names[which(check_vars)], collapse = "\n"),
+          "\n------------------",
+          "Set `overwrite = TRUE` to overwrite existing variables",
+          "-- OR --\nChange the `prefix` to a new name",
+          "------------------\n\n",
+          sep = "\n"
+        )
+      )
+    } else if (overwrite && any(check_vars)) {
+      warning(
+        paste(
+          "\b\bOverwriting variables that already exist in global environment:",
+          paste(var_names[which(check_vars)], collapse = "\n"),
+          "\n------------------",
+          "Set `overwrite = FALSE` to not overwrite existing variables",
+          "-- OR --\nChange the `prefix` to a new name",
+          "------------------\n",
+          sep = "\n"
+        )
+      )
+    }
+
+    input_list <- setNames(input_list, var_names)
+
+    # assign variables to global environment
+    for (i in var_names) {
+      assign(i, input_list[[i]], envir = parent.frame())
+    }
+  
+    # alternative to `assign()` is to use `<<-` but this is not recommended
+    # for (i in var_names) {
+    #   do.call("<<-", list(i, input_list[[i]]))
+    # }
+     
+    return(invisible())
+  }
+
+  # example
+  # linear model using mtcars
+  mod1 <- lm(mpg ~ wt, data = mtcars)
+  names(mod1)
+  create_vars_from_fun(mod1)
+  create_vars_from_fun(mod1)
+  create_vars_from_fun(mod1, overwrite = TRUE)
+  create_vars_from_fun(mod1, "test")
+  create_vars_from_fun(mod1, FALSE)
+  
+  name_var <- list(c(1, 2), c("foo", "bar"))
+  create_vars_from_fun(name_var)
+  create_vars_from_fun(list(c(1, 2), c("foo", "bar")))
+
+  # clean up  
+  rm(list = ls())
+  
+}
+
+# ============================================================================ #

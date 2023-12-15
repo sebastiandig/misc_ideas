@@ -643,7 +643,7 @@ $$
 
 $$
 
-```{r, fig.width=30, fig.asp=0.5}
+```{r pressure-depth-calc, fig.width=20, fig.asp=0.5}
 if (!nzchar(system.file(package = "librarian"))) 
   install.packages("librarian")
 
@@ -662,10 +662,8 @@ conflicts_prefer(
   dplyr::filter(), 
   dplyr::select()
   )
-```
 
 
-```{r pressure-depth-calc, fig.width=20, fig.asp=0.5}
 # pressure from 0 to 500 dB
 pres <- seq(0, 1000, 0.5)
 
@@ -747,3 +745,36 @@ depth_data <-
  ) %>%
   plotly::ggplotly()
 ```
+
+# 12. ---- Use `do.call` to create variables after function ----
+
+NOTE: moved to quick_tip as `Export Variables from Function` with more 
+      functionality, explanation, and examples
+
+```{r export-var-list}
+
+
+create_vars_from_fun <- function(x) {
+  x_name <- (deparse(substitute(x)))
+  x2 <- paste(x_name, names(x), sep = "_")
+  print(x2)
+  x <- setNames(x, x2)
+  
+  for (i in x2) {
+   do.call("<<-", list(i, x[[i]]))
+    
+    print(ls())
+  }
+  
+}
+
+# example
+# linear model using mtcars
+mod1 <- lm(mpg ~ wt, data = mtcars)
+names(mod1)
+create_vars_from_fun(mod1)
+
+
+  
+```
+
