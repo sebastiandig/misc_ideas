@@ -1162,3 +1162,63 @@ if (FALSE) {
 }
 
 # ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Tip for `rstudioapi` to Modify Documents ----
+# ============================================================================ #
+# Dec 17, 2023
+# this works best when inside a function
+# 
+# `rstudioapi::getActiveDocumentContext()` export: 
+# `id`        = the file name ID used to identify which file to edit
+# `path`      = the path to this file
+# `contents`  = is all the lines within this document
+# `selection` = the lines selected (i.e. the next line with text)
+#     `range`   = the start and end range
+#     `text`    = the text (idk what this means because it's always "")
+# 
+# The range defined is where the modification would take place, but needs to be
+# structured. A quick way would be to use `document_position` within 
+# `rstudioapi::document_range` to set the start and end based on some text
+# 
+if (FALSE) {
+
+  test_fun <- function(text = "") {
+    context <- rstudioapi::getActiveDocumentContext()
+
+    lign_start <- min(grep("test_fun", context$contents))
+    lign_end   <- max(grep("test_fun", context$contents))
+
+    range <-
+      rstudioapi::document_range(
+        rstudioapi::document_position(lign_end + 1, 1),
+        rstudioapi::document_position(lign_end + 1, 77777)
+      )
+
+    cat("\n\n--- The Contents of `getActiveDocumentContext` ---\n\n")
+    print(context)
+    cat("\n\n--- The structure of `getActiveDocumentContext` ---\n\n")
+    print(str(context))
+    cat("\n\n--- The location for modification ---\n\n")
+    print(range)
+    cat(
+      "\n\n--- To Modify where the text ends up ---\n\n",
+      "rstudioapi::document_range(",
+      "\n  `rstudioapi::document_position(<edit row start>, <edit column start>)` <--- here",
+      "\n  `rstudioapi::document_position(<edit row end >, <edit column end>)`    <--- here",
+      "\n)"
+    )
+
+    rstudioapi::modifyRange(
+      location = range,
+      text     = paste("#", text),
+      id       = context$id
+    )
+    # ---- end of function test_fun
+  }
+
+  test_fun("here is some text")
+# here is some text
+}
+# ============================================================================ #
