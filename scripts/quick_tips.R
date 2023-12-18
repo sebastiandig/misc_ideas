@@ -1222,3 +1222,25 @@ if (FALSE) {
 # here is some text
 }
 # ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Read/Save Binary ----
+# ============================================================================ #
+# Dec 18, 2023
+# This is to not add carriage returns like if write as text file. 
+
+# Read Binary
+# readr::read_file(<file path>) # read data as vector with length 1
+# readr::read_lines(<file path>) # read data as vector with length = line #
+
+# Save Binary
+# readr::write_file(<object to save>, <file path to save>)
+
+# alternate:
+# `wb` = write binary
+# save_file <- file(<new_file>, open = "wb") 
+# cat(<object>, sep = "\n", file = save_file)
+# close(save_file)
+
+# ============================================================================ #
