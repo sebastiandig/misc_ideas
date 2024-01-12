@@ -76,6 +76,7 @@ ctd_downloads <- function(IDS, path, verbose = TRUE) {
   # show results of cruise
   if (verbose) print(results)
 
+  
   # loop through each station for the cruise and download if doesn't exist
   for (j in seq(results$info$dataset_id)) {
       
