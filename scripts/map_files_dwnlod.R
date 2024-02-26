@@ -35,6 +35,7 @@
 #'                                 ymax = 25.75   # North
 #'                                 ) 
 #' @param file_suffix Suffix to end of topography name
+#' @param .timeout Number of seconds to download world map before error timeout 
 #'
 #' @author Sebastian Di Geronimo (2023-01-11)
 #' 
@@ -47,7 +48,8 @@ world_download <- function(
     path_topo   = path_land,
     extent      = NULL,
     file_suffix = NULL,
-    use_suffix  = NULL) {
+    use_suffix  = NULL,
+    .timeout    = 300) {
   # ========================================================================== #
   # ---- Load libraries
   # ========================================================================== #
@@ -60,7 +62,7 @@ world_download <- function(
   
   pre_timeout <- getOption('timeout')
   on.exit(options(timeout = pre_timeout))
-  options(timeout = 300)
+  options(timeout = .timeout)
   # ========================================================================== #
   # ---- Download Topography to the Specified Path
   # ========================================================================== #
