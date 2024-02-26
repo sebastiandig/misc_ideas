@@ -28,9 +28,10 @@ usethis::create_github_token()
 gitcreds::gitcreds_set()
 
 # Step 6. Set Username and email
-  usethis::use_git_config(
-    user.name = "<Set Username>",
-    user.email = "<Set email>")
+# uncomment and fill edit user.name and user.email
+  # usethis::use_git_config(
+  #   user.name = "<Set Username>",
+  #   user.email = "<Set email>")
 
 
 
