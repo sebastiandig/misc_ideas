@@ -5,12 +5,6 @@ date: '2022-11-11'
 output: html_document
 ---
 
-
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 ## Create list of ggplot elements
 You can use this to create a base set of options to be used in 
 whatever plot you want
@@ -269,5 +263,51 @@ hourly_peds %>%
 
 # pacman::p_unload("all")
 
+```
+# Select the Key Legend Glyph
+
+Since `ggplot2 v3.2.0`
+
+Examples From: https://emilhvitfeldt.com/post/changing-glyph-in-ggplot2/
+
+Use `key_glyph` within a `geom_*` to select the specific legend key glyph
+
+Start with `draw_key_*` to find others
+
+```{r key-lengend-glyphs}
+librarian::shelf(
+  ggplot2
+)
+mtcars |>
+  tibble::as_tibble(rownames = "car") |>
+  ggplot(
+    aes(
+      x    = as.character(cyl), 
+      y    = mpg, 
+      fill = as.character(cyl)
+      )
+         ) +
+  geom_boxplot(key_glyph = "rect")
+mtcars |>
+  tibble::as_tibble(rownames = "car") |>
+  ggplot(
+    aes(
+      x    = as.character(cyl), 
+      y    = mpg, 
+      fill = as.character(cyl)
+      )
+         ) +
+  geom_boxplot(key_glyph = draw_key_rect)
+mtcars |>
+  tibble::as_tibble(rownames = "car") |>
+  ggplot(
+    aes(
+      x    = as.character(cyl), 
+      y    = mpg, 
+      color = as.character(cyl)
+      fill = as.character(cyl)
+      )
+         ) +
+  geom_boxplot(key_glyph = draw_key_timeseries)
 ```
 
