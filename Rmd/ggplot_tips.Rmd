@@ -304,7 +304,7 @@ mtcars |>
     aes(
       x    = as.character(cyl), 
       y    = mpg, 
-      color = as.character(cyl)
+      color = as.character(cyl),
       fill = as.character(cyl)
       )
          ) +
