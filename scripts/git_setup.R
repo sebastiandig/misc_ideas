@@ -37,7 +37,7 @@ gitcreds::gitcreds_set()
 
 # Step 7. Check Personal Access Token (PAT)
 usethis::git_sitrep()
-
+ 
 
 # Step 8. Pull GitHub Repo
   # Go to GitHub project > code tab > local > copy HTTPs url
