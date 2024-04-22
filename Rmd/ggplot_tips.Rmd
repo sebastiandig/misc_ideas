@@ -311,3 +311,160 @@ mtcars |>
   geom_boxplot(key_glyph = draw_key_timeseries)
 ```
 
+# Add Zebra Striping Pattern on Boxplot
+
+```{r zebra-stripe}
+librarian::shelf(magrittr, ggplot2, dplyr)
+dat <- 
+palmerpenguins::penguins %>%
+  
+  dplyr::mutate(
+    plot_lab = 
+      forcats::fct_reorder(
+        species, 
+        bill_length_mm,
+        .desc = TRUE,
+        .na_rm = TRUE
+    )
+  )
+
+# extract every other name to add grey box
+rec_factor <-
+  dat %>%
+  .$species %>%
+  levels() %>%
+  .[seq(1, length(.), 2)] %>%
+  paste0(collapse = "|") %T>% 
+  print()
+
+# start plot
+dat %>%
+  ggplot(
+    aes(
+      x     = species,
+      y     = bill_depth_mm,
+      fill  = sex,
+      color = after_scale(prismatic::clr_darken(fill, 0.3))
+    )
+  ) +
+  
+  # here is where add zebra strips
+  geom_tile(
+    data =
+      ~ .x %>%
+      distinct(species, island) %>%
+      tidyr::complete(island, species) %>%
+      mutate(y = if_else(stringr::str_detect(species, rec_factor), 1, NA)),
+    aes(
+      x = species,
+      y = y,
+      height = Inf,
+    ),
+    fill = "grey",
+    alpha = 0.5,
+    color = NA,
+    na.rm = TRUE
+  ) +
+
+  geom_boxplot(
+    width         = 1,
+    linewidth     = 0.2,
+    outlier.color = "gray70",
+    outlier.alpha = 50,
+    outlier.size  = 0.05,
+    outlier.shape = 20,
+    position      = position_dodge2(
+      width    = 1,
+      preserve = "single",
+      padding = 0.5
+    ),
+    key_glyph    = draw_key_rect,
+    na.rm        = TRUE
+  ) +
+  facet_wrap(~ island, nrow = 3) +
+  theme_bw()
+
+# basically need facet column and a separator column
+# facet = island
+# sep = species
+# y == 1 for the grey zebra stripe
+dat %>%
+  distinct(species, island) %>%
+  tidyr::complete(island, species) %>%
+  mutate(y = if_else(stringr::str_detect(species, rec_factor), 1, NA))
+
+librarian::unshelf(magrittr, ggplot2, dplyr)
+rm(dat, rec_Factor)
+```
+
+
+```{r}
+# dat_biigle_prct_filt <-
+#   dat_biigle_prct %>%
+#   filter(
+#     !is.na(plot_wigmali) 
+#     & !is.nan(plot_wigmali) 
+#     & !is.nan(prcnt_per_img)
+#     ) %>%
+#   mutate(
+#     plot_wigmali = 
+#       fct_reorder(
+#         plot_wigmali, 
+#         prcnt_per_img,
+#         .desc = TRUE,
+#         .na_rm = TRUE
+#     )
+#   )
+
+
+# rec_factor <-
+#   dat_biigle_prct_filt %>%
+#   .$plot_wigmali %>%
+#   levels() %>%
+#   .[seq(1, length(.), 2)] %>%
+#   str_c(collapse = "|")
+
+plt_box <-
+  dat_biigle_prct_filt %>%
+  ggplot(
+    aes(
+      x     = plot_wigmali,
+      y     = prcnt_per_img,
+      fill  = time_label,
+      color = after_scale(clr_darken(fill, 0.3))
+    )
+  ) +
+  geom_tile(
+    data =
+      ~ .x %>%
+      distinct(plot_wigmali, site_name) %>%
+      complete(site_name, plot_wigmali) %>%
+      mutate(y = if_else(str_detect(plot_wigmali, rec_factor), 1, NA)),
+    aes(
+      x = plot_wigmali,
+      y = y,
+      height = Inf,
+    ),
+    fill = "grey",
+    alpha = 0.5,
+    color = NA,
+    na.rm = TRUE
+  ) +
+
+  geom_boxplot(
+    width         = 1,
+    linewidth     = 0.2,
+    outlier.color = "gray70",
+    outlier.alpha = 50,
+    outlier.size  = 0.05,
+    outlier.shape = 20,
+    position      = position_dodge2(
+      width    = 1,
+      preserve = "single",
+      padding = 0.5
+    ),
+    key_glyph    = draw_key_rect,
+    na.rm        = TRUE
+  )
+```
+
