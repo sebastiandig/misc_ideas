@@ -1244,3 +1244,36 @@ if (FALSE) {
 # close(save_file)
 
 # ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Expressions Tips ----
+# ============================================================================ #
+# Apr 29, 2024
+# Some difficulties occur when using `expression()` to create nicely formatted 
+# units
+# Here are two examples to help with this.
+#   1. Using strings to expressions
+#     - this typically won't work if you send a string to an expression so can 
+#       mitigate this using`parse()`, but need to remove any spaces
+{
+  ex1 <- 
+  "degree*C alpha mg L^-1" |>
+  stringr::str_replace_all( "\\s", "~") |>
+  parse(text = _)
+  print(ex1)
+  cat("\n\n")
+#   2. When using percent (%)
+#     - this need an extra step where you quote the percent before passing to 
+#       parse 
+ex2 <- 
+"%" |>
+  stringr::str_replace_all( "\\s", "~") |>
+  stringr::str_replace_all( "%", "'%'") |>
+  parse(text = _) 
+  print(ex2)
+  
+  plot(1:10, main = ex1)
+  plot(1:20, main = ex2)
+}
+# ============================================================================ #
