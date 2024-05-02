@@ -397,4 +397,48 @@ librarian::unshelf(magrittr, ggplot2, dplyr)
 rm(dat, rec_Factor)
 ```
 
+# Leaflet Marker 
+
+This shows how to add a marker with multiple rows. Can be modified to include
+data with different rows
+
+```{r leaflet-marker}
+library("leaflet")
+long <- c(147.8, 147.6, 147.8, 147., 147.7, 147.76)
+lat <- c(-36.852, -36.852, -36.852, -36.852, -36.852, -36.852)
+# label <- paste(
+#   sep = "<br/>", 
+#   "long label1 = ", 
+#   "long label2", 
+#   "long label3", 
+#   "long label4", 
+#   "long label5", 
+#   "long label6"
+#   )
+
+# add placement of external data
+x = 1
+label <- glue::glue(
+  .sep = "<br/>", 
+  "long label1 = {x}", 
+  "long label2", 
+  "long label3", 
+  "long label4", 
+  "long label5", 
+  "long label6"
+  )
+
+markers <- data.frame(lat,long, label = as.character(label))
+
+
+leaflet() %>%
+  addTiles() %>%
+  addMarkers(
+    lng   = markers$long, 
+    lat   = markers$lat,
+    popup = markers$label,
+  )
+
+pacman::p_unload("all")
+```
 
