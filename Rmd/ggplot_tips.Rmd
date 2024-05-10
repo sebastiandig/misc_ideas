@@ -402,6 +402,9 @@ rm(dat, rec_Factor)
 This shows how to add a marker with multiple rows. Can be modified to include
 data with different rows
 
+example here:
+<http://www.mysmu.edu/faculty/jwwang/post/how-to-add-multiple-lines-label-on-a-leaflet-map/>
+
 ```{r leaflet-marker}
 library("leaflet")
 long <- c(147.8, 147.6, 147.8, 147., 147.7, 147.76)
@@ -438,6 +441,51 @@ leaflet() %>%
     lat   = markers$lat,
     popup = markers$label,
   )
+
+pacman::p_unload("all")
+```
+# `sf` Object
+
+```{r}
+librarian::shelf(
+  quiet = TRUE,
+  librarian,
+  ggplot2,
+  sf
+  )
+
+# if start with data frame or tibble
+dat <- data.frame(
+  lon = c(-78, -80, -82),
+  lat = c(34, 35.5, 35.5),
+  val = c(1, 2, 4)
+)
+
+# convert data.frame object into sf object 
+dat_sf <- st_as_sf(dat, coords = c("lon", "lat"), crs = 4326)
+class(dat_sf)
+
+# example shapefile
+nc <- sf::st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
+
+# plot
+ggplot() +
+  geom_sf(data = nc, aes(fill = AREA)) +
+  
+  # ---- if using sf object ---- #
+  geom_sf(
+    data  = dat_sf, 
+    size  = 3, 
+    color = "red"
+    ) +
+  
+  # ---- if using data.frame object ---- #
+  geom_point(
+    data  = dat, 
+    aes(x = lon + 0.5, y = lat + 0.5), 
+    color = "yellow"
+    )
+
 
 pacman::p_unload("all")
 ```
