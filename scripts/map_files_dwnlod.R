@@ -64,7 +64,7 @@ world_download <- function(
   on.exit(options(timeout = pre_timeout))
   options(timeout = .timeout)
   # ========================================================================== #
-  # ---- Download Topography to the Specified Path
+  # ---- Download Topography to the Specified Path ---- #
   # ========================================================================== #
   cli_h1("Topography Data")
   
@@ -164,7 +164,7 @@ world_download <- function(
   }
   
   # ========================================================================== #
-  # ---- Download GSHHS Coastline Shapefile
+  # ---- Download GSHHS Coastline Shapefile ---- #
   # ========================================================================== #
   cli_h1("Coastline Data")
   
@@ -229,13 +229,23 @@ world_download <- function(
 #'
 #' FUNCTION_DESCRIPTION
 #'
-#' @param .map_coast DESCRIPTION.
-#' @param .map_state DESCRIPTION.
-#' @param .map_bath DESCRIPTION.
-#' @param .map_file DESCRIPTION.
-#' @param .extent DESCRIPTION.
+#' @param .map_coast Path location for "GSHHS_h_L1.shp" shapefile
+#' @param .map_state Path location for "WDBII_border_h_L2.shp" shapefile. 
+#'                   Should be the same as `.map_coast`. Set to `NULL` if 
+#'                   want to ignore.
+#' @param .map_bath Path location for "etopo1.nc"
+#' @param .map_file Name for coastline file (default = "etopo1.nc")
+#' @param .extent Spatial extent for the topography data.
+#'                Format: exnt <- c(xmin = -82,    # West
+#'                                  xmax = -80,    # East
+#'                                  ymin = 24.25,  # South
+#'                                  ymax = 25.75   # North
+#'                                  ) 
 #'
-#' @return RETURN_DESCRIPTION
+#' @return List
+#'         - coast_topo = an sf object for coastline 
+#'         - state      = an sf object for state lines
+#'         - bathy      = a date.frame object for bathymetry
 #' 
 #' @author Sebastian Di Geronimo (2023-04-27)
 #' 
@@ -251,7 +261,6 @@ load_map_obj <- function(
   
   # ---- libraries
   library("sf")
-  # library("raster")
   library("terra")
   library("fs")
   library("cli")
@@ -263,7 +272,7 @@ load_map_obj <- function(
   coast_file_name <- "GSHHS_h_L1.shp"
   state_file_name <- "WDBII_border_h_L2.shp"
   
-  # ---- coastline
+  # ---- coastline ---- #
   cli::cli_h1("Coastline")
   cli::cli_alert_info("Searching: {.file {(.map_coast)}}")
   coast_topo <-
@@ -296,7 +305,8 @@ load_map_obj <- function(
       suppressMessages() %>%
       suppressWarnings()
   }
-  # ---- state lines
+  
+  # ---- state lines ---- #
   cli::cli_h1("State Lines")
   if (rlang::is_empty(.map_state)) {
     cli::cli_alert_warning(
@@ -339,7 +349,7 @@ load_map_obj <- function(
         suppressWarnings()
     }
   }
-  # ---- bathymetry
+  # ---- bathymetry ---- #
   cli::cli_h1("Bathymetry")
   cli::cli_alert_info("Searching: {.file {(.map_bath)}}")
   bathy <-
@@ -357,8 +367,6 @@ load_map_obj <- function(
     cli::cli_alert_info("Loading: {.file {(.map_file)}}")
     bathy <- 
       bathy %>%
-      
-      # raster::raster() %>%
       terra::rast() %>%
       as.data.frame(xy = TRUE)
     
@@ -384,11 +392,19 @@ load_map_obj <- function(
 #'
 #' FUNCTION_DESCRIPTION
 #'
-#' @param topo DESCRIPTION.
-#' @param bathy DESCRIPTION.
-#' @param extnt DESCRIPTION.
+#' @param .topo Coastline sf object
+#' @param .bathy Bathymetry sf object
+#' @param .extnt Spatial extent for the topography data.
+#'               Format: exnt <- c(xmin = -82,    # West
+#'                                 xmax = -80,    # East
+#'                                 ymin = 24.25,  # South
+#'                                 ymax = 25.75   # North
+#'                                 ) 
+#' @param .breaks_z Contour lines as a vector
+#' @param .breaks_y Breaks on latitude passed to `scale_y_continuous`
+#' @param .breaks_x Breaks on longitude passed to `scale_x_continuous`
 #'
-#' @return RETURN_DESCRIPTION
+#' @return gg object
 #' 
 #' @author Sebastian Di Geronimo (April 27, 2023)
 #' 
@@ -398,7 +414,10 @@ load_map_obj <- function(
 base_map_plot <- function(
     .topo,
     .bathy,
-    .extent
+    .extent,
+    .breaks_z = c(100, 50, 25, 10, 0),
+    .breaks_y = waiver(),
+    .breaks_x = waiver()
 ) {
   
   # ---- libraries
@@ -410,8 +429,8 @@ base_map_plot <- function(
   plt <- 
     ggplot() +
     geom_sf(data = .topo) +
-    scale_x_continuous(expand = c(0, 0)) +
-    scale_y_continuous(expand = c(0, 0), breaks = seq(24.5, 28.0, 0.5)) +
+    scale_x_continuous(expand = c(0, 0), breaks = .breaks_x) +
+    scale_y_continuous(expand = c(0, 0), breaks = .breaks_y) +
     coord_sf(xlim = .extent[1:2], ylim = .extent[3:4]) +
     labs(
       x = NULL,
@@ -427,15 +446,15 @@ base_map_plot <- function(
   if (rlang::is_empty(.bathy)) return(plt)
   
   plt +
-    geom_contour2(
+    metR::geom_contour2(
       data = .bathy,
       aes(
         x = x,
         y = y,
         z = -altitude
       ),
-      col = "grey70",
-      breaks = c(100, 50, 25, 10, 0)
+      col    = "grey70",
+      breaks = .breaks_z
     ) +
     directlabels::geom_dl(
       data = filter(
@@ -447,7 +466,6 @@ base_map_plot <- function(
         x = x, 
         y = y, 
         z = -altitude,
-        # label = ..level..
         label = after_stat(level)
       ), 
       method = list(
@@ -459,7 +477,7 @@ base_map_plot <- function(
       breaks = c(100, 50, 25, 10, 0)
     )
   
-  # ---- End of `base_map_plot` Function ----
+  # ---- End of `base_map_plot` Function ---- #
 }
 
 ##%######################################################%##
