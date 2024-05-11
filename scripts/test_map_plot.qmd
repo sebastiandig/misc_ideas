@@ -1,0 +1,220 @@
+---
+title: "Map Download"
+author: "Sebastian Di Geronimo"
+date: 2024-05-10
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+Packages:
+conflicted
+forcats
+purrr
+cli                                                  
+here
+rlang                                       
+fs                                                   
+glue
+ggplot2                                                  
+sf                                                   
+magrittr
+rerddap
+metR                                                     
+terra
+stringr
+dplyr
+tidyr
+tibble
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  sf, rerddap, metR
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+# fixes issue with reading raster file using decimal degrees
+sf::sf_use_s2(FALSE)
+```
+
+# Source R File with Functions
+
+- `world_download()` = downloads the files used in the mapping process
+  - bathymetry
+  - coastline
+  - state lines
+  
+- `load_map_obj()` = loads the files downloaded
+
+- `base_map_plot()` = plots the spatial extent using ggplot
+
+```{r functions}
+rstudioapi::selectFile() # copy and paste path, then remove this function call 
+source("<copy and paste path here>")
+```
+
+# 3.0 Select Location to Save Coastline, State Lines and Topography
+
+After select location, remove `rstudioapi::selectDirectory()` and copy/paste
+path.
+
+This will be used for future runs.
+
+```{r}
+map_loc <- here("data", "map_shp")
+  path_land <-  rstudioapi::selectDirectory()
+map_loc
+```
+
+
+# 4.0 Set Spatial Extent
+
+This is the bounding box to be used for the topography
+
+```{r spatial-extent}
+exnt <- 
+  c(
+    xmin = -78, # West
+    xmax = -74, # East
+    ymin = 36,  # South
+    ymax = 40   # North 
+    )
+```
+
+
+# 5.0 ---- Base Map Data ----
+
+Topography, ETOPO1, 0.0166667 degrees, Global (longitude -180 to 180), (Ice Sheet Surface) from <https://coastwatch.pfeg.noaa.gov/erddap/griddap/>
+
+Global Self-consistent, Hierarchical, High-resolution Geography Database (GSHHG) from <https://www.ngdc.noaa.gov/mgg/shorelines/>
+
+Steps:
+1. Download data
+  - coastline as "GSHHS_h_L1.shp (large file)
+  - state line as "WDBII_border_h_L2.shp" (large file)
+  - topography as "etopo1.nc" 
+  
+2. Load shapefiles and dataframe
+
+3. Map coastline and bathymetry
+
+```{r base-map}
+if (exists("base_plt")) {
+  
+  cli::cli_alert_info("{.var base_plot} is already loaded!")
+  
+} else {
+ 
+  # ---- download topography (.nc) and coastline (.shp) ---- #
+  world_download(
+    # path_land  = map_loc,
+    path_land  = path_land,
+    path_topo  = map_loc,
+    extent     = exnt,
+    use_suffix = "extent",
+    .timeout = 500
+  )
+  
+  # ---- Load Base Maps for Plotting ---- #
+  # select and read coastline file from GSHHS then crop
+  map_obj <-
+    load_map_obj(
+      .map_coast = path_land,
+      # .map_state = NULL, 
+      .map_bath  = map_loc,
+      .map_file  = "etopo1.nc",
+      .extent    = exnt
+    )
+
+  # ---- Plot Base Map ---- #
+  base_plt <-
+    base_map_plot(
+      .topo  = map_obj$coast_topo, 
+      .bathy = map_obj$bathy,
+      .bathy = NULL,
+      .extent = exnt
+      )
+  
+  base_plt
+}
+```
+
+# Add state lines
+
+```{r add-statelines-map}
+plot_state <- 
+  base_plt + 
+  geom_sf(data = map_obj$state, color = "grey")
+
+plot_state
+```
+
+# Test Data
+```{r base-map}
+test_data <-
+  tibble(
+    lat  = c(39.5, 37.0),
+    lon  = c(-76, -76),
+    size = c(1, 2)
+  )
+
+
+plot_state +
+    geom_point(
+      data = test_data,
+      aes(x = lon, y = lat, size = size),
+      show.legend = FALSE
+    ) 
+
+# zoomed in 
+plot_state +
+    geom_point(
+      data = test_data,
+      aes(x = lon, y = lat, size = size),
+      show.legend = FALSE
+    ) +
+  coord_sf(ylim = c(36.5, 37.5), xlim = c(-76.5, -75.5))
+
+```
+```{r}
+shelf(ggspatial)
+base_plt +
+    metR::geom_contour2(
+      data = map_obj$bathy,
+      aes(
+        x = x,
+        y = y,
+        z = altitude,
+        color = after_stat(level)
+      ),
+      # col    = "grey70",
+      breaks = c(100, 50, 25, 10)*-1,
+      show.legend = FALSE
+      # kriging = TRUE
+      # skip = 0,
+      # label.placer = label_placer_n(n = 1)
+    ) +
+  annotation_scale(location = "bl", width_hint = 0.5) +
+    annotation_north_arrow(location = "bl", which_north = "true", 
+        pad_x = unit(0.75, "in"), pad_y = unit(0.5, "in"),
+        style = north_arrow_fancy_orienteering)
+```
+
