@@ -444,9 +444,10 @@ leaflet() %>%
 
 pacman::p_unload("all")
 ```
+
 # `sf` Object
 
-```{r}
+```{r create-sf-obj}
 librarian::shelf(
   quiet = TRUE,
   librarian,
@@ -488,5 +489,33 @@ ggplot() +
 
 
 pacman::p_unload("all")
+```
+# Test `geom_col` with position and `scale_y_reverse`
+
+```{r col-yreverse}
+librarian::shelf(
+  quiet = TRUE,
+  librarian,
+  ggplot2, lubridate, tibble, dplyr
+  )
+
+test_data <- 
+  tibble(
+  date    = c(rep("2020-01-01", 20), rep("2020-01-10", 10)), 
+  station = rep(c("stn1", "stn2", "stn3"), each = 10), 
+  value   = rep(1:10, 3)
+) |>
+  mutate(
+    date = as_date(date)
+  )
+  
+ggplot(test_data, aes(x = date, y = value, fill = station)) +
+  geom_col()
+
+ggplot(test_data, aes(x = date, y = value, fill = station)) +
+  geom_col(position = position_dodge(preserve = "single")) +
+  scale_y_reverse()
+
+
 ```
 
