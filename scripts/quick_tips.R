@@ -1277,3 +1277,57 @@ ex2 <-
   plot(1:20, main = ex2)
 }
 # ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Set Date to Same Year for Plotting ----
+# ============================================================================ #
+# Jun 28, 2024
+{
+  librarian::shelf(
+    quiet = TRUE,
+    librarian,
+    dplyr, lubridate, ggplot2, purrr
+  )
+
+
+  (lubridate::lakers |>
+    filter(player == "Kobe Bryant") |>
+    mutate(
+      date = ymd(date),
+      year = year(date),
+      date2 = map(
+        date,
+        \(.x) {
+          year(.x) <- 2001
+          return(.x)
+        }
+      )
+    ) |>
+    tidyr::unnest(date2) |>
+    mutate(point2 = cumsum(points), .by = year) |>
+    print() |>
+    ggplot() +
+    geom_line(
+      aes(x = date2, y = point2, color = as.character(year(date)))
+    ) +
+    labs(
+      x = NULL,
+      y = "Cumulative Points",
+      color = "Year"
+    ) +
+    scale_x_date(
+      date_labels = "%b",
+      date_breaks = "1 month"
+    ) +
+    theme_bw()
+  ) |>
+    print()
+
+
+  pacman::p_unload("all")
+}
+
+
+
+# ============================================================================ #
