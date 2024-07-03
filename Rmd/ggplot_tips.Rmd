@@ -316,7 +316,7 @@ mtcars |>
 ```{r zebra-stripe}
 librarian::shelf(magrittr, ggplot2, dplyr)
 dat <- 
-palmerpenguins::penguins %>%
+  palmerpenguins::penguins %>%
   
   dplyr::mutate(
     plot_lab = 
@@ -393,8 +393,47 @@ dat %>%
   tidyr::complete(island, species) %>%
   mutate(y = if_else(stringr::str_detect(species, rec_factor), 1, NA))
 
-librarian::unshelf(magrittr, ggplot2, dplyr)
+
+
 rm(dat, rec_Factor)
+
+# add stripes to time series
+## create tibble with dates covering timeframe
+ stripe <-
+   expand.grid(2016:2021, paste0("-", c(12, 3, 6, 9), "-01")) %>%
+   mutate(
+     date = paste0(Var1, Var2),
+     date = as_date(date)
+   ) %>%
+   mutate(season = rep(c("Winter", "Spring", "Summer", "Fall"), each = 6))
+ 
+  ggplot() +
+  geom_rect(
+    data = stripe,
+    aes(xmin = date, xmax = date + months(3), ymin = 0, ymax = Inf,
+        fill = season),
+    alpha = 0.5
+  ) +
+  scale_fill_manual(values = c("grey", "white", "grey", "white")) +
+  geom_line(
+    data =
+      paste0("2020-0", c(1:6), "-15") %>%
+        as_date() %>%
+        tibble(date = .) %>%
+        mutate(dat = 1:6),
+    aes(x = date, y = dat)
+  ) +
+  geom_point(
+    data =
+      paste0("2020-0", c(1:6), "-15") %>%
+        as_date() %>%
+        tibble(date = .) %>%
+        mutate(dat = 1:6),
+    aes(x = date, y = dat)
+  ) +
+  theme_bw()
+  
+pacman::p_unload("all")
 ```
 
 # Leaflet Marker 
