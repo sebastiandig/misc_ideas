@@ -536,13 +536,40 @@ Figure 1C - 3D benthic map
 library(marmap)
 library(lattice)
 
+# my attempt
+fl_benthic <- 
+  getNOAA.bathy(lon1 = -85, lon2 = -80, lat1 = 24, lat2 = 29, resolution = 0.5) 
+
+plot(
+  fl_benthic,
+  image     = TRUE, 
+  # bpal      = blues(100), 
+  # xlim      = c(141,155),
+  deep      = -100, 
+  shallow   = 0,
+  step      = 25,,
+  # col       = c("lightgrey", "darkgrey", "black"), 
+  # lwd       = c(0.3, 0.3, 0.6), 
+  lty       = c(1, 1, 1),
+  drawlabel = c(TRUE, TRUE, TRUE)
+)
+
+pacman::p_unload("all")
+```
+
+
+```{r marmap}
+### LOAD MARMAP
+library(marmap)
+library(lattice)
+
 ### LOAD DATA
 data(nw.atlantic)
 data(hawaii)
 data(hawaii.sites)
 atl <- as.bathy(nw.atlantic) 
 papoue <- 
-  getNOAA.bathy(lon1 = 140, lon2 = 155, lat1 = -13, lat2 = 0, resolution = 1) 
+  getNOAA.bathy(lon1 = 140, lon2 = 155, lat1 = -13, lat2 = 0, resolution = 1)
 
 ### Figure 1A (top left)
 # ---------------------------------------------------------------------------- #
@@ -629,7 +656,8 @@ plot(papoue,
   image     = TRUE, 
   bpal      = blues(100), 
   # xlim      = c(141,155),
-  deep      = c(-9000, -3000, 0), shallow = c(-3000, -10, 0), 
+  deep      = c(-9000, -3000, 0), 
+  shallow   = c(-3000, -10, 0), 
   step      = c(1000, 1000, 0),
   col       = c("lightgrey", "darkgrey", "black"), 
   lwd       = c(0.3, 0.3, 0.6), 
@@ -744,5 +772,7 @@ legend(
 #   col     = pal(1), 
 #   add     = TRUE)
 # # dev.off()
+
+pacman::p_unload("all")
 ```
 
