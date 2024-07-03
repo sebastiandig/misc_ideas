@@ -1283,30 +1283,39 @@ ex2 <-
 # ---- Set Date to Same Year for Plotting ----
 # ============================================================================ #
 # Jun 28, 2024
+# https://stackoverflow.com/questions/48288429/plotting-a-time-series-in-ggplot-with-lines-grouped-by-year
 {
   librarian::shelf(
     quiet = TRUE,
     librarian,
     dplyr, lubridate, ggplot2, purrr
   )
-
-
-  (lubridate::lakers |>
+  
+  # function used to set all date to same year
+  same_year <- function(x, .year = 2000) {
+    year(x) <- .year
+    x
+  }
+  
+  
+  kobe_data <- 
+    lubridate::lakers |>
     filter(player == "Kobe Bryant") |>
     mutate(
+      .after = 1,
       date = ymd(date),
       year = year(date),
       date2 = map(
-        date,
-        \(.x) {
-          year(.x) <- 2001
-          return(.x)
-        }
+        .x = date,
+        .f = same_year
       )
     ) |>
     tidyr::unnest(date2) |>
     mutate(point2 = cumsum(points), .by = year) |>
-    print() |>
+    print()
+  
+  # using `date2` column created to set to same year 
+  (kobe_data |>
     ggplot() +
     geom_line(
       aes(x = date2, y = point2, color = as.character(year(date)))
@@ -1314,7 +1323,28 @@ ex2 <-
     labs(
       x = NULL,
       y = "Cumulative Points",
-      color = "Year"
+      color = "Year",
+      title = "Using `purrr:map`"
+    ) +
+    scale_x_date(
+      date_labels = "%b",
+      date_breaks = "1 month"
+    ) +
+    theme_bw()
+  ) |>
+    print()
+  
+  # alternate version: use `same_year` function in `ggplot()` call
+  (kobe_data |>
+    ggplot() +
+    geom_line(
+      aes(x = same_year(date), y = point2, color = as.factor(year(date)))
+    ) +
+    labs(
+      x = NULL,
+      y = "Cumulative Points",
+      color = "Year",
+      title = "Using `same_year()`"
     ) +
     scale_x_date(
       date_labels = "%b",
@@ -1326,8 +1356,8 @@ ex2 <-
 
 
   pacman::p_unload("all")
+  rm(same_year, kobe_data)
 }
-
 
 
 # ============================================================================ #
