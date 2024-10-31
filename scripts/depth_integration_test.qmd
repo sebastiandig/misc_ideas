@@ -1,0 +1,123 @@
+---
+title: "Integrate Depth"
+author: "Sebastian Di Geronimo"
+date: "2023-12-22"
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+This code will integrate "nutrients" over depth because is a concentration.
+
+Temperature wouldn't make sense because it's not cumulative.
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+## 2.2 Test Integration
+
+To integrate nutrient over depth in R, you can use the `integrate()`
+function¹². The `integrate()` function performs adaptive quadrature of
+functions of one variable over a finite or infinite interval. It takes in the
+following arguments:
+
+  - `f`: the function to be integrated.
+  - `lower`: the lower limit of integration.
+  - `upper`: the upper limit of integration.
+  - `subdivisions`: the maximum number of subintervals allowed in the partition
+    of the integration interval.
+  - `rel.tol`: the relative tolerance for the integration.
+  - `abs.tol`: the absolute tolerance for the integration.
+  - `stop.on.error`: a logical value indicating whether to stop on an error.
+  - `keep.xy`: a logical value indicating whether to keep the function values
+    and abscissae used in the integration.
+  - `aux`: auxiliary data to be passed to the function.
+
+Here is an example of how to use the `integrate()` function with multiple
+arguments:
+
+```{r}
+g_fn <- function(x, mu, s) {
+  1 / (2 * s^2 * pi)^0.5 * exp(-(x - mu)^2 / (2 * s^2))
+}
+
+integrate(g_fn, 0, 10, s = 10, mu = 50)
+```
+
+This will integrate the function `G` with `mu = 50` and `s = 10` over the
+interval `[0, 10]` ¹.
+
+If you are looking to create a contour plot of nutrient over depth in R, you
+can use the `filled.contour()` function from the `graphics` package. Here is an
+example code snippet that demonstrates how to create a contour plot of
+nutrient over depth:
+
+```{r}
+# Create a sample data frame
+dat1 <- data.frame(
+  time = seq(1, 100),
+  depth = seq(1, 100, length.out = 100),
+  nutrient = rnorm(100, mean = 20, sd = 5)
+)
+
+plot(dat1)
+# Create the contour plot
+filled.contour(
+  x = dat1$time,
+  y = dat1$depth,
+  z = array(t(dat1$nutrient), dim = c(100, 100)),
+  color.palette = colorRampPalette(c("blue", "red")),
+  xlab = "Time",
+  ylab = "Depth",
+  main = "Nutrient over Depth"
+)
+
+
+```
+
+
+
+```{r integrate-nutrients}
+dat <- data.frame(
+  nutrient = rnorm(10, mean = 20, sd = 5),
+  depth = c(0, 10, 20, 30, 40, 50, 75, 100, 125, 150)
+)
+
+int_temp <- integrate(
+  function(x) approx(dat$depth, dat$nutrient, x)$y,
+  lower = 0, 
+  upper = max(dat$depth)
+)$value
+int_temp
+
+
+plot(-dat$depth ~ dat$nutrient, type = "l",
+     xlab = "Concentration",
+     ylab = "Depth")
+
+```
+
