@@ -5,12 +5,14 @@ date: "2023-12-22"
 format: html
 editor: source
 ---
+NOTE: Most of this code is not my own, but I didn't reference where it came from
 
 # 1.0 ---- Summary of Document ----
 
 This code will integrate "nutrients" over depth because is a concentration.
 
 Temperature wouldn't make sense because it's not cumulative.
+
 
 # 2.0 ---- Setup ----
 
@@ -41,7 +43,7 @@ conflicts_prefer(
 ## 2.2 Test Integration
 
 To integrate nutrient over depth in R, you can use the `integrate()`
-function¹². The `integrate()` function performs adaptive quadrature of
+function. The `integrate()` function performs adaptive quadrature of
 functions of one variable over a finite or infinite interval. It takes in the
 following arguments:
 
