@@ -777,4 +777,60 @@ create_vars_from_fun(mod1)
 
   
 ```
+# Add Cycle Wrapper and Idea About Indexing Multiple Columns for Each Loop
+
+
+
+
+```{r cycle-ideas}
+# helps with wrapping around numbers, so here, add a shift number to a number 
+# but if exceeds the max number, goes back to 1. this will ignore 0 as an option
+# here 1:12 = month numbers
+# add 6 months
+# once exceeds 12, goes back to 1
+# issues: can't easily change the starting number to be something different
+map_int(
+    1:12,
+    \(x, shift = 6, max_n = 12, start_value = 0) {
+      ((x + shift - 1) %% max_n) + 1
+      # is_max <- TRUE
+      # while (is_max) {
+      #   x <- ((x + shift - start_value - 1) %% max_n) + start_value + 1 # shifts number by x, then subtract 1
+      #   is_max <- x > max_n
+      # }
+      # return(x)
+    }
+  ) %>%
+  bind_cols(month = month.name, old_m = x, new_m = .)
+
+# alternate function factory: set the number to wrap around (n)
+# wraps around at 1
+cycle_val <- function(n) {
+  function(x) (x - 1) %% n + 1
+}
+
+# set number
+month_cycle <- cycle_val(12)
+month_cycle(1:12 + 6)
+
+
+# interesting code idea
+# x[, (m <- m + 1)] adds a counter to the column to increment the column
+# twice per loop for cosx and sinx
+fHarmonic <- function(theta, k = 4) {
+  # browser()
+  x <- matrix(0, length(theta), 2 * k)
+  nam <- as.vector(outer(c("c", "s"), 1:k, paste, sep = ""))
+  dimnames(x) <- list(names(theta), nam)
+  m <- 0 # starts at 0
+  for (j in 1:k) {
+    x[, (m <- m + 1)] <- cos(j * theta) # m increments by one, so column 1
+    x[, (m <- m + 1)] <- sin(j * theta) # m increments by one, so column 2
+    # the next loop would start on column 3, i.e. m = 3
+  }
+  x
+}
+
+fHarmonic(c(10, 1, 12, 12))
+```
 
