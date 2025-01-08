@@ -830,7 +830,7 @@ Using `ggh4x` to scale each y faceted axes separately as suggested by:
 
 `ggh4x::facetted_pos_scales()`
 
-```{r}
+```{r add multiple-breaks}
 library(tidyverse)
 library(ggtext)
 
@@ -1016,5 +1016,114 @@ coral_physiology %>%
     axis.title.x     = element_markdown(),
     panel.spacing    = unit(15, units = "pt")
   )
+```
+
+
+# Add Labels to ggplot2 using a vector instead of adding a new column to dataframe
+
+Jan 08, 2025
+
+Use a vector to change the labels of a plot instead of adding a new
+column
+
+first method uses vector for label and facet label:
+c("og label" = "new label")
+
+second method uses a two column tibble to create labels
+tibble <- tibble(
+  "og_label"  = "label1",
+  "new_label" = "new_label"
+)
+plot_label <- tibble$new_label
+names(plot_label) <- tibble$og_label
+
+```{r plot-labels-using-vector}
+library(ggplot2)
+mtcars
+
+car_labs <- 
+  c(
+    "6" = "6 cylinder",
+    "8" = "8 cylinder",
+    "4" = "4 cylinder"
+  )
+
+# used in facetting with `labeller`
+ggplot(mtcars) +
+  geom_point(aes(x = mpg, y = hp, color = as.factor(cyl)),
+             show.legend = FALSE) +
+  facet_grid(~cyl, labeller = labeller(cyl = car_labs)) +
+  labs(title = "Used with facet and vector")
+
+# used in labeling 
+ggplot(mtcars) +
+  geom_point(aes(x = mpg, y = hp, color = as.factor(cyl))) +
+  scale_color_discrete(labels = car_labs) +
+  labs(
+    color = "Cylinder",
+    title = "Used as label with vector")
+
+
+
+# used in labeling if labels are a tibble instead of vector
+car_labs2 <-
+tibble::tibble(
+  num_cyl = c(
+    "8",
+    "6",
+    "4"
+  ),
+  car_lab = c(
+    "8 cylinder",
+    "6 cylinder",
+    "4 cylinder"
+  )
+)
+
+# what you want the labels to be goes first
+# then the original names of those labels
+cyl_labels <- car_labs2$car_lab 
+names(cyl_labels) <- car_labs2$num_cyl
+
+ggplot(mtcars) +
+  geom_point(aes(x = mpg, y = hp, color = as.factor(cyl))) +
+  scale_color_discrete(labels = cyl_labels) +
+  labs(
+    color = "Cylinder",
+    title = "Used with label and tibble")
+
+
+# above tip turn into a function 
+plot_labels <- function(og_label, new_label) {
+  
+  label_vec <- new_label
+  names(label_vec) <- og_label
+  
+  return(label_vec)
+    # ---- end of function plot_labels
+}
+
+cyl_labels2 <- plot_labels(car_labs2$num_cyl, car_labs2$car_lab)
+
+# with var for labels
+ggplot(mtcars) +
+  geom_point(aes(x = mpg, y = hp, color = as.factor(cyl))) +
+  scale_color_discrete(labels = cyl_labels2) +
+  labs(
+    color = "Cylinder",
+    title = "Used with label as tibble, and function and var")
+
+# using function within labels
+ggplot(mtcars) +
+  geom_point(aes(x = mpg, y = hp, color = as.factor(cyl))) +
+  scale_color_discrete(
+    labels = plot_labels(car_labs2$num_cyl, car_labs2$car_lab)
+    ) +
+  labs(
+    color = "Cylinder",
+    title = "Used with label as tibble and function in place")
+
+
+pacman::p_unload("all")
 ```
 
