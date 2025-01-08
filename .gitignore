@@ -7,3 +7,6 @@ data/
 docs/
 
 *.bib
+
+# populus program: https://github.com/cbs-rlt/populus
+*.jar
