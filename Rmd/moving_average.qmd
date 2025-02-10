@@ -1,0 +1,95 @@
+---
+title: "moving_average"
+format: html
+---
+
+This test is to see how moving averages work when have data
+
+
+# 1.1 Plot data
+
+```{r}
+x <- seq(1, 1000, by = 10) 
+
+# x_lin <- 1.5 + 5 * x
+# y <- x_lin + 200*sin(0.2*x_lin) + 50*cos(0.5*x_lin) + 10 * rnorm(x, sd = 3)
+
+
+y <- 0.2*x + 20*sin(0.2*x) + 0.5*cos(0.5*x) + 10 * rnorm(x, sd = 3)
+
+plot(x, y, type = "l", xlab = NA, ylab = NA)
+# lines(x = x, y = x_lin, lty = "dashed", col = "blue")
+```
+# 2.0 Calculate a Moving Average Window
+
+```{r}
+avg_window <- 5
+if (avg_window < 3) {
+  cat("Moving average window is", avg_window, "and is less than 3. Making 3!\n")
+  avg_window <- 3
+}
+if (avg_window %% 2 == 0) {
+  cat("Moving average window is", avg_window, "and is even, subtracting 1 to be", avg_window - 1, "\b.\n")
+  avg_window <- avg_window - 1
+}
+
+cat("Moving average window is", avg_window, "\b.\n")
+
+
+# calc moving average
+y_2 <- 
+  as.matrix(y, nrow = 1, ncol = x) |> 
+  t() |>
+  rchemo::mavg(avg_window)
+
+dim(y_2)
+
+# add ends lost due to moving average
+y_3 <- c(y[1:((length(x) - dim(y_2)[2]) / 2)], 
+         t(y_2), 
+         y[(dim(y_2)[2] + 1 + (length(x) - dim(y_2)[2]) / 2):length(x)]
+         ) 
+
+# add linear model
+x_mod <- lm(y ~ x)
+summary(x_mod)
+```
+
+# 2.1 Plot
+
+```{r plot}
+plot(x, y, type = "l", main = paste("Moving average window:", avg_window), 
+     cex.main = 1, xlab = NA, ylab = NA)
+lines(x = x, y = y_3, col = "red")
+lines(x, x_mod$coefficients[1] + x_mod$coefficients[2] * x, 
+      lty = "dashed", col = "blue")
+
+legend(
+  x      = "topleft",                                  # Position
+  legend = c("Original", "Moving Average", "linear"),  # Legend texts
+  lty    = c(1, 1, 2),                                 # Line types
+  col    = c("black", "red", "blue"),                  # Line colors
+  lwd    = 2,
+  cex    = 0.5
+  ) 
+```
+
+# 3.0 Plot Residuals
+
+```{r plt-resid}
+((x_mod$coefficients[1] + x_mod$coefficients[2] * x) - y) |> 
+  plot(x = x, type = "l",
+        xlab = NA, ylab = "Residuals")
+abline(0,0, lty = "dashed", col = "blue")
+lines(x = x, (x_mod$coefficients[1] + x_mod$coefficients[2] * x) - y_3, col = "red")
+lines(x = x, y_3 - y, col = "purple")
+
+legend(x      = "topleft",                                  # Position
+       legend = c("Original", "Moving Average", "linear"),  # Legend texts
+       lty    = c(1, 1, 3),                                 # Line types
+       col    = c("black", "red", "blue"),                  # Line colors
+       lwd    = 2,
+       cex    = 0.5) 
+
+```
+
