@@ -1,4 +1,10 @@
 # set up Git with computer
+
+# download Git to computer
+# <http://git-scm.com/downloads>
+
+
+
 # <https://usethis.r-lib.org/articles/git-credentials.html>
 
 # step 1. Create GitHub Token for this computer
