@@ -5,6 +5,21 @@ date: '2022-11-11'
 output: html_document
 ---
 
+```{r}
+if (!require("librarian")) {
+    install.packages("librarian")
+}
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, ggplot2, magrittr, pacman,
+  cowplot, patchwork, ggh4x
+  
+  )
+```
+
+
+
 ## Create list of ggplot elements
 You can use this to create a base set of options to be used in 
 whatever plot you want
@@ -13,7 +28,7 @@ Also -
 This can be used to select between a few different option if creating
 a function. 
 ```{r}
-# ---- ggplot create ggproto ----
+# ---- ggplot create ggproto ---- #
 # you can make a list of element objects
 library("ggplot2")
 library("magrittr")
@@ -89,7 +104,7 @@ pacman::p_unload("all")
 ```
 
 
-## Plot a cirlc around a point
+## Plot a circle around a point
 Base Plot and ggplot
 
 Calculate points around a circle from 0 - 360 degrees at 1 degree increments
@@ -213,6 +228,8 @@ ggplot(mtcars,
 
 pacman::p_unload("all")
 ```
+
+
 # Fun: `stat_function` and `geom_stat`
 ```{r stat-geom-func}
 library("ggplot2")
@@ -239,11 +256,11 @@ This may be useful when have daily data and want to see how it changes over time
 
 
 ```{r ex-sugrrants}
-# librarian::shelf(
-#   quiet = TRUE,
-#   earowang/sugrrants, 
-#   dplyr,
-#   magrittr)
+librarian::shelf(
+  quiet = TRUE,
+  earowang/sugrrants,
+  dplyr,
+  magrittr)
 
 # plot example of `sugrrants` using hourly data
 hourly_peds %>%
@@ -261,7 +278,7 @@ hourly_peds %>%
   ggplot(aes(x = after_stat(lag), y = Hourly_Counts)) +
   geom_acf()
 
-# pacman::p_unload("all")
+pacman::p_unload("all")
 
 ```
 # Select the Key Legend Glyph
@@ -314,7 +331,7 @@ mtcars |>
 # Add Zebra Striping Pattern on Boxplot
 
 ```{r zebra-stripe}
-librarian::shelf(magrittr, ggplot2, dplyr)
+librarian::shelf(magrittr, ggplot2, dplyr, lubridate)
 dat <- 
   palmerpenguins::penguins %>%
   
@@ -367,6 +384,9 @@ dat %>%
   ) +
 
   geom_boxplot(
+    data = ~ .x %>%
+      # distinct(species, island) %>%
+      tidyr::complete(island, species, sex, fill = list(bill_depth_mm = -1)),
     width         = 1,
     linewidth     = 0.2,
     outlier.color = "gray70",
@@ -382,6 +402,7 @@ dat %>%
     na.rm        = TRUE
   ) +
   facet_wrap(~ island, nrow = 3) +
+  coord_cartesian(ylim = c(0, NA), expand = FALSE) +
   theme_bw()
 
 # basically need facet column and a separator column
@@ -435,6 +456,7 @@ rm(dat, rec_Factor)
   
 pacman::p_unload("all")
 ```
+
 
 # Leaflet Marker 
 
