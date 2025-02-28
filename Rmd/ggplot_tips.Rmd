@@ -467,7 +467,13 @@ example here:
 <http://www.mysmu.edu/faculty/jwwang/post/how-to-add-multiple-lines-label-on-a-leaflet-map/>
 
 ```{r leaflet-marker}
-library("leaflet")
+librarian::shelf(
+  quiet = TRUE,
+  librarian,
+  leaflet
+  )
+# library("leaflet")
+
 long <- c(147.8, 147.6, 147.8, 147., 147.7, 147.76)
 lat <- c(-36.852, -36.852, -36.852, -36.852, -36.852, -36.852)
 # label <- paste(
@@ -594,8 +600,13 @@ Figure 1C - 3D benthic map
 
 ```{r marmap}
 ### LOAD MARMAP
-library(marmap)
-library(lattice)
+librarian::shelf(
+  quiet = TRUE,
+  librarian,
+  marmap, lattice
+  )
+# library(marmap)
+# library(lattice)
 
 # my attempt
 fl_benthic <- 
@@ -621,8 +632,13 @@ pacman::p_unload("all")
 
 ```{r marmap}
 ### LOAD MARMAP
-library(marmap)
-library(lattice)
+librarian::shelf(
+  quiet = TRUE,
+  librarian,
+  marmap, lattice
+  )
+# library(marmap)
+# library(lattice)
 
 ### LOAD DATA
 data(nw.atlantic)
@@ -1145,6 +1161,86 @@ ggplot(mtcars) +
     color = "Cylinder",
     title = "Used with label as tibble and function in place")
 
+
+pacman::p_unload("all")
+```
+
+
+# Add Panel Lines for Top and Right 
+
+This is useful when wanting to use `patchwork` to combine multiple plots 
+together but want to have a top and right line around the plot. This will 
+remove the line created bewteen plots and will make cohesive 
+
+First, need to remove plot panel by setting to classic plot using 
+  `theme_classic()`
+Next, need to add in top line again using `annotate()`
+
+If want to `patchwork` different plots with the same axes, one plot will need 
+  top line and the other will need top and right line
+
+```{r}
+librarian::shelf(ggplot2, patchwork, pacman)
+plt <- 
+  mtcars |>
+  ggplot(aes(x = cyl, y = mpg)) +
+  geom_point()
+  
+plt + 
+  labs(title = "Base plot")
+plt +
+  labs(title = "Classic plot - removes top and right line") +
+  theme_classic()
+
+(plt_top <-
+  plt +
+  theme_classic() +
+  labs(title = "Classic plot w/ Top Line Added") +
+  # add top line
+  annotate(
+    geom      = "segment",
+    y         = Inf,
+    yend      = Inf,
+    x         = -Inf,
+    xend      = Inf,
+    color     = "red",
+    linewidth = 3
+  ))
+
+(plt_tr <-
+  plt +
+  theme_classic() +
+  labs(title = "Classic plot w/ Top and Right Line Added") +
+  # add top and right lines
+  annotate(
+    geom      = "segment",
+    y         = c(Inf, -Inf),
+    yend      = c(Inf, Inf),
+    x         = c(-Inf, Inf),
+    xend      = c(Inf, Inf),
+    color     = c("blue", "red"),
+    linewidth = 3
+  ))
+
+(plt + labs(title = "Base plot")) +
+  (plt + labs(title = "bw plot") + theme_bw()) +
+  plot_layout(axes = "collect") +
+  plot_annotation(title = "`pathwork`: Base + bw plots") &
+  theme(
+    panel.spacing    = unit(0, "lines"),
+    plot.margin      = margin(t = 5),
+    plot.background  = element_blank()
+  )
+
+plt_top +
+  plt_tr +
+  plot_layout(axes = "collect") +
+  plot_annotation(title = "`pathwork`: Add with Top and lines added") &
+  theme(
+    panel.spacing    = unit(0, "lines"),
+    plot.margin      = margin(t = 5),
+    plot.background  = element_blank()
+  )
 
 pacman::p_unload("all")
 ```
