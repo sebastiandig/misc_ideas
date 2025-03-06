@@ -1179,7 +1179,7 @@ Next, need to add in top line again using `annotate()`
 If want to `patchwork` different plots with the same axes, one plot will need 
   top line and the other will need top and right line
 
-```{r}
+```{r add-panel-lines}
 librarian::shelf(ggplot2, patchwork, pacman)
 plt <- 
   mtcars |>
@@ -1241,6 +1241,69 @@ plt_top +
     plot.margin      = margin(t = 5),
     plot.background  = element_blank()
   )
+
+pacman::p_unload("all")
+```
+# Grab Polygon Data from Web Query and Plot
+
+This comes from the paper: 
+Julian et al., 2024, Long-term patterns and trends in water column 
+biogeochemistry in a changing environment
+
+<https://linkinghub.elsevier.com/retrieve/pii/S0272771424002841>
+
+Located in the supplimental. 
+
+This shows how to query polygon data from <https://ca.dep.state.fl.us/arcgis>
+using `httr` to build a search URL
+
+Then grabs South Florida data from the URL and plots as an `sf` object.
+
+```{r}
+librarian::shelf(
+  quiet = TRUE,
+  librarian,
+  httr, sf, ggplot2,
+  stringr, glue
+  )
+
+# set query locations
+regions <- data.frame(
+  ESTUARY_SE =
+    c(
+      paste0("ENRE", 9:15),
+      paste0("ENRE", 5:7),
+      paste0("ENRF", 1:6),
+      "ENRH2",
+      paste0("ENRG", 1:7)
+    ),
+  Region =
+    c(
+      rep("Coastal_Mangroves", 7),
+      rep("Shelf", 3),
+      rep("FLBay", 7),
+      rep("Keys", 7)
+    )
+)
+
+
+url       <- parse_url("https://ca.dep.state.fl.us/arcgis/rest/services")
+url$path  <- glue("{url$path}/OpenData/NNC/MapServer/3/query")
+url$query <- list(
+  where          = str_c(glue("ESTUARY_SEGMENT_CODE ='{regions$ESTUARY_SE}'"), 
+                         collapse = " OR "),
+  outFields      = "*",
+  returnGeometry = "true",
+  f              = "geojson"
+)
+
+url_build <- build_url(url)
+print(url_build)
+url_build |>
+  st_read() |>
+  ggplot() +
+  geom_sf() +
+  theme_bw()
 
 pacman::p_unload("all")
 ```
