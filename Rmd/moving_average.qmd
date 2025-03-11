@@ -93,3 +93,98 @@ legend(x      = "topleft",                                  # Position
 
 ```
 
+# Lanczos Filter
+
+NOTE: needs some work to see the difference
+i.e. need to determine how to add time series data and plot before/after filter
+
+From: <https://stackoverflow.com/questions/17264119/using-lanczos-low-pass-filter-in-r-program>
+
+```{r}
+#inputs
+# window: Filter length: number of weights. Corresponds to the total number of
+#         points to be lost. Should be odd: window = 2N-1. 
+#         The formula for N is taken from Poan et al. (2013)
+# sampl_rate: sampling rate=number of observation per time unit. ( eg: if time 
+#             unit is one day, hourly data have sampl_rate=1/24)
+# type:      "lowpass", "highpass" and "bandpass"
+# low_freq:  the lowest frequency 
+# high_freq: the highest frequency
+
+lanczos_weights <- function(
+    window     = 101, 
+    sampl_rate = 1,
+    type       = "lowpass", 
+    low_freq   = 1 / 100, 
+    high_freq  = 1 / 10) {
+  
+  low_freq  <- sampl_rate * low_freq
+  high_freq <- sampl_rate * high_freq
+
+  if (type == "lowpass") {
+    order       <- ((window - 1) %/% 2) + 1
+    nwts        <- 2 * order + 1
+    fc          <- low_freq
+    w           <- seq(0, 0, length = nwts)
+    n           <- nwts %/% 2
+    w[n + 1]    <- 2 * fc
+    k           <- seq(1, n - 1)
+    sigma       <- sin(pi * k / n) * n / (pi * k)
+    firstfactor <- sin(2 * pi * fc * k) / (pi * k)
+    w[n:2]      <- firstfactor * sigma
+    w[(n + 2):(length(w) - 1)] <- firstfactor * sigma
+    w <- w[-c(1, length(w))]
+    
+  } else if (type == "highpass") {
+    order       <- ((window - 1) %/% 2) + 1
+    nwts        <- 2 * order + 1
+    fc          <- high_freq
+    w           <- seq(0, 0, length = nwts)
+    n           <- nwts %/% 2
+    w[n + 1]    <- 2 * fc
+    k           <- seq(1, n - 1)
+    sigma       <- sin(pi * k / n) * n / (pi * k)
+    firstfactor <- sin(2 * pi * fc * k) / (pi * k)
+    w[n:2]      <- firstfactor * sigma
+    w[(n + 2):(length(w) - 1)] <- firstfactor * sigma
+    w           <- w[-c(1, length(w))]
+    w           <- -w
+    w[order]    <- 1 - 2 * fc
+    
+  } else if (type == "bandpass") {
+    order       <- ((window - 1) %/% 2) + 1
+    nwts        <- 2 * order + 1
+    fc          <- low_freq
+    w           <- seq(0, 0, length = nwts)
+    n           <- nwts %/% 2
+    w[n + 1]    <- 2 * fc
+    k           <- seq(1, n - 1)
+    sigma       <- sin(pi * k / n) * n / (pi * k)
+    firstfactor <- sin(2 * pi * fc * k) / (pi * k)
+    w[n:2]      <- firstfactor * sigma
+    w[(n + 2):(length(w) - 1)] <- firstfactor * sigma
+    w1          <- w[-c(1, length(w))]
+
+    order       <- ((window - 1) %/% 2) + 1
+    nwts        <- 2 * order + 1
+    fc          <- high_freq
+    w           <- seq(0, 0, length = nwts)
+    n           <- nwts %/% 2
+    w[n + 1]    <- 2 * fc
+    k           <- seq(1, n - 1)
+    sigma       <- sin(pi * k / n) * n / (pi * k)
+    firstfactor <- sin(2 * pi * fc * k) / (pi * k)
+    w[n:2]      <- firstfactor * sigma
+    w[(n + 2):(length(w) - 1)] <- firstfactor * sigma
+    w2          <- w[-c(1, length(w))]
+    w           <- w2 - w1
+    
+  } else {
+    print("Please specify a valid filter type: either 'lowpass', 'highpass' or 'bandpass'")
+  }
+  return(w)
+}
+
+lanczos_weights()
+```
+
