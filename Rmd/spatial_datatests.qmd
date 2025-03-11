@@ -1,0 +1,72 @@
+---
+title: "Spatial Data Tests"
+author: "Sebastian Di Geronimo"
+date: 2025-03-07
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  ggspatial
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+
+# 3.0 From: `ggspatial` Startup
+
+```{r}
+load_longlake_data()
+
+ggplot() +
+  # loads background map tiles from a tile source
+  annotation_map_tile(zoomin = -1) +
+  
+  # annotation_spatial() layers don't train the scales, so data stays central
+  annotation_spatial(longlake_roadsdf, size = 2, col = "black") +
+  annotation_spatial(longlake_roadsdf, size = 1.6, col = "white") +
+
+  # raster layers train scales and get projected automatically
+  layer_spatial(
+    longlake_depth_raster,
+    # aes(colour = after_stat(band1))
+    ) +
+  # make no data values transparent
+  scale_fill_viridis_c(na.value = NA) +
+  
+  # layer_spatial trains the scales
+  layer_spatial(longlake_depthdf, aes(fill = DEPTH_M)) +
+  
+  # spatial-aware automagic scale bar
+  annotation_scale(location = "tl") +
+
+  # spatial-aware automagic north arrow
+  annotation_north_arrow(location = "br", which_north = "true")
+```
+
+
+
