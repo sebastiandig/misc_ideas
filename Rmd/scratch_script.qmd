@@ -834,3 +834,53 @@ fHarmonic <- function(theta, k = 4) {
 fHarmonic(c(10, 1, 12, 12))
 ```
 
+
+
+# Read png Files and Extract RGB Values
+
+png files are typically stored as:
+- RGB (3 channels)
+- RGBA (4 channels)
+- Grayscale (1 channel)
+- GA (2 channels)
+
+NOTE: A is for alpha
+
+```{r png-load}
+# image from package test
+test_img <- png::readPNG(system.file("img", "Rlogo.png", package = "png"), 
+                         info = TRUE)
+
+
+# extract each channel (RGB) and multiply to convert decimal to 0 - 255
+red   <- test_img[,,1] * 255 
+green <- test_img[,,2] * 255
+blue  <- test_img[,,3] * 255
+alpha <- test_img[,,4]
+
+mean(red) 
+mean(green)
+mean(blue)
+
+
+# test image
+test_img2 <- 
+  here("data", "raw") %>%
+  dir_ls(regexp = "test_img") %>%
+  png::readPNG(info = TRUE)
+
+str(test_img2)
+
+# extract each channel (RGB) and multiply to convert decimal to 0 - 255
+red   <- test_img2[,,1] * 255 
+green <- test_img2[,,2] * 255
+blue  <- test_img2[,,3] * 255
+
+
+mean(red) 
+mean(green)
+mean(blue)
+
+
+```
+
