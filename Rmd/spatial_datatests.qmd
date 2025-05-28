@@ -69,4 +69,20 @@ ggplot() +
 ```
 
 
+# SMAP-SSS Data
+
+
+```{r}
+shelf(terra)
+
+test <- 
+here("data", "raw") %>%
+  dir_ls(regexp = "SSS") %>%
+  terra::rast()
+
+test
+names(test)
+plot(test[2])
+```
+
 
