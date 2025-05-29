@@ -882,5 +882,25 @@ mean(green)
 mean(blue)
 
 
+# test image
+test_img2 <- 
+  here("data", "raw") %>%
+  dir_ls(regexp = "scope") %>%
+  jpeg::readJPEG()
+
+str(test_img2)
+
+# extract each channel (RGB) and multiply to convert decimal to 0 - 255
+red   <- test_img2[,,1] * 255 
+green <- test_img2[,,2] * 255
+blue  <- test_img2[,,3] * 255
+
+mean(red) 
+mean(green)
+mean(blue)
+
+mean(green) / mean(blue)
+mean(green) / mean(red)
+
 ```
 
