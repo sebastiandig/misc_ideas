@@ -1363,13 +1363,15 @@ ex2 <-
 # ============================================================================ #
 
 # ============================================================================ #
-# ---- Convert .Rmd or Qmd to .R file to use `prefixer::count_calls` ----
+# ---- `prefixer::count_calls`: Convert .Rmd or Qmd to .R file to use ----
 # ============================================================================ #
 # Jul 11, 2024
 
 # from <https://stackoverflow.com/questions/71183578/how-to-extract-all-code-from-an-rmarkdown-rmd-file>
+# checks the number of function calls and to which packages the functions are
+# called from
 
-# convert a `.Rmd` or `.qmd` file to `.R`
+# ---- convert a `.Rmd` or `.qmd` file to `.R`
 # *** NOTE: all chunks need to be uniquely named or blank ***
 
 # knitr::purl(
@@ -1377,7 +1379,8 @@ ex2 <-
 #   output        = "<output file name>.R", 
 #   documentation = 0)
 
-# then use prefixer::count_calls
+
+# ---- then use prefixer::count_calls
 if (FALSE) {
   # here::here("scripts", "<output file name>.R") |>
   here::here("scripts", "quick_tips.R") |>
