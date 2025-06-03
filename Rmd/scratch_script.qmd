@@ -895,12 +895,158 @@ red   <- test_img2[,,1] * 255
 green <- test_img2[,,2] * 255
 blue  <- test_img2[,,3] * 255
 
+rm(test_img2)
+
 mean(red) 
 mean(green)
 mean(blue)
 
 mean(green) / mean(blue)
 mean(green) / mean(red)
+```
+
+
+```{r planktoscope-wb-cal}
+# planktoscope image
+wb_cal <- function(file, red_wb_og = 2.4,  blue_wb_og = 1.35) {
+
+  test_img2 <- 
+    # rstudioapi::selectFile() %>%
+    jpeg::readJPEG(file)
+  
+  
+  # extract each channel (RGB) and multiply to convert decimal to 0 - 255
+  red   <- test_img2[,,1] * 255 
+  green <- test_img2[,,2] * 255
+  blue  <- test_img2[,,3] * 255
+  
+ 
+  iso <- if_else(str_detect(file, "ISO"),
+          str_extract(file, "ISO_\\d{2,4}"),
+          NA)
+    
+  
+  dat <- data.frame(
+    file       = basename(file),
+    iso        = iso,
+    red_wb_og  = red_wb_og,
+    blue_wb_og = blue_wb_og,
+    r_avg      = mean(red), 
+    g_avg      = mean(green),
+    b_avg      = mean(blue),
+    new_red    = mean(green) / mean(red) * red_wb_og,
+    new_blue   = mean(green) / mean(blue) * blue_wb_og
+  )
+  
+  
+  return(dat)
+}
+file_path <-
+  rstudioapi::selectDirectory() %>%
+  dir_ls(regexp = "\\.jpg", recurse = TRUE) %T>% 
+  print()
+  
+dat_wb <- 
+  file_path %>%
+    map(
+       ~ wb_cal(.x)
+    ) %>%
+  list_rbind() %T>% 
+  print()
+
+
+if (FALSE) {
+  writexl::write_xlsx(
+    dat_wb,
+    here(dirname(file_path[1]), glue("white_balance_cal_{Sys.Date()}.xlsx")),
+    format_headers = FALSE
+  )
+}
+# shell.exec(here(dirname(file_path[1])))
+
+```
+
+original white balance:
+- R: 2.4
+- B: 1.35
+
+mean:
+- R: 235.5043
+- G: 216.2474
+- B: 221.8592
+
+- G/R: 0.9182316
+- G/B: 0.9747056
+
+- G/R * original: 2.203756
+- G/B * original: 1.315853
+
+
+```{r}
+# shelf(phytoclass)
+# Sm
+# Fm
+# simulated_annealing(Sm, Fm, niter = 10)
+bench <- microbenchmark::microbenchmark(
+    times = 10,
+    control = list(order = "inorder"),
+    # check = "equal", # uncomment for equal
+    og = {
+      simulated_annealing(Sm, Fm, niter = 10, verbose = FALSE)
+      }
+    )
+bench
+boxplot(bench)
+
+```
+
+
+# `hasArg`: Check if a non-standard Input Variable is Enter
+
+This is one way to check if an arguemnt is supplied in the `...` where one is
+explicitly expected but not always there.
+
+```{r}
+myFun <- function(x, y, ...) {
+  if (hasArg(z)) {
+    print("Yes, 'z' exists")
+  } else {
+    print("No, 'z' does not exist")
+  }
+}
+
+myFun(x = 3, z = NULL)
+myFun(x = 3)
+
+```
+
+# `cli_process_xx` Test for Message for start, done, and failed!
+
+```{r}
+cli_test <- function() {
+  cli::cli_process_start(
+    "Starting process", 
+    msg_done = "I'm finished!",
+    msg_failed = "Oops, no I failed!")
+  
+  Sys.sleep(2)
+  
+  if (sample(c(0, 1), 1) == 1) {
+    cli::cli_process_done()
+  } else {
+    cli::cli_process_failed()
+  }
+  
+    # ---- end of function cli_test
+}
+
+# failed
+set.seed(1)
+cli_test()
+
+# success
+set.seed(4)
+cli_test()
 
 ```
 
