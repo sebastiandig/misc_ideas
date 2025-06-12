@@ -1,0 +1,242 @@
+---
+title: "Plot Environmental Data"
+author: "Sebastian Di Geronimo"
+date: 2025-05-23
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+## 2.2 Load Dataset
+
+```{r load-data}
+file_path <- rstudioapi::selectFile()
+file_path <- here("~/Box/mbon_imars_cruises/noaa_nutrients/WSMasterSampleLog(Updated 12-11-24).xlsx")
+
+dat_env <- readxl::read_excel(file_path, guess_max = 10000, na = c("", "NA")) %>%
+  janitor::clean_names()
+
+names(dat_env)
+```
+
+
+
+```{r}
+dat_env_sel <- 
+  dat_env %>%
+  filter(
+    str_detect(station, "MR|LK|WS"),
+    between(
+      date_gmt,
+      min(zoo_data$date) - days(1),
+      max(zoo_data$date) + days(1)
+    )
+  ) %>%
+    mutate(
+    station = str_replace(station, "21LK", "LK"),
+    date2 = case_when(
+      station == "MR" & date_gmt == as_date("2017-10-10") ~ as_date("2017-10-09"),
+      .default = date_gmt
+    )
+  ) %>%
+  select(
+    cruise,
+    date_gmt,
+    date2,
+    station,
+    depth,
+    temperature,
+    salinity,
+    avg_chl_a_ug_l,
+    avg_phaeophytin_ug_l,
+    nh4_u_m,
+    po4_u_m,
+    no3_no2_u_m,
+    no3_u_m,
+    no2_u_m,
+    si_u_m,
+  ) %>%
+  mutate(
+    depth = as.numeric(depth)
+  ) %>% 
+  hablar::retype() %T>% 
+  print()
+
+dat_env_sel %>%
+  filter(str_detect(station, "MR|LK|WS"), depth < 5) %>%
+  filter(str_detect(station, "WS")) %>%
+  # distinct(depth) 
+  ggplot(
+    aes(date_gmt, nh4_u_m)
+  ) +
+  geom_line() +
+  geom_point()
+  
+unique(dat_env_sel$depth) %>%
+  as.numeric()
+```
+
+[21] "nh4_u_m,                                                
+[22] "po4_u_m,                                                
+[23] "no3_no2_u_m,                                            
+[24] "no3_u_m,                                                
+[25] "no2_u_m,                                                
+[26] "si_u_m, 
+
+
+# 3.0 Load Zoo data
+
+```{r}
+zoo_data <-
+  here("E:/", "seus-mbon-zooplankton-microscopy_local", "data", "zoo_wide.csv") %>%
+  read_csv(show_col_types = FALSE) %T>% 
+  print()
+
+```
+
+MR Oct 9 2017 should be Oct 10 2017
+
+```{r}
+zoo_dat_filt <- 
+  zoo_data %>%
+  filter(mesh != 64) %>%
+  select(site, date, mesh) %>%
+  mutate(zoo = 1)
+
+
+# join zoo and surface env
+zoo_env_join <-
+  left_join(
+    zoo_dat_filt,
+    
+    # filter for surface only
+    filter(dat_env_sel, depth < 4.5),
+    by = c("site" = "station", "date" = "date2")
+  ) %>%
+  select(-mesh, -zoo, -date_gmt) %>%
+  distinct() %T>% 
+  print()
+
+
+# average depth for each station
+env_avg <- 
+  dat_env_sel %>%
+  summarise(
+    .by = c(cruise, date_gmt, date2, station),
+    across(
+      is.numeric,
+      list(
+        mean = \(.x) { mean(.x, na.rm = TRUE)},
+        sd = \(.x) { sd(.x, na.rm = TRUE)}
+      )
+    )
+  ) %>%
+  select(-contains("depth")) %T>% 
+  print()
+
+# join zoo and avg env (surf and bot if available)
+zoo_env_avg_join <-
+  left_join(
+    zoo_dat_filt,
+    env_avg,
+    by = c("site" = "station", "date" = "date2")
+  ) %>%
+  select(-mesh, -zoo, -date_gmt) %>%
+  mutate(across(is.numeric, ~ na_if(.x, NaN)))  %>%
+  distinct() %T>%
+  print()
+
+
+
+```
+
+# 4.0 Save File
+
+```{r save-file}
+if (file_exists(here("data", "processed", "env_join_zoo.csv"))) {
+  cli::cli_alert_warning("File exists and is not being created!")
+} else {
+  cli::cli_alert_info("File does not exists and is being created!")
+  write_csv(
+    x = zoo_env_join,
+    file = here("data", "processed", "env_join_zoo.csv"),
+    na = ""
+  )
+}
+
+if (file_exists(here("data", "processed", "avg_env_join_zoo.csv"))) {
+  cli::cli_alert_warning("File exists and is not being created!")
+} else {
+  cli::cli_alert_info("File does not exists and is being created!")
+  write_csv(
+    x = zoo_env_avg_join,
+    file = here("data", "processed", "avg_env_join_zoo.csv"),
+    na = ""
+  )
+}
+```
+# Depth integrated Chlorophyll-a
+
+```{r depth-integration}
+# Example data
+depths <- c(0, 5, 10, 20)         # meters
+chl <- c(2.1, 1.7, 0.9, 0.5)      # mg/m^3
+
+# Calculate integrated chlorophyll-a (mg/m^2)
+integrated_chl <- sum(diff(depths) * (head(chl, -1) + tail(chl, -1)) / 2)
+integrated_chl
+
+integrated_chl2 <- pracma::trapz(depths, chl)
+integrated_chl2
+
+# Example data: 3 profiles, 4 depths each
+depths <- c(0, 5, 10, 20)
+chl_profiles <- list(
+  c(2.1, 1.7, 0.9, 0.5),   # Profile 1
+  c(2.3, 1.8, 1.0, 0.4),   # Profile 2
+  c(2.0, 1.6, 0.8, 0.6)    # Profile 3
+)
+
+# Calculate integrated biomass for each profile
+integrated <- sapply(chl_profiles, function(chl) {
+  sum(diff(depths) * (head(chl, -1) + tail(chl, -1)) / 2)
+})
+
+# Compute average and standard deviation
+mean_integrated <- mean(integrated)
+sd_integrated   <- sd(integrated)
+
+mean_integrated  # Average integrated chlorophyll-a (mg/m^2)
+sd_integrated    # Standard deviation (mg/m^2)
+
+```
+
