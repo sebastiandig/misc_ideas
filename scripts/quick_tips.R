@@ -1432,3 +1432,45 @@ if (FALSE) {
 }
 
 # ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Geometric Mean and Standard Deviation ----
+# ============================================================================ #
+# Jun 18, 2025
+# Geometric Mean: prod(values)^(1/N) or exp(mean(log(x)))
+# Geometric Standard Deviation: exp(sd(log(x)))
+# Useful when data is postively skewed and values > 0
+# NOTE: add small number if have 0s (i.e. values + 0.00001) before calculating
+
+values <- mtcars$mpg
+
+# arithmetic
+arth <- data.frame(
+"am"   = mean(values), # mean
+"asd"  = sd(values),   # standard deviation
+"sd_l" = am - asd,
+"sd_h" = am + asd,
+"ci_l" = am - 1.96 * asd, #/ sqrt(length(values)), # confidence interval
+"ci_h" = am + 1.96 * asd #/ sqrt(length(values))  # confidence interval
+) |> 
+  t()
+
+# geometric
+geo <- data.frame(
+"gm"    = exp(mean(log(values))), # mean
+"gsd"   = exp(sd(log(values))),   # standard deviation
+"gsd_l" = gm * gsd^-1,
+"gsd_h" = gm * gsd^1,
+"ci_l"  = gm * gsd^-1.96, # confidence interval
+"ci_h"  = gm * gsd^1.96   # confidence interval
+) |> 
+  t() 
+
+cbind(
+  data.frame("arithmetric" = rownames(arth), arth, row.names = NULL), 
+  data.frame("geometric" = rownames(geo), geo,  row.names = NULL)
+  )
+
+
+# ============================================================================ #
