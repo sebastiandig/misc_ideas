@@ -133,7 +133,7 @@ ssh_grid <-
     adt     = as.vector(adt),       # absolute dynamic topography
     vgos    = as.vector(vgos),      # north geostrophic velocity
     ugos    = as.vector(ugos),      # east geostrophic velocity
-    vel_mag = sqrt(vgos^2 + ugos^2) # velocity magnitude
+    vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
   ) %T>%
   print()
 
