@@ -22,3 +22,24 @@ packes_no  <- packes_has[packes_has$has == FALSE,]
 install.packages(packes_no[,1])
 
 print(is_inst(packes))
+
+# check if same packages installed in 4.1 and 4.2
+# v41 <- 
+#   here::here("C:/", "Users", "spd19", "Documents", "R", "win-library", "4.1") |> 
+#   fs::dir_ls() |>
+#   basename() |>
+#   tibble::tibble(package = _) |>
+#   dplyr::mutate(old = "4.1")
+# 
+# v42 <- 
+# here::here("C:/", "Users", "spd19", "AppData", "Local", "R", "win-library", "4.2") |> 
+#   fs::dir_ls() |>
+#   basename() |>
+#   tibble::tibble(package = _) |>
+#   dplyr::mutate(new = "4.2")
+# 
+# dplyr::left_join(
+#   v42, v41
+# ) |> View()
+# 
+# (Sys.getenv("PATH") |> stringr::str_split(";"))[[1]]  |> cat(sep = "\n")
