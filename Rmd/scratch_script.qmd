@@ -1050,3 +1050,39 @@ cli_test()
 
 ```
 
+
+
+# Open Arc GIS `.lpk` File
+Help: <https://gis.stackexchange.com/questions/34310/opening-lyr-file-via-rgdal-ogr>
+
+```{r}
+shelf(sf)
+
+dir_path <- rstudioapi::selectDirectory()
+
+dir_path <-
+  here( "E:/", "Final_UnifiedReefMap_Version2.2", 
+        "FWC_UnifiedFloridaReefMap_v2.2.gdb")  %T>% 
+  print() 
+
+layers <-
+  st_layers(dir_path) %T>% 
+  print()
+
+test_gdb <-
+  dir_path[1] %>%
+  sf::read_sf()
+
+test_gdb2 <-
+  dir_path %>%
+  sf::st_read(layer = "UnifiedReefMap_Archive_v20")
+
+test_gdb2 
+test_gdb2$GeoformDet
+
+
+ggplot(test_gdb2) +
+  geom_sf(aes(fill = GeoformDet))
+
+```
+
