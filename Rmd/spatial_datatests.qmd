@@ -84,5 +84,99 @@ test
 names(test)
 plot(test[2])
 ```
+# AVISO+ Sea Surface Height and Velocity
 
+Data downloaded from `Copernicus` for both absolute dynamic topography (m) and
+north/east surface velocities (m/s)
+
+Data:       Global Ocean Gridded L4 Sea Surface Heights And Derived Variables
+Search:     <https://data.marine.copernicus.eu/products>
+Product ID: `SEALEVEL_GLO_PHY_L4_MY_008_047`
+Bounds:     
+  Lon: -83.8125, -78.3125  
+  Lat:  22.8125,  26.4375
+Note: Select all data products when downloading
+
+Data Info:
+<https://documentation.marine.copernicus.eu/PUM/CMEMS-SL-PUM-008-032-068.pdf>
+
+
+Velocites extraction inspired from:
+<https://help.marine.copernicus.eu/en/articles/9711615-how-to-plot-current-vectors-using-r>
+
+
+```{r aviso-data}
+shelf(sf, ncdf4, stars)
+
+# path to data
+ssh_path <- 
+  here::here("data", "raw") %>%
+  dir_ls(regexp = "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs") 
+
+# open data and extract variables
+ssh_nc   <- nc_open(ssh_path)
+
+attributes(ssh_nc$var) # show vars names
+
+adt  <- ncdf4::ncvar_get(ssh_nc, "adt")
+vgos <- ncdf4::ncvar_get(ssh_nc, "vgos")
+ugos <- ncdf4::ncvar_get(ssh_nc, "ugos")
+lat  <- ncdf4::ncvar_get(ssh_nc, "latitude")
+lon  <- ncdf4::ncvar_get(ssh_nc, "longitude")
+
+nc_close(ssh_nc)
+
+# create grid data
+ssh_grid <- 
+  expand.grid(lon = lon, lat = lat) %>%
+  mutate(
+    adt     = as.vector(adt),       # absolute dynamic topography
+    vgos    = as.vector(vgos),      # north geostrophic velocity
+    ugos    = as.vector(ugos),      # east geostrophic velocity
+    vel_mag = sqrt(vgos^2 + ugos^2) # velocity magnitude
+  ) %T>%
+  print()
+
+# load coastline
+coast <-
+  rnaturalearth::ne_coastline(10, returnclass = "sf") %>%
+  st_crop(
+    xmin = min(ssh_grid$lon),
+    ymin = min(ssh_grid$lat),
+    xmax = max(ssh_grid$lon),
+    ymax = max(ssh_grid$lat)
+  )
+
+# number of rows to skip in ssh_grid for vectors and length of magnitude division
+slice_by      <- 5
+length_divide <- 2
+
+# plot absolute dynamic topography and velocities
+ggplot() +
+  geom_tile(data = ssh_grid, aes(x = lon, y = lat, fill = adt)) +
+  geom_sf(data = coast) +
+  scale_fill_viridis_b() +
+  coord_sf(expand = FALSE) +
+  labs(
+    fill  = "ADT",
+    color = expression( Vel~(m~s^-2) ),
+    x     = NULL,
+    y     = NULL
+  ) +
+  geom_segment(
+    data = slice(ssh_grid, seq(1, n(), by = slice_by)),
+    aes(
+      x     = lon, 
+      xend  = lon + ugos/length_divide, 
+      y     = lat, 
+      yend  = lat + vgos/length_divide, 
+      color = vel_mag
+      ),
+    arrow     = arrow(length = unit(0.15, "cm")), # adjust arrow size
+    linewidth = 0.5,                              # adjust arrow thickness
+    na.rm     = TRUE
+  ) +
+  scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
+  theme_bw()
+```
 
