@@ -78,9 +78,11 @@ world_download <- function(
     ))
   } else {
     
+    # add suffix to etopo file based on spatial extent
     if (!is.null(use_suffix) 
         & isTRUE(str_detect(use_suffix, "(?i)extent"))
-        & (!is.null(extent) | length(extent) != 4)) {
+        & (!is.null(extent) | length(extent) != 4)
+        ) {
       file_suffix <- 
         extent %>%
         tibble(extent = .) %>%
@@ -98,6 +100,7 @@ world_download <- function(
         str_replace_all("(^|\\.)", "_") 
     }
     
+    # create file name for etopo file
     topo_file <- here(
       path_topo,
       glue("etopo1{file_suffix}.nc",
@@ -105,6 +108,7 @@ world_download <- function(
       )
     )
     
+    # download etopo
     if (file.exists(topo_file)) {
       # ---- skip if topography file exists
       cli_alert_info(c(
@@ -219,7 +223,7 @@ world_download <- function(
   } 
   
   return(invisible(NULL))
-  # ---- End of `world_download` Function ----
+  # ---- End of `world_download` Function ---- #
 }
 
 ##%######################################################%##
@@ -266,6 +270,8 @@ load_map_obj <- function(
   library("terra")
   library("fs")
   library("cli")
+  library("metR")
+  library("rlang")
   
   
   # fixes issue with reading raster file using decimal degrees
@@ -381,7 +387,7 @@ load_map_obj <- function(
       bathy      = bathy
     )
   )
-  # ---- End of `load_map_obj` Function ----
+  # ---- End of `load_map_obj` Function ---- #
 }
 
 
