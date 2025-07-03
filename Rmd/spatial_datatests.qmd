@@ -92,10 +92,15 @@ north/east surface velocities (m/s)
 Data:       Global Ocean Gridded L4 Sea Surface Heights And Derived Variables
 Search:     <https://data.marine.copernicus.eu/products>
 Product ID: `SEALEVEL_GLO_PHY_L4_MY_008_047`
+Dataset ID: `cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D`
+Description: <https://data.marine.copernicus.eu/product/SEALEVEL_GLO_PHY_L4_MY_008_047/description>
 Bounds:     
   Lon: -83.8125, -78.3125  
   Lat:  22.8125,  26.4375
-Note: Select all data products when downloading
+Note: Select all data products when downloading from `MyOceanPro`
+      If downloading from `description` page, go to `Data access` then `subset`, 
+      then `automate`. Copy the `automate` and modify script below to download
+      multiple dates.
 
 Data Info:
 <https://documentation.marine.copernicus.eu/PUM/CMEMS-SL-PUM-008-032-068.pdf>
@@ -104,25 +109,33 @@ Data Info:
 Velocites extraction inspired from:
 <https://help.marine.copernicus.eu/en/articles/9711615-how-to-plot-current-vectors-using-r>
 
-
-```{r aviso-data}
+## Load Packages
+```{r aviso-libs}
 shelf(sf, ncdf4, stars)
+```
 
+## Load Data
+```{r aviso-data}
 # path to data
 ssh_path <- 
   here::here("data", "raw") %>%
   dir_ls(regexp = "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs") 
 
+ssh_path <-
+  here::here("data", "raw") %>%
+  rstudioapi::selectFile(path = .)
+
 # open data and extract variables
 ssh_nc   <- nc_open(ssh_path)
 
 attributes(ssh_nc$var) # show vars names
+attributes(ssh_nc$dim) # show vars names
 
-adt  <- ncdf4::ncvar_get(ssh_nc, "adt")
-vgos <- ncdf4::ncvar_get(ssh_nc, "vgos")
-ugos <- ncdf4::ncvar_get(ssh_nc, "ugos")
-lat  <- ncdf4::ncvar_get(ssh_nc, "latitude")
-lon  <- ncdf4::ncvar_get(ssh_nc, "longitude")
+adt  <- ncvar_get(ssh_nc, "adt")
+vgos <- ncvar_get(ssh_nc, "vgos")
+ugos <- ncvar_get(ssh_nc, "ugos")
+lat  <- ncvar_get(ssh_nc, "latitude")
+lon  <- ncvar_get(ssh_nc, "longitude")
 
 nc_close(ssh_nc)
 
@@ -146,9 +159,12 @@ coast <-
     xmax = max(ssh_grid$lon),
     ymax = max(ssh_grid$lat)
   )
+```
 
+## Plot Data
+```{r aviso-plot}
 # number of rows to skip in ssh_grid for vectors and length of magnitude division
-slice_by      <- 5
+slice_by      <- 10
 length_divide <- 2
 
 # plot absolute dynamic topography and velocities
@@ -156,7 +172,10 @@ ggplot() +
   geom_tile(data = ssh_grid, aes(x = lon, y = lat, fill = adt)) +
   geom_sf(data = coast) +
   scale_fill_viridis_b() +
-  coord_sf(expand = FALSE) +
+  coord_sf(expand = FALSE, 
+           ylim = c(min(ssh_grid$lat), max(ssh_grid$lat)),
+           xlim = c(min(ssh_grid$lon), max(ssh_grid$lon))
+           ) +
   labs(
     fill  = "ADT",
     color = expression( Vel~(m~s^-2) ),
@@ -177,6 +196,130 @@ ggplot() +
     na.rm     = TRUE
   ) +
   scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
-  theme_bw()
+  theme_bw() +
+  facet_wrap(~ date, ncol = 2)
+```
+
+## Load Muliple Dates
+
+If there are multiple time dimensions, will load each date into its own list
+
+```{r load-multi}
+# open data and extract variables
+ssh_nc   <- nc_open(ssh_path)
+
+attributes(ssh_nc$var) # show vars names
+attributes(ssh_nc$dim) # show vars names
+
+# determine number of time dimensions
+nc_len   <- ssh_nc$dim$time$len
+dat_grid <- vector("list", nc_len)
+
+nc_date <- as_date(ssh_nc$dim$time$vals, origin = as_date(ssh_nc$dim$time$units))
+
+for (i in seq(nc_len)) {
+  # extract variables
+  adt  <- ncvar_get(ssh_nc, "adt")[, , i]
+  vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
+  ugos <- ncvar_get(ssh_nc, "ugos")[, , i]
+  lat  <- ncvar_get(ssh_nc, "latitude")
+  lon  <- ncvar_get(ssh_nc, "longitude")
+  
+  # create grid data
+  ssh_grid <-
+    expand.grid(lon = lon, lat = lat) %>%
+    mutate(
+      adt     = as.vector(adt),       # absolute dynamic topography
+      vgos    = as.vector(vgos),      # north geostrophic velocity
+      ugos    = as.vector(ugos),      # east geostrophic velocity
+      vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
+    ) 
+  
+  dat_grid[[i]] <- ssh_grid
+}
+
+# set list names to date
+names(dat_grid) <- nc_date
+
+# close `.nc` file
+nc_close(ssh_nc)
+
+dat_grid
+
+# convert to tibble
+# dat_grid %>%
+#   list_rbind(names_to = "date") %>%
+#   nest(.by = date)
+```
+
+
+
+## Download from `copernicusmarine.exe` File
+
+To start, open `cmd` or `PowerShell` from explorer. `cd` to location where `.exe`
+is located. Then run `copernicusmarine login` and enter "Username" and
+"Password". Once completed, you should be able to run the download
+
+
+```{r download-aviso}
+# set date range
+date_range <-
+  c(
+    start = "2019-09-06",
+    end   = "2019-09-08"
+  ) %>%
+  as_datetime() %>%
+  lubridate::format_ISO8601()
+
+# set spatial extent
+ssh_bbox <-
+  c(
+    xmin = -83.8125,
+    xmax = -78.3125,
+    ymin = 22.8125,
+    ymax = 26.4375
+  )
+
+# select vars
+vars <-
+  c(
+    "adt",
+    "err_sla",
+    "err_ugosa",
+    "err_vgosa",
+    "flag_ice",
+    "sla",
+    "tpa_correction",
+    "ugos",
+    "ugosa",
+    "vgos",
+    "vgosa"
+  )
+
+# set up command to download
+command <-
+  paste(
+    shQuote(path_copernicusmarine),
+    "subset",
+    "--dataset-id cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
+    paste("--variable", vars, collapse = " "),
+    "--start-datetime",    date_range[1],
+    "--end-datetime",      date_range[2],
+    "--minimum-longitude", ssh_bbox["xmin"],
+    "--maximum-longitude", ssh_bbox["xmax"],
+    "--minimum-latitude",  ssh_bbox["ymin"],
+    "--maximum-latitude",  ssh_bbox["ymax"],
+    "-o", path_save
+  )
+
+if (FALSE) {
+  message("Downloading AVISO+ Date")
+
+  # execute command to download files
+  system(command)
+} else {
+  message("Not downloading AVISO+ data")
+}
+
 ```
 
