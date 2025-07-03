@@ -114,16 +114,15 @@ Velocites extraction inspired from:
 shelf(sf, ncdf4, stars)
 ```
 
+
 ## Load Data
+
+
 ```{r aviso-data}
 # path to data
 ssh_path <- 
   here::here("data", "raw") %>%
   dir_ls(regexp = "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs") 
-
-ssh_path <-
-  here::here("data", "raw") %>%
-  rstudioapi::selectFile(path = .)
 
 # open data and extract variables
 ssh_nc   <- nc_open(ssh_path)
@@ -162,6 +161,7 @@ coast <-
 ```
 
 ## Plot Data
+
 ```{r aviso-plot}
 # number of rows to skip in ssh_grid for vectors and length of magnitude division
 slice_by      <- 10
@@ -198,6 +198,8 @@ ggplot() +
   scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
   theme_bw() +
   facet_wrap(~ date, ncol = 2)
+
+
 ```
 
 ## Load Muliple Dates
@@ -205,6 +207,10 @@ ggplot() +
 If there are multiple time dimensions, will load each date into its own list
 
 ```{r load-multi}
+ssh_path <-
+  here::here("data", "raw") %>%
+  rstudioapi::selectFile(path = .)
+
 # open data and extract variables
 ssh_nc   <- nc_open(ssh_path)
 
@@ -215,7 +221,8 @@ attributes(ssh_nc$dim) # show vars names
 nc_len   <- ssh_nc$dim$time$len
 dat_grid <- vector("list", nc_len)
 
-nc_date <- as_date(ssh_nc$dim$time$vals, origin = as_date(ssh_nc$dim$time$units))
+# extract dates
+nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
 
 for (i in seq(nc_len)) {
   # extract variables
@@ -322,4 +329,5 @@ if (FALSE) {
 }
 
 ```
+
 
