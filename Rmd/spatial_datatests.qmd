@@ -111,11 +111,92 @@ Velocites extraction inspired from:
 
 ## Load Packages
 ```{r aviso-libs}
-shelf(sf, ncdf4, stars)
+shelf(sf, ncdf4, stars, terra)
+```
+## Download Data from `Copernicusmarine` using `copernicusmarine.exe` File
+
+From: <https://help.marine.copernicus.eu/en/articles/10750437-copernicus-marine-toolbox-executable-no-installation>
+
+I recommend moving the file to this directory where this project is stored
+
+To start, open `cmd` or `PowerShell` from explorer. `cd` to location where `.exe`
+is located. Then run `copernicusmarine login` and enter "Username" and
+"Password". Once completed, you should be able to run the download
+
+
+```{r download-aviso}
+# set to TRUE if downloading data
+download <- FALSE
+# download <- TRUE
+
+# path to executeable and path to save data
+path_copernicusmarine <- here("copernicusmarine.exe")
+path_save <- here("data", "raw", "copernicus")
+
+dir_create(path_save)
+
+# set date range
+date_range <-
+  c(
+    start = "2019-09-06",
+    end   = "2019-09-06"
+  ) %>%
+  as_datetime() %>%
+  lubridate::format_ISO8601()
+
+# set spatial extent
+ssh_bbox <-
+  c(
+    xmin = -83.8125,
+    xmax = -78.3125,
+    ymin = 22.8125,
+    ymax = 26.4375
+  )
+
+# select vars
+vars <-
+  c(
+    "adt",
+    "err_sla",
+    "err_ugosa",
+    "err_vgosa",
+    "flag_ice",
+    "sla",
+    "tpa_correction",
+    "ugos",
+    "ugosa",
+    "vgos",
+    "vgosa"
+  )
+
+# set up command to download
+command <-
+  paste(
+    shQuote(path_copernicusmarine),
+    "subset",
+    "--dataset-id cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
+    paste("--variable", vars, collapse = " "),
+    "--start-datetime",    date_range[1],
+    "--end-datetime",      date_range[2],
+    "--minimum-longitude", ssh_bbox["xmin"],
+    "--maximum-longitude", ssh_bbox["xmax"],
+    "--minimum-latitude",  ssh_bbox["ymin"],
+    "--maximum-latitude",  ssh_bbox["ymax"],
+    "-o", path_save
+  )
+
+if (download) {
+  message("Downloading AVISO+ Date")
+
+  # execute command to download files
+  system(command)
+} else {
+  message("Not downloading AVISO+ data")
+}
+
 ```
 
-
-## Load Data
+## Load One Image Data
 
 
 ```{r aviso-data}
@@ -178,7 +259,7 @@ plt <- ggplot() +
            ) +
   labs(
     fill  = "ADT",
-    color = expression( Vel~(m~s^-2) ),
+    color = expression(Vel~(m~s^-1)),
     x     = NULL,
     y     = NULL
   ) +
@@ -201,7 +282,8 @@ plt <- ggplot() +
 
 
 if (any(str_detect(colnames(ssh_grid), "date"))) {
-  plt +
+  plt <- 
+    plt +
     facet_wrap(~date, ncol = 2)
 }
 
@@ -260,7 +342,7 @@ nc_close(ssh_nc)
 dat_grid
 
 # convert to tibble
-ssh_grid <- 
+ssh_grid_multi <- 
   dat_grid %>%
   list_rbind(names_to = "date") #%>%
   # nest(.by = date)
@@ -268,114 +350,59 @@ ssh_grid <-
 
 
 
-## Download from `copernicusmarine.exe` File
-
-To start, open `cmd` or `PowerShell` from explorer. `cd` to location where `.exe`
-is located. Then run `copernicusmarine login` and enter "Username" and
-"Password". Once completed, you should be able to run the download
-
-
-```{r download-aviso}
-# set date range
-date_range <-
-  c(
-    start = "2019-09-06",
-    end   = "2019-09-08"
-  ) %>%
-  as_datetime() %>%
-  lubridate::format_ISO8601()
-
-# set spatial extent
-ssh_bbox <-
-  c(
-    xmin = -83.8125,
-    xmax = -78.3125,
-    ymin = 22.8125,
-    ymax = 26.4375
-  )
-
-# select vars
-vars <-
-  c(
-    "adt",
-    "err_sla",
-    "err_ugosa",
-    "err_vgosa",
-    "flag_ice",
-    "sla",
-    "tpa_correction",
-    "ugos",
-    "ugosa",
-    "vgos",
-    "vgosa"
-  )
-
-# set up command to download
-command <-
-  paste(
-    shQuote(path_copernicusmarine),
-    "subset",
-    "--dataset-id cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
-    paste("--variable", vars, collapse = " "),
-    "--start-datetime",    date_range[1],
-    "--end-datetime",      date_range[2],
-    "--minimum-longitude", ssh_bbox["xmin"],
-    "--maximum-longitude", ssh_bbox["xmax"],
-    "--minimum-latitude",  ssh_bbox["ymin"],
-    "--maximum-latitude",  ssh_bbox["ymax"],
-    "-o", path_save
-  )
-
-if (FALSE) {
-  message("Downloading AVISO+ Date")
-
-  # execute command to download files
-  system(command)
-} else {
-  message("Not downloading AVISO+ data")
-}
-
-```
 ```{r}
-polyline <- 
-  (mapview::mapView(rssh_grid_rast, layer = "adt") + 
-   mapview::mapview(coast)
-   ) %>%
-  mapedit::editMap()
-```
-
-
-```{r}
-shelf(terra)
 rssh_grid_rast <- 
   # ssh_grid %>%
   dat_grid[[3]] %>%
   terra::rast(crs = "EPSG:4326") 
 
+polyline <- 
+  (mapview::mapView(rssh_grid_rast, layer = "adt") + 
+   mapview::mapview(coast)
+   ) %>%
+  mapedit::editMap()
+
+linestring <- polyline$finished
+```
+
+
+```{r}
 rssh_grid_rast 
 
-polyline$finished
-
 plt +
-  geom_sf(data = polyline$finished, color = "red")
+  geom_sf(data = linestring, color = "red")
 
-vel_extract <- terra::extract(rssh_grid_rast, polyline$finished, xy = TRUE)
+vel_extract <- terra::extract(rssh_grid_rast, linestring, xy = TRUE)
 
 
 plt +
-  geom_sf(data = polyline$finished, color = "red") +
+  geom_sf(data = linestring, color = "red") +
   geom_point(data = vel_extract, aes(x = x,  y = y), color = "blue") +
   geom_point(data = filter(vel_extract, vel_mag >= 0.5), aes(x = x,  y = y), color = "green")
 
 vel_extract %>%
-  
-ggplot(aes(x = -y, y = vel_mag)) +
+  ggplot(aes(x = -y, y = vel_mag, color = as.factor(ID))) +
   geom_hline(yintercept = 0.5, color = "red") +
   geom_path()
 
+vel_extract %>%
+  mutate(
+    .by = ID,
+    lagx = first(x), 
+    lagy = first(y)
+    ) %>%
+  rowwise() %>%
+  mutate(dist = geosphere::distGeo(c(lagx, lagy), c(x, y)) / 1000) %>%
+  ggplot(aes(x = dist, y = vel_mag, color = as.factor(ID))) +
+  geom_hline(yintercept = 0.5, color = "red") +
+  geom_path() +
+  geom_point() +
+  labs(color = "ID", x = NULL, y = expression("Velocity"~(m~s^-1))) +
+  coord_cartesian(expand = FALSE)
+
 polyline_pts <- 
-  polyline$finished %>% 
-  sf::st_coordinates() %>%
+  linestring %>% 
+  st_coordinates() %>%
   as_tibble(.name_repair = janitor::make_clean_names) %>%
   slice_head(by = l1) %T>% 
   print()
@@ -386,8 +413,6 @@ plt +
 
 plt +
   geom_point(data = polyline_pts, aes(x = x, y = y), color = "red") +
-  # geom_sf(data = polyline$finished, color = "red") +
-  # geom_point(data = vel_extract, aes(x = x,  y = y), color = "blue") +
   geom_point(
     data = filter(vel_extract, vel_mag >= 0.5) %>%
            slice_head(by = ID), 
@@ -399,11 +424,11 @@ left_join(
   filter(vel_extract, vel_mag >= 0.5) %>%
     slice_head(by = ID),
   by = c("l1" = "ID")
-) %>%
+  ) %>%
   rowwise() %>%
-  mutate(
-    dist = geosphere::distGeo(c(x.x, y.x), c(x.y, y.y)) / 1000
-  )
+  mutate(dist = geosphere::distGeo(c(x.x, y.x), c(x.y, y.y)) / 1000)
 
 ```
+
+
 
