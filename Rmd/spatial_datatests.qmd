@@ -168,7 +168,7 @@ slice_by      <- 10
 length_divide <- 2
 
 # plot absolute dynamic topography and velocities
-ggplot() +
+plt <- ggplot() +
   geom_tile(data = ssh_grid, aes(x = lon, y = lat, fill = adt)) +
   geom_sf(data = coast) +
   scale_fill_viridis_b() +
@@ -196,10 +196,16 @@ ggplot() +
     na.rm     = TRUE
   ) +
   scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
-  theme_bw() +
-  facet_wrap(~ date, ncol = 2)
+  theme_bw() 
 
 
+
+if (any(str_detect(colnames(ssh_grid), "date"))) {
+  plt +
+    facet_wrap(~date, ncol = 2)
+}
+
+plt
 ```
 
 ## Load Muliple Dates
@@ -254,9 +260,10 @@ nc_close(ssh_nc)
 dat_grid
 
 # convert to tibble
-# dat_grid %>%
-#   list_rbind(names_to = "date") %>%
-#   nest(.by = date)
+ssh_grid <- 
+  dat_grid %>%
+  list_rbind(names_to = "date") #%>%
+  # nest(.by = date)
 ```
 
 
@@ -329,5 +336,74 @@ if (FALSE) {
 }
 
 ```
+```{r}
+polyline <- 
+  (mapview::mapView(rssh_grid_rast, layer = "adt") + 
+   mapview::mapview(coast)
+   ) %>%
+  mapedit::editMap()
+```
 
+
+```{r}
+shelf(terra)
+rssh_grid_rast <- 
+  # ssh_grid %>%
+  dat_grid[[3]] %>%
+  terra::rast(crs = "EPSG:4326") 
+
+rssh_grid_rast 
+
+polyline$finished
+
+plt +
+  geom_sf(data = polyline$finished, color = "red")
+
+vel_extract <- terra::extract(rssh_grid_rast, polyline$finished, xy = TRUE)
+
+
+plt +
+  geom_sf(data = polyline$finished, color = "red") +
+  geom_point(data = vel_extract, aes(x = x,  y = y), color = "blue") +
+  geom_point(data = filter(vel_extract, vel_mag >= 0.5), aes(x = x,  y = y), color = "green")
+
+vel_extract %>%
+  
+ggplot(aes(x = -y, y = vel_mag)) +
+  geom_hline(yintercept = 0.5, color = "red") +
+  geom_path()
+
+polyline_pts <- 
+  polyline$finished %>% 
+  sf::st_coordinates() %>%
+  as_tibble(.name_repair = janitor::make_clean_names) %>%
+  slice_head(by = l1) %T>% 
+  print()
+  
+plt +
+  geom_point(data = polyline_pts, aes(x = x, y = y), color = "red")
+
+
+plt +
+  geom_point(data = polyline_pts, aes(x = x, y = y), color = "red") +
+  # geom_sf(data = polyline$finished, color = "red") +
+  # geom_point(data = vel_extract, aes(x = x,  y = y), color = "blue") +
+  geom_point(
+    data = filter(vel_extract, vel_mag >= 0.5) %>%
+           slice_head(by = ID), 
+    aes(x = x,  y = y), color = "green")
+
+
+left_join(
+  polyline_pts,
+  filter(vel_extract, vel_mag >= 0.5) %>%
+    slice_head(by = ID),
+  by = c("l1" = "ID")
+) %>%
+  rowwise() %>%
+  mutate(
+    dist = geosphere::distGeo(c(x.x, y.x), c(x.y, y.y)) / 1000
+  )
+
+```
 
