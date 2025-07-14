@@ -157,7 +157,7 @@ overwrite <- FALSE
 month_list <- vector("list", length(months))
 names(month_list) <- format(months, "%B_%Y")
 
-for (i in seq(length(months[1:4]))) {
+for (i in seq(length(months))) {
   date_i <- months[i]
   date_range <- c(date_i, date_i + months(1) - days(1))
   
