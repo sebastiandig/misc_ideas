@@ -342,18 +342,18 @@ nc_close(ssh_nc)
 dat_grid
 
 # convert to tibble
-ssh_grid_multi <- 
+ssh_grid_tibble <-
+# ssh_grid <- 
   dat_grid %>%
-  list_rbind(names_to = "date") #%>%
-  # nest(.by = date)
+  list_rbind(names_to = "date") 
 ```
+
 
 
 
 ```{r}
 rssh_grid_rast <- 
-  # ssh_grid %>%
-  dat_grid[[3]] %>%
+  ssh_grid %>%
   terra::rast(crs = "EPSG:4326") 
 
 transect_file <- here(path_save, "transects.shp")
@@ -409,7 +409,7 @@ vel_extract %>%
     lagy = first(y)
     ) %>%
   rowwise() %>%
-  mutate(dist = geosphere::distGeo(c(lagx, lagy), c(x, y)) / 1000) %>%
+  mutate(dist = geodist::geodist_vec(lagx, lagy, x, y, measure = "geodesic") / 1000) %>%
   ggplot(aes(x = dist, y = vel_mag, color = as.factor(ID))) +
   geom_hline(yintercept = 0.5, color = "red") +
   geom_path() +
@@ -427,7 +427,6 @@ polyline_pts <-
 
 plt +
   geom_sf(data = linestring, color = "red", alpha = 0.5, linetype = "dashed") +
-  geom_segment()
   geom_point(data = polyline_pts, aes(x = x, y = y), color = "red") +
   geom_point(
     data = filter(vel_extract, vel_mag >= 0.5) %>%
@@ -456,3 +455,147 @@ left_join(
 
 
 
+```{r}
+# create multiday raster
+vector("list", length(nc_date))
+
+multi_rast <- list(
+  rast(dat_grid[[1]], crs = "EPSG:4326"),
+  rast(dat_grid[[2]], crs = "EPSG:4326"),
+  rast(dat_grid[[3]], crs = "EPSG:4326") 
+) %>%
+  rast()
+
+multi_rast <- 
+  unname(dat_grid) %>%
+  lapply(.,\(.x) rast(.x, crs = "EPSG:4326")) %>%
+  rast()
+plot(multi_rast)
+all.equal(multi_rast, multi_rast2)
+
+```
+
+
+```{r}
+multi_rast %>%
+  ggplot() + 
+  tidyterra::geom_spatraster() +
+  facet_wrap(~lyr)
+  plot(y = "adt")
+
+n_layers <- nlyr(multi_rast) / length(nc_date)
+  
+terra::plot
+(dat_grid[[3]])
+test <- rast(dat_grid[[3]], crs = "EPSG:4326") 
+
+time(test) <- rep(as_date(names(dat_grid)[[3]]), nlyr(test))
+
+time(multi_rast) <-
+  c(
+    rep(as_date(names(dat_grid)[[1]]), n_layers),
+    rep(as_date(names(dat_grid)[[2]]), n_layers),
+    rep(as_date(names(dat_grid)[[3]]), n_layers)
+  )
+
+names(multi_rast) <-
+  paste(
+    names(multi_rast),
+    c(
+      rep(as_date(names(dat_grid)[[1]]), n_layers),
+      rep(as_date(names(dat_grid)[[2]]), n_layers),
+      rep(as_date(names(dat_grid)[[3]]), n_layers)
+    ),
+    sep = "_"
+  )
+
+vel_ext_transect <- 
+ terra::extract(multi_rast, linestring, xy = TRUE) %>%
+ 
+ select(ID, x , y, contains("vel_mag")) %>%
+  pivot_longer(
+    data      = .,
+    cols      = c(-ID, -x, -y),     # columns to pivot long,
+    names_to  = "name",  # desired name for category column
+    values_to = "vel_mag", # desired name for value column
+    ) %>%
+  mutate(
+    date = str_extract(name, "\\d.*"),
+    # date = as_date(date)
+  ) %T>% 
+  print()
+```
+
+
+```{r}
+# shelf(gganimate, transformr)
+plt +
+  geom_sf(data = linestring, color = "red") +
+  geom_point(data = vel_ext_transect, aes(x = x,  y = y), color = "blue") +
+  geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), aes(x = x,  y = y), color = "green") +
+  # gganimate::transition_time(date) +
+  # labs(title = "Date: {frame_time}") 
+  facet_wrap(~date, ncol = 2)
+
+slice_by <- 5
+ggplot() +
+  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = adt)) +
+  geom_sf(data = coast) +
+  scale_fill_viridis_b() +
+  geom_sf(data = linestring, color = "red")  +
+  geom_point(data = vel_ext_transect, aes(x = x,  y = y), color = "blue") +
+  geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), aes(x = x,  y = y), 
+             color = "green") +
+  geom_segment(
+    data = slice(ssh_grid_tibble, seq(1, n(), by = slice_by)),
+    aes(
+      x     = lon, 
+      xend  = lon + ugos/length_divide, 
+      y     = lat, 
+      yend  = lat + vgos/length_divide, 
+      color = vel_mag
+      ),
+    arrow     = arrow(length = unit(0.15, "cm")), # adjust arrow size
+    linewidth = 0.5,                              # adjust arrow thickness
+    na.rm     = TRUE
+  ) +
+  scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
+  theme_bw() +
+  facet_wrap(~date)
+  # gganimate::transition_states(date) +
+  # labs(title = "Date: {closest_state}")
+
+vel_ext_transect %>%
+  mutate(
+    .by = ID,
+    lagx = first(x), 
+    lagy = first(y)
+    ) %>%
+  rowwise() %>%
+  mutate(dist = geodist::geodist_vec(lagx, lagy, x, y, measure = "geodesic") / 1000) %>%
+  ggplot(aes(x = dist, y = vel_mag, color = as.factor(ID))) +
+  geom_hline(yintercept = 0.5, color = "red") +
+  geom_path() +
+  geom_point() +
+  labs(color = "ID", x = NULL, y = expression("Velocity"~(m~s^-1))) +
+  coord_cartesian(expand = FALSE) +
+  facet_wrap(~date)
+  # gganimate::transition_states(date) +
+  # labs(title = "Date: {closest_state}")
+
+left_join(
+  polyline_pts,
+  filter(vel_ext_transect, vel_mag >= 0.5) %>%
+    slice_head(by = c(ID, date)),
+  by = c("l1" = "ID"),
+  suffix = c("_shr", "_fc")
+  ) %>%
+  rowwise() %>%
+  mutate(
+    dist = geodist::geodist_vec(
+      x_shr, y_shr, 
+      x_fc, y_fc, 
+      measure = "geodesic") / 1000
+    ) %>%
+  ungroup()
+```
