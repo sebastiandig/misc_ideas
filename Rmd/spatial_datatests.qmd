@@ -299,53 +299,78 @@ ssh_path <-
   here::here("data", "raw") %>%
   rstudioapi::selectFile(path = .)
 
-# open data and extract variables
-ssh_nc   <- nc_open(ssh_path)
+ssh_path <-
+  here::here("data", "raw") %>%
+  rstudioapi::selectDirectory(path = .) %>%
+  dir_ls(regexp = "mems_obs-sl_glo") %>%
+  .[1:4]
+```
 
-attributes(ssh_nc$var) # show vars names
-attributes(ssh_nc$dim) # show vars names
 
-# determine number of time dimensions
-nc_len   <- ssh_nc$dim$time$len
-dat_grid <- vector("list", nc_len)
+```{r load-multi}
+multi_day <- vector("list", length(ssh_path))
 
-# extract dates
-nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
+for (j in seq(ssh_path)) {
+  # open data and extract variables
+  ssh_nc <- nc_open(ssh_path[j])
 
-for (i in seq(nc_len)) {
-  # extract variables
-  adt  <- ncvar_get(ssh_nc, "adt")[, , i]
-  vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
-  ugos <- ncvar_get(ssh_nc, "ugos")[, , i]
-  lat  <- ncvar_get(ssh_nc, "latitude")
-  lon  <- ncvar_get(ssh_nc, "longitude")
-  
-  # create grid data
-  ssh_grid <-
-    expand.grid(lon = lon, lat = lat) %>%
-    mutate(
-      adt     = as.vector(adt),       # absolute dynamic topography
-      vgos    = as.vector(vgos),      # north geostrophic velocity
-      ugos    = as.vector(ugos),      # east geostrophic velocity
-      vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
-    ) 
-  
-  dat_grid[[i]] <- ssh_grid
+  attributes(ssh_nc$var) # show vars names
+  attributes(ssh_nc$dim) # show vars names
+
+  # determine number of time dimensions
+  nc_len   <- ssh_nc$dim$time$len
+  # nc_len   <- 4
+  dat_grid <- vector("list", nc_len)
+
+  # extract dates
+  nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
+
+  for (i in seq(nc_len)) {
+    # extract variables
+    adt  <- ncvar_get(ssh_nc, "adt")[, , i]
+    vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
+    ugos <- ncvar_get(ssh_nc, "ugos")[, , i]
+    lat  <- ncvar_get(ssh_nc, "latitude")
+    lon  <- ncvar_get(ssh_nc, "longitude")
+
+    # create grid data
+    ssh_grid <-
+      expand.grid(lon = lon, lat = lat) %>%
+      mutate(
+        adt     = as.vector(adt), # absolute dynamic topography
+        vgos    = as.vector(vgos), # north geostrophic velocity
+        ugos    = as.vector(ugos), # east geostrophic velocity
+        vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
+      )
+
+    dat_grid[[i]] <- ssh_grid
+  }
+
+  # set list names to date
+  names(dat_grid) <- nc_date
+
+  # close `.nc` file
+  nc_close(ssh_nc)
+
+  dat_grid
+
+  multi_day[[j]] <- dat_grid
 }
-
-# set list names to date
-names(dat_grid) <- nc_date
-
-# close `.nc` file
-nc_close(ssh_nc)
-
-dat_grid
 
 # convert to tibble
 ssh_grid_tibble <-
-# ssh_grid <- 
+  # ssh_grid <-
   dat_grid %>%
-  list_rbind(names_to = "date") 
+  list_rbind(names_to = "date")
+
+dat_grid <-
+  multi_day %>%
+  list_flatten()
+
+ssh_grid_tibble <-
+  dat_grid %>%
+  list_rbind(names_to = "date")
+
 ```
 
 
@@ -471,7 +496,7 @@ multi_rast <-
   lapply(.,\(.x) rast(.x, crs = "EPSG:4326")) %>%
   rast()
 multi_rast
-terra::ext(multi_rast)[1]
+
 # load coastline
 coast <-
   rnaturalearth::ne_coastline(10, returnclass = "sf") %>%
@@ -497,7 +522,7 @@ coast <-
 # test <- rast(dat_grid[[3]], crs = "EPSG:4326") 
 # 
 # time(test) <- rep(as_date(names(dat_grid)[[3]]), nlyr(test))
-n_layers <- nlyr(multi_rast) / length(nc_date)
+n_layers <- nlyr(multi_rast) / length(dat_grid)
 
 rast_names <- 
   names(dat_grid) %>% 
@@ -583,7 +608,7 @@ vel_ext_transect %>%
   labs(color = "ID", x = NULL, y = expression("Velocity"~(m~s^-1))) +
   coord_cartesian(expand = FALSE) +
   # facet_wrap(~date)
-  gganimate::transition_states(date) +
+  gganimate::transition_states(date, state_length = 0.25) +
   labs(title = "Date: {closest_state}")
 
 # extract starting point of each transect
