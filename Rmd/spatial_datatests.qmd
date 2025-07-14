@@ -363,11 +363,11 @@ if (file_exists(transect_file)) {
   linestring <- st_read(transect_file)
 } else {
   message("Creating transects.")
-  # polyline <-
-  #   (mapview::mapView(rssh_grid_rast, layer = "adt") +
-  #     mapview::mapview(coast)
-  #   ) %>%
-  #   mapedit::editMap()
+  polyline <-
+    (mapview::mapView(rssh_grid_rast, layer = "adt") +
+      mapview::mapview(coast)
+    ) %>%
+    mapedit::editMap()
 
   linestring <- polyline$finished
 
@@ -380,8 +380,6 @@ if (file_exists(transect_file)) {
     here(path_save, "transects.shp")
   )
 }
-
-
 
 
 ```
