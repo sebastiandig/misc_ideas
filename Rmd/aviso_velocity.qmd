@@ -1,0 +1,217 @@
+---
+title: "AVISO+ Velocity Dataset"
+author: "Sebastian Di Geronimo"
+date: 2025-07-14
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  ggspatial
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select(),
+  magrittr::extract()
+  )
+  
+
+```
+
+
+# AVISO+ Sea Surface Height and Velocity
+
+Data downloaded from `Copernicus` for both absolute dynamic topography (m) and
+north/east surface velocities (m/s)
+
+Data:       Global Ocean Gridded L4 Sea Surface Heights And Derived Variables
+Search:     <https://data.marine.copernicus.eu/products>
+Product ID: `SEALEVEL_GLO_PHY_L4_MY_008_047`
+Dataset ID: `cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D`
+Description: <https://data.marine.copernicus.eu/product/SEALEVEL_GLO_PHY_L4_MY_008_047/description>
+Bounds:     
+  Lon: -83.8125, -78.3125  
+  Lat:  22.8125,  26.4375
+Note: Select all data products when downloading from `MyOceanPro`
+      If downloading from `description` page, go to `Data access` then `subset`, 
+      then `automate`. Copy the `automate` and modify script below to download
+      multiple dates.
+
+Data Info:
+<https://documentation.marine.copernicus.eu/PUM/CMEMS-SL-PUM-008-032-068.pdf>
+
+
+Velocites extraction inspired from:
+<https://help.marine.copernicus.eu/en/articles/9711615-how-to-plot-current-vectors-using-r>
+
+## Load Packages
+```{r aviso-libs}
+shelf(sf, ncdf4, stars, terra)
+```
+
+
+
+
+## Download Data from `Copernicusmarine` using `copernicusmarine.exe` File
+
+From: <https://help.marine.copernicus.eu/en/articles/10750437-copernicus-marine-toolbox-executable-no-installation>
+
+I recommend moving the file to this directory where this project is stored
+
+To start, open `cmd` or `PowerShell` from explorer. `cd` to location where `.exe`
+is located. Then run `copernicusmarine login` and enter "Username" and
+"Password". Once completed, you should be able to run the download
+
+
+### Setup Constants used in Download
+
+variables:
+
+adt            - absolute dynamic topography [m]
+tpa_correction - instrument drift correction [m]
+flag_ice       - ice flag
+sla            - sea level anomaly [m]
+err_sla        - sea level anomaly error [m]
+
+u - eastward
+  ugos           - vector velocity [m/s]
+  ugosa          - vector velocity anomly [m/s]
+  err_ugosa      - vector velocity error [m/s]
+  
+v - northward
+  vgos           - vector velocity [m/s]
+  vgosa          - vector velocity anomly [m/s]
+  err_vgosa      - vector velocity error [m/s]
+
+```{r download-aviso-setup}
+# set date range by month
+months <-
+  seq(as_date("2015-01-01"),
+      as_date("2024-12-31"),
+      by = "1 month")
+
+# path to executable and path to save data
+path_copernicusmarine <- here("copernicusmarine.exe")
+path_save <- here("data", "raw", "copernicus")
+
+dir_create(path_save)
+
+# set spatial extent
+ssh_bbox <-
+  c(
+    xmin = -83.8125,
+    xmax = -78.3125,
+    ymin = 22.8125,
+    ymax = 26.4375
+  )
+
+# select vars
+vars <-
+  c(
+    "adt",
+    "err_sla",
+    "err_ugosa",
+    "err_vgosa",
+    "flag_ice",
+    "sla",
+    "tpa_correction",
+    "ugos",
+    "ugosa",
+    "vgos",
+    "vgosa"
+  )
+
+cat("Date Range: ", format(months[c(1, length(months))], "%B %Y"), sep = "\n- ")
+```
+
+### Download AVISO+ Data
+
+```{r download-aviso}
+# set to TRUE if downloading data
+download <- FALSE
+download <- TRUE
+
+# set to TRUE if want to overwrite previous data
+overwrite <- FALSE
+# overwrite <- TRUE
+
+month_list <- vector("list", length(months))
+names(month_list) <- format(months, "%B_%Y")
+
+for (i in seq(length(months))) {
+  date_i <- months[i]
+  date_range <- c(date_i, date_i + months(1) - days(1))
+  
+  message(paste("\n-----\n\nNew Month:", format(date_i, "%B %Y")))
+  cat(as.character(date_range), sep = "\n")
+  
+  month_list[[i]] <- c(as.character(date_range), paste(date_range, collapse = "-"))
+  
+  prev_files <- 
+    dir_ls(path_save) %>% 
+    str_detect(paste(date_range, collapse = "-")) %>% 
+    any()
+  
+  if (prev_files & !overwrite) {
+    message("Skipping because date range exists!")
+    next
+  }
+  
+  # set date range
+  date_range <-
+    date_range %>%
+    as_datetime() %>%
+    format_ISO8601()
+  
+  # set up command to download
+  command <-
+    paste(
+      shQuote(path_copernicusmarine),
+      "subset",
+      "--dataset-id cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
+      paste("--variable", vars, collapse = " "),
+      "--start-datetime",    date_range[1],
+      "--end-datetime",      date_range[2],
+      "--minimum-longitude", ssh_bbox["xmin"],
+      "--maximum-longitude", ssh_bbox["xmax"],
+      "--minimum-latitude",  ssh_bbox["ymin"],
+      "--maximum-latitude",  ssh_bbox["ymax"],
+      "-o",
+      path_save
+    )
+  
+  if (download) {
+    message("Downloading AVISO+ Date")
+    
+    # execute command to download files
+    system(command)
+  } else {
+    message("Not downloading AVISO+ data")
+  }
+  
+}
+
+```
+
+
+
+
