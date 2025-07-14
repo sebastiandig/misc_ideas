@@ -377,7 +377,7 @@ if (file_exists(transect_file)) {
   
   st_write(
     linestring,
-    here(path_save, "transects.shp")
+    transect_file
   )
 }
 
@@ -453,61 +453,60 @@ left_join(
 ```
 
 
-
+# Multiday Plots
 
 ```{r}
 # create multiday raster
-vector("list", length(nc_date))
+# vector("list", length(nc_date))
 
-multi_rast <- list(
-  rast(dat_grid[[1]], crs = "EPSG:4326"),
-  rast(dat_grid[[2]], crs = "EPSG:4326"),
-  rast(dat_grid[[3]], crs = "EPSG:4326") 
-) %>%
-  rast()
+# multi_rast <- list(
+#   rast(dat_grid[[1]], crs = "EPSG:4326"),
+#   rast(dat_grid[[2]], crs = "EPSG:4326"),
+#   rast(dat_grid[[3]], crs = "EPSG:4326") 
+# ) %>%
+#   rast()
 
 multi_rast <- 
   unname(dat_grid) %>%
   lapply(.,\(.x) rast(.x, crs = "EPSG:4326")) %>%
   rast()
-plot(multi_rast)
-all.equal(multi_rast, multi_rast2)
-
+multi_rast
+terra::ext(multi_rast)[1]
+# load coastline
+coast <-
+  rnaturalearth::ne_coastline(10, returnclass = "sf") %>%
+  st_crop(
+    xmin = terra::ext(multi_rast)[1][[1]],
+    ymin = terra::ext(multi_rast)[3][[1]],
+    xmax = terra::ext(multi_rast)[2][[1]],
+    ymax = terra::ext(multi_rast)[4][[1]]
+  )
 ```
 
 
 ```{r}
-multi_rast %>%
-  ggplot() + 
-  tidyterra::geom_spatraster() +
-  facet_wrap(~lyr)
-  plot(y = "adt")
+# multi_rast %>%
+#   ggplot() + 
+#   tidyterra::geom_spatraster() +
+#   facet_wrap(~lyr)
+#   plot(y = "adt")
 
-n_layers <- nlyr(multi_rast) / length(nc_date)
   
-terra::plot
-(dat_grid[[3]])
-test <- rast(dat_grid[[3]], crs = "EPSG:4326") 
+# terra::plot
+# (dat_grid[[3]])
+# test <- rast(dat_grid[[3]], crs = "EPSG:4326") 
+# 
+# time(test) <- rep(as_date(names(dat_grid)[[3]]), nlyr(test))
+n_layers <- nlyr(multi_rast) / length(nc_date)
 
-time(test) <- rep(as_date(names(dat_grid)[[3]]), nlyr(test))
+rast_names <- 
+  names(dat_grid) %>% 
+  rep(each = n_layers) %>% 
+  as_date()
 
-time(multi_rast) <-
-  c(
-    rep(as_date(names(dat_grid)[[1]]), n_layers),
-    rep(as_date(names(dat_grid)[[2]]), n_layers),
-    rep(as_date(names(dat_grid)[[3]]), n_layers)
-  )
-
-names(multi_rast) <-
-  paste(
-    names(multi_rast),
-    c(
-      rep(as_date(names(dat_grid)[[1]]), n_layers),
-      rep(as_date(names(dat_grid)[[2]]), n_layers),
-      rep(as_date(names(dat_grid)[[3]]), n_layers)
-    ),
-    sep = "_"
-  )
+time(multi_rast)  <- rast_names
+names(multi_rast) <- paste(names(multi_rast), rast_names, sep = "_")
+names(multi_rast)
 
 vel_ext_transect <- 
  terra::extract(multi_rast, linestring, xy = TRUE) %>%
@@ -528,16 +527,20 @@ vel_ext_transect <-
 
 
 ```{r}
-# shelf(gganimate, transformr)
-plt +
+shelf(gganimate, transformr)
+ggplot() +
+  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = adt)) +
+  geom_sf(data = coast) +
+  scale_fill_viridis_b() +
   geom_sf(data = linestring, color = "red") +
   geom_point(data = vel_ext_transect, aes(x = x,  y = y), color = "blue") +
   geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), aes(x = x,  y = y), color = "green") +
   # gganimate::transition_time(date) +
   # labs(title = "Date: {frame_time}") 
-  facet_wrap(~date, ncol = 2)
+  facet_wrap(~date)
 
 slice_by <- 5
+length_divide <- 2
 ggplot() +
   geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = adt)) +
   geom_sf(data = coast) +
@@ -579,9 +582,17 @@ vel_ext_transect %>%
   geom_point() +
   labs(color = "ID", x = NULL, y = expression("Velocity"~(m~s^-1))) +
   coord_cartesian(expand = FALSE) +
-  facet_wrap(~date)
-  # gganimate::transition_states(date) +
-  # labs(title = "Date: {closest_state}")
+  # facet_wrap(~date)
+  gganimate::transition_states(date) +
+  labs(title = "Date: {closest_state}")
+
+# extract starting point of each transect
+polyline_pts <- 
+  linestring %>% 
+  st_coordinates() %>%
+  as_tibble(.name_repair = janitor::make_clean_names) %>%
+  slice_head(by = l1) %T>% 
+  print()
 
 left_join(
   polyline_pts,
