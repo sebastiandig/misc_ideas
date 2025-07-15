@@ -84,6 +84,8 @@ test
 names(test)
 plot(test[2])
 ```
+
+
 # AVISO+ Sea Surface Height and Velocity
 
 Data downloaded from `Copernicus` for both absolute dynamic topography (m) and
@@ -290,88 +292,6 @@ if (any(str_detect(colnames(ssh_grid), "date"))) {
 plt
 ```
 
-## Load Muliple Dates
-
-If there are multiple time dimensions, will load each date into its own list
-
-```{r load-multi}
-ssh_path <-
-  here::here("data", "raw") %>%
-  rstudioapi::selectFile(path = .)
-
-ssh_path <-
-  here::here("data", "raw") %>%
-  rstudioapi::selectDirectory(path = .) %>%
-  dir_ls(regexp = "mems_obs-sl_glo") %>%
-  .[1:4]
-```
-
-
-```{r load-multi}
-multi_day <- vector("list", length(ssh_path))
-
-for (j in seq(ssh_path)) {
-  # open data and extract variables
-  ssh_nc <- nc_open(ssh_path[j])
-
-  attributes(ssh_nc$var) # show vars names
-  attributes(ssh_nc$dim) # show vars names
-
-  # determine number of time dimensions
-  nc_len   <- ssh_nc$dim$time$len
-  # nc_len   <- 4
-  dat_grid <- vector("list", nc_len)
-
-  # extract dates
-  nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
-
-  for (i in seq(nc_len)) {
-    # extract variables
-    adt  <- ncvar_get(ssh_nc, "adt")[, , i]
-    vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
-    ugos <- ncvar_get(ssh_nc, "ugos")[, , i]
-    lat  <- ncvar_get(ssh_nc, "latitude")
-    lon  <- ncvar_get(ssh_nc, "longitude")
-
-    # create grid data
-    ssh_grid <-
-      expand.grid(lon = lon, lat = lat) %>%
-      mutate(
-        adt     = as.vector(adt), # absolute dynamic topography
-        vgos    = as.vector(vgos), # north geostrophic velocity
-        ugos    = as.vector(ugos), # east geostrophic velocity
-        vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
-      )
-
-    dat_grid[[i]] <- ssh_grid
-  }
-
-  # set list names to date
-  names(dat_grid) <- nc_date
-
-  # close `.nc` file
-  nc_close(ssh_nc)
-
-  dat_grid
-
-  multi_day[[j]] <- dat_grid
-}
-
-# convert to tibble
-ssh_grid_tibble <-
-  # ssh_grid <-
-  dat_grid %>%
-  list_rbind(names_to = "date")
-
-dat_grid <-
-  multi_day %>%
-  list_flatten()
-
-ssh_grid_tibble <-
-  dat_grid %>%
-  list_rbind(names_to = "date")
-
-```
 
 
 
@@ -480,17 +400,92 @@ left_join(
 
 # Multiday Plots
 
+## Load Muliple Dates
+
+If there are multiple time dimensions, will load each date into its own list
+
+```{r load-multi}
+ssh_path <-
+  here::here("data", "raw") %>%
+  rstudioapi::selectFile(path = .)
+
+ssh_path <-
+  here::here("data", "raw") %>%
+  rstudioapi::selectDirectory(path = .) %>%
+  dir_ls(regexp = "mems_obs-sl_glo") %>%
+  .[1:12]
+```
+
+
+```{r load-multi}
+multi_day <- vector("list", length(ssh_path))
+
+for (j in seq(ssh_path)) {
+  # open data and extract variables
+  ssh_nc <- nc_open(ssh_path[j])
+
+  attributes(ssh_nc$var) # show vars names
+  attributes(ssh_nc$dim) # show vars names
+
+  # determine number of time dimensions
+  nc_len   <- ssh_nc$dim$time$len
+  dat_grid <- vector("list", nc_len)
+
+  # extract dates
+  nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
+
+  for (i in seq(nc_len)) {
+    # extract variables
+    adt  <- ncvar_get(ssh_nc, "adt")[, , i]
+    vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
+    ugos <- ncvar_get(ssh_nc, "ugos")[, , i]
+    lat  <- ncvar_get(ssh_nc, "latitude")
+    lon  <- ncvar_get(ssh_nc, "longitude")
+
+    # create grid data
+    ssh_grid <-
+      expand.grid(lon = lon, lat = lat) %>%
+      mutate(
+        adt     = as.vector(adt), # absolute dynamic topography
+        vgos    = as.vector(vgos), # north geostrophic velocity
+        ugos    = as.vector(ugos), # east geostrophic velocity
+        vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
+      )
+
+    dat_grid[[i]] <- ssh_grid
+  }
+
+  # set list names to date
+  names(dat_grid) <- nc_date
+
+  # close `.nc` file
+  nc_close(ssh_nc)
+
+  dat_grid
+
+  multi_day[[j]] <- dat_grid
+}
+
+# convert to tibble
+ssh_grid_tibble <-
+  # ssh_grid <-
+  dat_grid %>%
+  list_rbind(names_to = "date")
+
+dat_grid <-
+  multi_day %>%
+  list_flatten()
+
+ssh_grid_tibble <-
+  dat_grid %>%
+  list_rbind(names_to = "date")
+
+```
+
+
+## Create Multi-day Raster
+
 ```{r}
-# create multiday raster
-# vector("list", length(nc_date))
-
-# multi_rast <- list(
-#   rast(dat_grid[[1]], crs = "EPSG:4326"),
-#   rast(dat_grid[[2]], crs = "EPSG:4326"),
-#   rast(dat_grid[[3]], crs = "EPSG:4326") 
-# ) %>%
-#   rast()
-
 multi_rast <- 
   unname(dat_grid) %>%
   lapply(.,\(.x) rast(.x, crs = "EPSG:4326")) %>%
@@ -506,22 +501,43 @@ coast <-
     xmax = terra::ext(multi_rast)[2][[1]],
     ymax = terra::ext(multi_rast)[4][[1]]
   )
-```
 
+ylim <- c(terra::ext(multi_rast)[3], terra::ext(multi_rast)[4])
+xlim <- c(terra::ext(multi_rast)[1], terra::ext(multi_rast)[2])
+```
+# Create Transects
 
 ```{r}
-# multi_rast %>%
-#   ggplot() + 
-#   tidyterra::geom_spatraster() +
-#   facet_wrap(~lyr)
-#   plot(y = "adt")
+transect_file <- here(path_save, "transects.shp")
 
+if (file_exists(transect_file)) {
+  message("Reading transects shapefile")
+  linestring <- st_read(transect_file)
+} else {
+  message("Creating transects.")
+  lyr_name <- grep("vel_mag", names(multi_rast), value = TRUE)[1]
   
-# terra::plot
-# (dat_grid[[3]])
-# test <- rast(dat_grid[[3]], crs = "EPSG:4326") 
-# 
-# time(test) <- rep(as_date(names(dat_grid)[[3]]), nlyr(test))
+  polyline <-
+    (mapview::mapView(multi_rast, layer = lyr_name) +
+      mapview::mapview(coast)
+    ) %>%
+    mapedit::editMap()
+
+  linestring <- polyline$finished
+
+  names(linestring) <- c("id", "type", "geometry")
+
+  message(paste0("Saving transects as `", basename(transect_file), "`."))
+  
+  st_write(
+    linestring,
+    transect_file
+  )
+}
+```
+
+## Extract Pixels along Transects
+```{r}
 n_layers <- nlyr(multi_rast) / length(dat_grid)
 
 rast_names <- 
@@ -535,10 +551,8 @@ names(multi_rast)
 
 vel_ext_transect <- 
  terra::extract(multi_rast, linestring, xy = TRUE) %>%
- 
  select(ID, x , y, contains("vel_mag")) %>%
   pivot_longer(
-    data      = .,
     cols      = c(-ID, -x, -y),     # columns to pivot long,
     names_to  = "name",  # desired name for category column
     values_to = "vel_mag", # desired name for value column
@@ -553,21 +567,31 @@ vel_ext_transect <-
 
 ```{r}
 shelf(gganimate, transformr)
-ggplot() +
-  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = adt)) +
+```
+
+
+```{r}
+plt_mag_vel <- 
+  ggplot() +
+  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = vel_mag)) +
   geom_sf(data = coast) +
   scale_fill_viridis_b() +
   geom_sf(data = linestring, color = "red") +
   geom_point(data = vel_ext_transect, aes(x = x,  y = y), color = "blue") +
   geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), aes(x = x,  y = y), color = "green") +
-  # gganimate::transition_time(date) +
-  # labs(title = "Date: {frame_time}") 
-  facet_wrap(~date)
+  gganimate::transition_states(date) +
+  labs(title = "Date: {closest_state}")
+  # facet_wrap(~date)
+anim_save("mag_vel.gif", plt_mag_vel, path = here())
+```
 
-slice_by <- 5
+
+```{r}
+slice_by      <- 5
 length_divide <- 2
-ggplot() +
-  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = adt)) +
+plt_mag_vel_vect <- 
+  ggplot() +
+  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = vel_mag)) +
   geom_sf(data = coast) +
   scale_fill_viridis_b() +
   geom_sf(data = linestring, color = "red")  +
@@ -589,10 +613,19 @@ ggplot() +
   ) +
   scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
   theme_bw() +
-  facet_wrap(~date)
-  # gganimate::transition_states(date) +
-  # labs(title = "Date: {closest_state}")
+  labs(x = NULL, y = NULL) +
+  coord_sf(expand = FALSE, ylim = ylim, xlim = xlim) +
+  # facet_wrap(~date)
+  gganimate::transition_states(date) +
+  labs(title = "Date: {closest_state}")
 
+# plt_mag_vel_vect
+anim_save("mag_vel_vect.gif", plt_mag_vel_vect, path = here())
+
+```
+
+
+```{r}
 vel_ext_transect %>%
   mutate(
     .by = ID,
@@ -610,7 +643,12 @@ vel_ext_transect %>%
   # facet_wrap(~date)
   gganimate::transition_states(date, state_length = 0.25) +
   labs(title = "Date: {closest_state}")
+```
 
+
+## Extract Distance from Shore
+
+```{r}
 # extract starting point of each transect
 polyline_pts <- 
   linestring %>% 
