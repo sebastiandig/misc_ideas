@@ -420,7 +420,7 @@ If there are multiple time dimensions, will load each date into its own list
 ssh_path_full <-
   # here::here("data", "raw") %>%
   here("~", "Box", "aviso_velocity", "data", "raw", "copernicus") %>%
-  rstudioapi::selectDirectory(path = .) %>%
+  # rstudioapi::selectDirectory(path = .) %>%
   dir_ls(regexp = "mems_obs-sl_glo")
 
 ssh_path <-
@@ -434,6 +434,8 @@ ssh_path <-
 
 
 ```{r load-multi}
+seq_nc <- expression(seq(1, nc_len, by = 1))
+
 multi_day <- vector("list", length(ssh_path))
 
 for (j in seq(ssh_path)) {
@@ -445,12 +447,12 @@ for (j in seq(ssh_path)) {
 
   # determine number of time dimensions
   nc_len   <- ssh_nc$dim$time$len
-  dat_grid <- vector("list", nc_len)
+  dat_grid_temp <- vector("list", nc_len)
 
   # extract dates
   nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
 
-  for (i in seq(nc_len)) {
+  for (i in eval(seq_nc)) {
     # extract variables
     adt  <- ncvar_get(ssh_nc, "adt")[, , i]
     vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
@@ -468,34 +470,41 @@ for (j in seq(ssh_path)) {
         vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
       )
 
-    dat_grid[[i]] <- ssh_grid
+    dat_grid_temp[[i]] <- ssh_grid
   }
 
   # set list names to date
-  names(dat_grid) <- nc_date
+  names(dat_grid_temp) <- nc_date
 
   # close `.nc` file
   nc_close(ssh_nc)
 
-  dat_grid
+  dat_grid_temp
 
-  multi_day[[j]] <- dat_grid
+  multi_day[[j]] <- 
+    dat_grid_temp %>%
+    Filter(Negate(is.null), .)
 }
 
 # convert to tibble
-ssh_grid_tibble <-
-  # ssh_grid <-
-  dat_grid %>%
-  list_rbind(names_to = "date")
+# ssh_grid_tibble <-
+#   # ssh_grid <-
+#   dat_grid_temp %>%
+#   Filter(Negate(is.null), .) %>%
+#   list_rbind(names_to = "date")
 
 dat_grid <-
   multi_day %>%
   list_flatten()
 
+# convert to tibble
 ssh_grid_tibble <-
   dat_grid %>%
   list_rbind(names_to = "date")
 
+
+ssh_grid_tibble %>%
+  distinct(date)
 ```
 
 
@@ -523,7 +532,7 @@ xlim <- c(terra::ext(multi_rast)[1], terra::ext(multi_rast)[2])
 ```
 # Create Transects
 
-```{r}
+```{r edit-transects}
 transect_file <- here(path_save, "..", "transects.shp")
 
 if (file_exists(transect_file)) {
@@ -576,7 +585,7 @@ vel_ext_transect <-
     ) %>%
   mutate(
     date = str_extract(name, "\\d.*"),
-    # date = as_date(date)
+    date2 = as_date(date)
   ) %T>% 
   print()
 ```
@@ -663,7 +672,7 @@ plt_mag_vel <-
              size = 0.5) +
   labs(x = NULL, y = NULL) +
   coord_sf(expand = FALSE, ylim = ylim, xlim = xlim) +
-  gganimate::transition_states(date) +
+  gganimate::transition_states(date, transition_length = 0) +
   labs(title = "Date: {closest_state}")
   # facet_wrap(~date)
 
@@ -687,6 +696,7 @@ anim_save(
 
 
 ```{r mag-vel-vectors}
+tictoc::tic()
 slice_by      <- 5
 length_divide <- 2
 
@@ -719,13 +729,13 @@ plt_mag_vel_vect <-
   labs(x = NULL, y = NULL) +
   coord_sf(expand = FALSE, ylim = ylim, xlim = xlim) +
   # facet_wrap(~date)
-  gganimate::transition_states(date) +
+  gganimate::transition_states(date, transition_length = 0) +
   labs(title = "Date: {closest_state}")
 
 # plt_mag_vel_vect
 # anim_save("mag_vel_vect.gif", plt_mag_vel_vect, path = animate_save)
 anim_save(
-  file      = glue("mag_vel_vect_{date_suffix}.mp4"), 
+  file      = glue("mag_vel_vect2_{date_suffix}.mp4"), 
   animation = plt_mag_vel_vect, 
   path      = animate_save, 
   renderer  = ffmpeg_renderer(format = "mp4", ffmpeg = ffmpeg_path), 
@@ -737,13 +747,14 @@ anim_save(
   # duration = nlyr(multi_rast) / 4,
   fps      = 20
   )
+tictoc::toc()
 ```
 
 
 
 ## Extract Distance from Shore
 
-```{r}
+```{r distance-from-shore}
 # extract starting point of each transect
 polyline_pts <- 
   linestring %>% 

@@ -8,7 +8,9 @@ editor: source
 
 # 1.0 ---- Summary of Document ----
 
+Will need to have downloaded `ffmpeg` to animate vectors
 
+<https://www.gyan.dev/ffmpeg/builds/>
 
 # 2.0 ---- Setup ----
 
@@ -25,7 +27,9 @@ librarian::shelf(
   forcats, lubridate, glue, fs, magrittr, here,
   
   # additional
-  ggspatial
+  ggspatial, sf, ncdf4, stars, terra, geodist,
+  
+  gganimate, transformr
 )
 
 conflicts_prefer(
@@ -33,8 +37,17 @@ conflicts_prefer(
   dplyr::select(),
   magrittr::extract()
   )
-  
 
+# set paths to downloaded data, ffmpeg, and animation
+path_save <- here("data", "raw", "copernicus")
+ffmpeg_path <- 
+  here("C:\\", "Program Files",
+       "ffmpeg-2025-07-12-git-35a6de137a-full_build", "bin",
+       "ffmpeg.exe"
+       )
+
+animate_save <- here("data", "plots", "animate")
+dir_create(animate_save)
 ```
 
 
@@ -62,13 +75,6 @@ Data Info:
 
 Velocites extraction inspired from:
 <https://help.marine.copernicus.eu/en/articles/9711615-how-to-plot-current-vectors-using-r>
-
-## Load Packages
-```{r aviso-libs}
-shelf(sf, ncdf4, stars, terra)
-```
-
-
 
 
 ## Download Data from `Copernicusmarine` using `copernicusmarine.exe` File
@@ -111,7 +117,6 @@ months <-
 
 # path to executable and path to save data
 path_copernicusmarine <- here("copernicusmarine.exe")
-path_save <- here("data", "raw", "copernicus")
 
 dir_create(path_save)
 
@@ -214,4 +219,319 @@ for (i in seq(length(months))) {
 
 
 
+# Multiday Plots
 
+## Load Muliple Dates
+
+If there are multiple time dimensions, will load each date into its own list
+
+```{r path-multi}
+# ssh_path <-
+#   here::here("data", "raw") %>%
+#   rstudioapi::selectFile(path = .)
+
+ssh_path_full <-
+  # here::here("data", "raw") %>%
+  here("~", "Box", "aviso_velocity", "data", "raw", "copernicus") %>%
+  # rstudioapi::selectDirectory(path = .) %>%
+  dir_ls(regexp = "mems_obs-sl_glo")
+
+ssh_path <-
+  ssh_path_full[11:11] %T>% 
+  {
+    .[] %>%
+    str_extract("(\\d{4}-.*)\\.nc", group = 1) %>%
+    print()
+  }
+```
+
+```{r load-multi}
+seq_nc <- expression(seq(1, nc_len, by = 1))
+
+multi_day <- vector("list", length(ssh_path))
+
+for (j in seq(ssh_path)) {
+  # open data and extract variables
+  ssh_nc <- nc_open(ssh_path[j])
+
+  attributes(ssh_nc$var) # show vars names
+  attributes(ssh_nc$dim) # show vars names
+
+  # determine number of time dimensions
+  nc_len   <- ssh_nc$dim$time$len
+  dat_grid_temp <- vector("list", nc_len)
+
+  # extract dates
+  nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
+
+  for (i in eval(seq_nc)) {
+    # extract variables
+    adt  <- ncvar_get(ssh_nc, "adt")[, , i]
+    vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
+    ugos <- ncvar_get(ssh_nc, "ugos")[, , i]
+    lat  <- ncvar_get(ssh_nc, "latitude")
+    lon  <- ncvar_get(ssh_nc, "longitude")
+
+    # create grid data
+    ssh_grid <-
+      expand.grid(lon = lon, lat = lat) %>%
+      mutate(
+        adt     = as.vector(adt), # absolute dynamic topography
+        vgos    = as.vector(vgos), # north geostrophic velocity
+        ugos    = as.vector(ugos), # east geostrophic velocity
+        vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
+      )
+
+    dat_grid_temp[[i]] <- ssh_grid
+  }
+
+  # set list names to date
+  names(dat_grid_temp) <- nc_date
+
+  # close `.nc` file
+  nc_close(ssh_nc)
+
+  dat_grid_temp
+
+  multi_day[[j]] <- 
+    dat_grid_temp %>%
+    Filter(Negate(is.null), .)
+}
+
+# flatten list from months to days
+dat_grid <-
+  multi_day %>%
+  list_flatten()
+
+# convert to tibble
+ssh_grid_tibble <-
+  dat_grid %>%
+  list_rbind(names_to = "date")
+
+
+ssh_grid_tibble %>%
+  distinct(date)
+```
+
+## Create Multi-day Raster
+
+```{r create-raster}
+multi_rast <- 
+  unname(dat_grid) %>%
+  lapply(.,\(.x) rast(.x, crs = "EPSG:4326")) %>%
+  rast()
+multi_rast
+
+# load coastline
+coast <-
+  rnaturalearth::ne_coastline(10, returnclass = "sf") %>%
+  st_crop(
+    xmin = terra::ext(multi_rast)[1][[1]],
+    ymin = terra::ext(multi_rast)[3][[1]],
+    xmax = terra::ext(multi_rast)[2][[1]],
+    ymax = terra::ext(multi_rast)[4][[1]]
+  )
+
+ylim <- c(terra::ext(multi_rast)[3], terra::ext(multi_rast)[4])
+xlim <- c(terra::ext(multi_rast)[1], terra::ext(multi_rast)[2])
+```
+
+# Create Transects
+
+```{r edit-transects}
+transect_file <- here(path_save, "..", "transects.shp")
+
+if (file_exists(transect_file)) {
+  message("Reading transects shapefile")
+  linestring <- st_read(transect_file)
+} else {
+  message("Creating transects.")
+  lyr_name <- grep("vel_mag", names(multi_rast), value = TRUE)[1]
+  
+  polyline <-
+    (mapview::mapView(multi_rast, layer = lyr_name) +
+      mapview::mapview(coast)
+    ) %>%
+    mapedit::editMap()
+
+  linestring <- polyline$finished
+
+  names(linestring) <- c("id", "type", "geometry")
+
+  message(paste0("Saving transects as `", basename(transect_file), "`."))
+  
+  st_write(
+    linestring,
+    transect_file
+  )
+}
+```
+
+
+## Extract Pixels along Transects
+
+```{r extract-along-transect}
+n_layers <- nlyr(multi_rast) / length(dat_grid)
+
+rast_names <- 
+  names(dat_grid) %>% 
+  rep(each = n_layers) %>% 
+  as_date()
+
+time(multi_rast)  <- rast_names
+names(multi_rast) <- paste(names(multi_rast), rast_names, sep = "_")
+# names(multi_rast)
+
+vel_ext_transect <- 
+ terra::extract(multi_rast, linestring, xy = TRUE) %>%
+ select(ID, x , y, contains("vel_mag")) %>%
+  pivot_longer(
+    cols      = c(-ID, -x, -y),     # columns to pivot long,
+    names_to  = "name",  # desired name for category column
+    values_to = "vel_mag", # desired name for value column
+    ) %>%
+  mutate(
+    date = str_extract(name, "\\d.*"),
+    date2 = as_date(date)
+  ) %T>% 
+  print()
+```
+
+
+# Plots
+
+
+```{r set-file-suffix}
+date_suffix <- 
+  c(first(rast_names), last(rast_names)) %>%
+  paste0(collapse = "_") %T>% 
+  print()
+```
+
+TODO: try this method to show distance from shore
+<https://stackoverflow.com/questions/71473958/how-to-keep-points-in-gganimate-after-each-frame-is-rendered>
+
+```{r trasect-view}
+trasect_plt <- 
+  vel_ext_transect %>%
+  mutate(
+    .by = ID,
+    lagx = first(x), 
+    lagy = first(y)
+    ) %>%
+  rowwise() %>%
+  mutate(dist = geodist_vec(lagx, lagy, x, y, measure = "geodesic") / 1000) %>%
+  ggplot(aes(x = dist, y = vel_mag, color = as.factor(ID))) +
+  geom_hline(yintercept = 0.5, color = "red") +
+  geom_path() +
+  geom_point() +
+  labs(color = "ID", x = "Distance from Shore (km)", y = expression("Velocity"~(m~s^-1))) +
+  coord_cartesian(expand = FALSE) +
+  theme_bw() +
+  # facet_wrap(~date)
+  # gganimate::transition_states(date) +
+  # labs(title = "Date: {closest_state}")
+  gganimate::transition_time(date2) +
+  labs(title = "Date: {frame_time }")
+
+if (FALSE) {
+  anim_save(
+    file      = glue("trasect_plot_{date_suffix}.mp4"),
+    animation = trasect_plt,
+    path      = animate_save,
+    renderer  = ffmpeg_renderer(format = "mp4", ffmpeg = ffmpeg_path),
+    
+    height  = 800,
+    width   = 800,
+    res     = 300,
+    nframes = nlyr(multi_rast),
+    fps     = 20
+  )
+}
+```
+
+```{r mag-vel-vectors}
+tictoc::tic()
+slice_by      <- 5
+length_divide <- 2
+
+plt_mag_vel_vect <- 
+  ggplot() +
+  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = vel_mag)) +
+  geom_sf(data = coast) +
+  scale_fill_viridis_b() +
+  geom_sf(data = linestring, color = "red")  +
+  geom_point(data = filter(vel_ext_transect, vel_mag < 0.5), aes(x = x,  y = y), color = "blue",
+             size = 0.5) +
+  geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), aes(x = x,  y = y), 
+             color = "green",
+             size = 0.5) +
+  geom_segment(
+    data = slice(ssh_grid_tibble, seq(1, n(), by = slice_by)),
+    aes(
+      x     = lon, 
+      xend  = lon + ugos/length_divide, 
+      y     = lat, 
+      yend  = lat + vgos/length_divide, 
+      color = vel_mag
+      ),
+    arrow     = arrow(length = unit(0.15/2, "cm")), # adjust arrow size
+    linewidth = 0.25,                              # adjust arrow thickness
+    na.rm     = TRUE
+  ) +
+  
+  # styling
+  labs(x = NULL, y = NULL,
+       color = expression("Velocity"~(m~s^-1)),
+       fill = expression("Velocity"~(m~s^-1))) +
+  coord_sf(expand = FALSE, ylim = ylim, xlim = xlim) +
+  scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
+  # facet_wrap(~date)
+  theme_bw() +
+  gganimate::transition_states(date, transition_length = 0) +
+  labs(title = "Date: {closest_state}")
+
+# save animation
+anim_save(
+  file      = glue("mag_vel_vect2_{date_suffix}.mp4"), 
+  animation = plt_mag_vel_vect, 
+  path      = animate_save, 
+  renderer  = ffmpeg_renderer(format = "mp4", ffmpeg = ffmpeg_path), 
+  height = 800, 
+  width  = 800,
+  res    = 300,
+  
+  nframes  = nlyr(multi_rast),
+  # duration = nlyr(multi_rast) / 4,
+  fps      = 20
+  )
+tictoc::toc()
+```
+
+# Extract Distance from Shore
+
+```{r distance-from-shore}
+# extract starting point of each transect
+polyline_pts <- 
+  linestring %>% 
+  st_coordinates() %>%
+  as_tibble(.name_repair = janitor::make_clean_names) %>%
+  slice_head(by = l1) %T>% 
+  print()
+
+left_join(
+  polyline_pts,
+  filter(vel_ext_transect, vel_mag >= 0.5) %>%
+    slice_head(by = c(ID, date)),
+  by = c("l1" = "ID"),
+  suffix = c("_shr", "_fc")
+  ) %>%
+  rowwise() %>%
+  mutate(
+    dist = geodist_vec(
+      x_shr, y_shr, 
+      x_fc, y_fc, 
+      measure = "geodesic") / 1000
+    ) %>%
+  ungroup()
+```
