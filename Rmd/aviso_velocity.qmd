@@ -201,68 +201,6 @@ ssh_path <-
 ```
 
 ```{r load-multi}
-# seq_nc <- expression(seq(1, nc_len, by = 1))
-# 
-# multi_day <- vector("list", length(ssh_path))
-# 
-# for (j in seq(ssh_path)) {
-#   # open data and extract variables
-#   ssh_nc <- nc_open(ssh_path[j])
-# 
-#   attributes(ssh_nc$var) # show vars names
-#   attributes(ssh_nc$dim) # show vars names
-# 
-#   # determine number of time dimensions
-#   nc_len   <- ssh_nc$dim$time$len
-#   dat_grid_temp <- vector("list", nc_len)
-# 
-#   # extract dates
-#   nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
-# 
-#   for (i in eval(seq_nc)) {
-#     # extract variables
-#     adt  <- ncvar_get(ssh_nc, "adt")[, , i]
-#     vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
-#     ugos <- ncvar_get(ssh_nc, "ugos")[, , i]
-#     lat  <- ncvar_get(ssh_nc, "latitude")
-#     lon  <- ncvar_get(ssh_nc, "longitude")
-# 
-#     # create grid data
-#     ssh_grid <-
-#       expand.grid(lon = lon, lat = lat) %>%
-#       mutate(
-#         adt     = as.vector(adt), # absolute dynamic topography
-#         vgos    = as.vector(vgos), # north geostrophic velocity
-#         ugos    = as.vector(ugos), # east geostrophic velocity
-#         vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
-#       )
-# 
-#     dat_grid_temp[[i]] <- ssh_grid
-#   }
-# 
-#   # set list names to date
-#   names(dat_grid_temp) <- nc_date
-# 
-#   # close `.nc` file
-#   nc_close(ssh_nc)
-# 
-#   dat_grid_temp
-# 
-#   multi_day[[j]] <- 
-#     dat_grid_temp %>%
-#     Filter(Negate(is.null), .)
-# }
-# 
-# # flatten list from months to days
-# dat_grid <-
-#   multi_day %>%
-#   list_flatten()
-# 
-# # convert to tibble
-# ssh_grid_tibble <-
-#   dat_grid %>%
-#   list_rbind(names_to = "date")
-
 avios_days <- avios_load(ssh_path, .by = 7)
 
 ssh_grid_tibble <- avios_days$tibble
@@ -484,25 +422,14 @@ vel_vect <- slice(ssh_grid_tibble, seq(1, n(), by = slice_by)) %>% filt
 
 
 ```{r mag-vel-vectors}
-tictoc::tic()
 plt_mag_vel_vect <- 
   ggplot() +
+  
+  # velocity pixels
   geom_tile(data = ssh_tile, aes(x = lon, y = lat, fill = vel_mag)) +
+
+  # coast
   geom_sf(data = coast) +
-  scale_fill_viridis_b() +
-  geom_sf(data = linestring, color = "red")  +
-  
-  # less than 0.5 m/s
-  geom_point(data = pts_lt, 
-             aes(x = x,  y = y), 
-             color = "blue",
-             size  = 0.5) +
-  
-  # greater than 0.5 m/s
-  geom_point(data = pts_gt, 
-             aes(x = x,  y = y), 
-             color = "green",
-             size  = 0.5) +
   
   # velocity vectors
   geom_segment(
@@ -518,12 +445,28 @@ plt_mag_vel_vect <-
     linewidth = 0.25,                              # adjust arrow thickness
     na.rm     = TRUE
   ) +
+
+  # transects
+  geom_sf(data = linestring, color = "red")  +
+
+  # less than 0.5 m/s
+  geom_point(data = pts_lt,
+             aes(x = x,  y = y),
+             color = "blue",
+             size  = 0.5) +
+
+  # greater than 0.5 m/s
+  geom_point(data = pts_gt,
+             aes(x = x,  y = y),
+             color = "green",
+             size  = 0.5) +
   
   # styling
   labs(x = NULL, y = NULL,
        color = expression("Velocity"~(m~s^-1)),
        fill = expression("Velocity"~(m~s^-1))) +
   coord_sf(expand = FALSE, ylim = ylim, xlim = xlim) +
+  scale_fill_viridis_b() +
   scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
   # facet_wrap(~date)
   theme_bw() +
@@ -531,6 +474,7 @@ plt_mag_vel_vect <-
   labs(title = "Date: {closest_state}")
 
 # save animation
+tictoc::tic()
 anim_save(
   file      = glue("mag_vel_vect2_{date_suffix}.mp4"), 
   animation = plt_mag_vel_vect, 
