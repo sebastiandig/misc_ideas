@@ -30,7 +30,8 @@ librarian::shelf(
 
 conflicts_prefer(
   dplyr::filter(), 
-  dplyr::select()
+  dplyr::select(),
+  magrittr::extract()
   )
   
 
@@ -400,20 +401,35 @@ left_join(
 
 # Multiday Plots
 
+## Load Packages
+```{r aviso-libs}
+shelf(sf, ncdf4, stars, terra)
+
+path_save <- here("data", "raw", "copernicus")
+```
+
 ## Load Muliple Dates
 
 If there are multiple time dimensions, will load each date into its own list
 
 ```{r load-multi}
-ssh_path <-
-  here::here("data", "raw") %>%
-  rstudioapi::selectFile(path = .)
+# ssh_path <-
+#   here::here("data", "raw") %>%
+#   rstudioapi::selectFile(path = .)
+
+ssh_path_full <-
+  # here::here("data", "raw") %>%
+  here("~", "Box", "aviso_velocity", "data", "raw", "copernicus") %>%
+  rstudioapi::selectDirectory(path = .) %>%
+  dir_ls(regexp = "mems_obs-sl_glo")
 
 ssh_path <-
-  here::here("data", "raw") %>%
-  rstudioapi::selectDirectory(path = .) %>%
-  dir_ls(regexp = "mems_obs-sl_glo") %>%
-  .[1:12]
+  ssh_path_full[1:12] %T>% 
+  {
+    .[] %>%
+    str_extract("(\\d{4}-.*)\\.nc", group = 1) %>%
+    print()
+  }
 ```
 
 
@@ -508,7 +524,7 @@ xlim <- c(terra::ext(multi_rast)[1], terra::ext(multi_rast)[2])
 # Create Transects
 
 ```{r}
-transect_file <- here(path_save, "transects.shp")
+transect_file <- here(path_save, "..", "transects.shp")
 
 if (file_exists(transect_file)) {
   message("Reading transects shapefile")
@@ -537,7 +553,8 @@ if (file_exists(transect_file)) {
 ```
 
 ## Extract Pixels along Transects
-```{r}
+
+```{r extract-along-transect}
 n_layers <- nlyr(multi_rast) / length(dat_grid)
 
 rast_names <- 
@@ -547,7 +564,7 @@ rast_names <-
 
 time(multi_rast)  <- rast_names
 names(multi_rast) <- paste(names(multi_rast), rast_names, sep = "_")
-names(multi_rast)
+# names(multi_rast)
 
 vel_ext_transect <- 
  terra::extract(multi_rast, linestring, xy = TRUE) %>%
@@ -565,68 +582,35 @@ vel_ext_transect <-
 ```
 
 
-```{r}
+### Load Animate Packages and Set Path to FFMPEG
+
+Will need to have downloaded `ffmpeg` 
+
+<https://www.gyan.dev/ffmpeg/builds/>
+
+```{r load-animate}
 shelf(gganimate, transformr)
+
+ffmpeg_path <- 
+  here("C:\\", "Program Files",
+       "ffmpeg-2025-07-12-git-35a6de137a-full_build", "bin",
+       "ffmpeg.exe"
+       )
+
+animate_save <- here("data", "plots", "animate")
+dir_create(animate_save)
+
+date_suffix <- 
+  c(first(rast_names), last(rast_names)) %>%
+  paste0(collapse = "_")
 ```
 
 
-```{r}
-plt_mag_vel <- 
-  ggplot() +
-  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = vel_mag)) +
-  geom_sf(data = coast) +
-  scale_fill_viridis_b() +
-  geom_sf(data = linestring, color = "red") +
-  geom_point(data = vel_ext_transect, aes(x = x,  y = y), color = "blue") +
-  geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), aes(x = x,  y = y), color = "green") +
-  gganimate::transition_states(date) +
-  labs(title = "Date: {closest_state}")
-  # facet_wrap(~date)
-anim_save("mag_vel.gif", plt_mag_vel, path = here())
-```
+## Plots
 
-
-```{r}
-slice_by      <- 5
-length_divide <- 2
-plt_mag_vel_vect <- 
-  ggplot() +
-  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = vel_mag)) +
-  geom_sf(data = coast) +
-  scale_fill_viridis_b() +
-  geom_sf(data = linestring, color = "red")  +
-  geom_point(data = vel_ext_transect, aes(x = x,  y = y), color = "blue") +
-  geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), aes(x = x,  y = y), 
-             color = "green") +
-  geom_segment(
-    data = slice(ssh_grid_tibble, seq(1, n(), by = slice_by)),
-    aes(
-      x     = lon, 
-      xend  = lon + ugos/length_divide, 
-      y     = lat, 
-      yend  = lat + vgos/length_divide, 
-      color = vel_mag
-      ),
-    arrow     = arrow(length = unit(0.15, "cm")), # adjust arrow size
-    linewidth = 0.5,                              # adjust arrow thickness
-    na.rm     = TRUE
-  ) +
-  scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
-  theme_bw() +
-  labs(x = NULL, y = NULL) +
-  coord_sf(expand = FALSE, ylim = ylim, xlim = xlim) +
-  # facet_wrap(~date)
-  gganimate::transition_states(date) +
-  labs(title = "Date: {closest_state}")
-
-# plt_mag_vel_vect
-anim_save("mag_vel_vect.gif", plt_mag_vel_vect, path = here())
-
-```
-
-
-```{r}
-vel_ext_transect %>%
+```{r trasect-view}
+trasect_plt <- 
+  vel_ext_transect %>%
   mutate(
     .by = ID,
     lagx = first(x), 
@@ -640,10 +624,121 @@ vel_ext_transect %>%
   geom_point() +
   labs(color = "ID", x = NULL, y = expression("Velocity"~(m~s^-1))) +
   coord_cartesian(expand = FALSE) +
+  theme_bw() +
   # facet_wrap(~date)
-  gganimate::transition_states(date, state_length = 0.25) +
+  gganimate::transition_states(date) +
   labs(title = "Date: {closest_state}")
+
+if (FALSE) {
+  # plt_mag_vel_vect
+  # anim_save("mag_vel_vect.gif", plt_mag_vel_vect, path = here())
+  
+  anim_save(
+    file      = glue("trasect_plot_{date_suffix}.mp4"), 
+    animation = trasect_plt, 
+    path      = animate_save, 
+    renderer  = ffmpeg_renderer(format = "mp4", ffmpeg = ffmpeg_path), 
+    height = 800, 
+    width  = 800,
+    res    = 300,
+  
+    nframes  = nlyr(multi_rast),
+    # duration = nlyr(multi_rast) / 4,
+    fps      = 20
+    )
+}
 ```
+
+```{r mag-velocity-plt}
+plt_mag_vel <- 
+  ggplot() +
+  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = vel_mag)) +
+  geom_sf(data = coast) +
+  scale_fill_viridis_b() +
+  geom_sf(data = linestring, color = "red") +
+  geom_point(data = vel_ext_transect, aes(x = x,  y = y), color = "blue",
+             size = 0.5) +
+  geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), 
+             aes(x = x,  y = y), color = "green",
+             size = 0.5) +
+  labs(x = NULL, y = NULL) +
+  coord_sf(expand = FALSE, ylim = ylim, xlim = xlim) +
+  gganimate::transition_states(date) +
+  labs(title = "Date: {closest_state}")
+  # facet_wrap(~date)
+
+
+# anim_save("mag_vel.gif", plt_mag_vel, path = animate_save)
+anim_save(
+  file      = glue("mag_vel_{date_suffix}.mp4"), 
+  animation = plt_mag_vel, 
+  path      = animate_save, 
+  renderer  = ffmpeg_renderer(format = "mp4", ffmpeg = ffmpeg_path), 
+  height = 800, 
+  width  = 800,
+  res    = 300,
+  
+  nframes  = nlyr(multi_rast),
+  # duration = nlyr(multi_rast) / 4,
+  fps      = 20
+  )
+
+```
+
+
+```{r mag-vel-vectors}
+slice_by      <- 5
+length_divide <- 2
+
+plt_mag_vel_vect <- 
+  ggplot() +
+  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = vel_mag)) +
+  geom_sf(data = coast) +
+  scale_fill_viridis_b() +
+  geom_sf(data = linestring, color = "red")  +
+  geom_point(data = filter(vel_ext_transect, vel_mag < 0.5), aes(x = x,  y = y), color = "blue",
+             size = 0.5) +
+  geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), aes(x = x,  y = y), 
+             color = "green",
+             size = 0.5) +
+  geom_segment(
+    data = slice(ssh_grid_tibble, seq(1, n(), by = slice_by)),
+    aes(
+      x     = lon, 
+      xend  = lon + ugos/length_divide, 
+      y     = lat, 
+      yend  = lat + vgos/length_divide, 
+      color = vel_mag
+      ),
+    arrow     = arrow(length = unit(0.15/2, "cm")), # adjust arrow size
+    linewidth = 0.25,                              # adjust arrow thickness
+    na.rm     = TRUE
+  ) +
+  scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
+  theme_bw() +
+  labs(x = NULL, y = NULL) +
+  coord_sf(expand = FALSE, ylim = ylim, xlim = xlim) +
+  # facet_wrap(~date)
+  gganimate::transition_states(date) +
+  labs(title = "Date: {closest_state}")
+
+# plt_mag_vel_vect
+# anim_save("mag_vel_vect.gif", plt_mag_vel_vect, path = animate_save)
+anim_save(
+  file      = glue("mag_vel_vect_{date_suffix}.mp4"), 
+  animation = plt_mag_vel_vect, 
+  path      = animate_save, 
+  renderer  = ffmpeg_renderer(format = "mp4", ffmpeg = ffmpeg_path), 
+  height = 800, 
+  width  = 800,
+  res    = 300,
+  
+  nframes  = nlyr(multi_rast),
+  # duration = nlyr(multi_rast) / 4,
+  fps      = 20
+  )
+```
+
 
 
 ## Extract Distance from Shore
