@@ -27,7 +27,7 @@ librarian::shelf(
   forcats, lubridate, glue, fs, magrittr, here,
   
   # additional
-  ggspatial, sf, ncdf4, stars, terra, geodist,
+  # ggspatial, sf, ncdf4, stars, terra, geodist,
   
   gganimate, transformr
 )
@@ -37,6 +37,8 @@ conflicts_prefer(
   dplyr::select(),
   magrittr::extract()
   )
+
+shelf(ggspatial, sf, ncdf4, stars, terra, geodist,)
 
 # set paths to downloaded data, ffmpeg, and animation
 path_save <- here("data", "raw", "copernicus")
@@ -153,68 +155,21 @@ cat("Date Range: ", format(months[c(1, length(months))], "%B %Y"), sep = "\n- ")
 ```{r download-aviso}
 # set to TRUE if downloading data
 download <- FALSE
-download <- TRUE
+# download <- TRUE
 
 # set to TRUE if want to overwrite previous data
 overwrite <- FALSE
 # overwrite <- TRUE
 
-month_list <- vector("list", length(months))
-names(month_list) <- format(months, "%B_%Y")
-
-for (i in seq(length(months))) {
-  date_i <- months[i]
-  date_range <- c(date_i, date_i + months(1) - days(1))
-  
-  message(paste("\n-----\n\nNew Month:", format(date_i, "%B %Y")))
-  cat(as.character(date_range), sep = "\n")
-  
-  month_list[[i]] <- c(as.character(date_range), paste(date_range, collapse = "-"))
-  
-  prev_files <- 
-    dir_ls(path_save) %>% 
-    str_detect(paste(date_range, collapse = "-")) %>% 
-    any()
-  
-  if (prev_files & !overwrite) {
-    message("Skipping because date range exists!")
-    next
-  }
-  
-  # set date range
-  date_range <-
-    date_range %>%
-    as_datetime() %>%
-    format_ISO8601()
-  
-  # set up command to download
-  command <-
-    paste(
-      shQuote(path_copernicusmarine),
-      "subset",
-      "--dataset-id cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
-      paste("--variable", vars, collapse = " "),
-      "--start-datetime",    date_range[1],
-      "--end-datetime",      date_range[2],
-      "--minimum-longitude", ssh_bbox["xmin"],
-      "--maximum-longitude", ssh_bbox["xmax"],
-      "--minimum-latitude",  ssh_bbox["ymin"],
-      "--maximum-latitude",  ssh_bbox["ymax"],
-      "-o",
-      path_save
-    )
-  
-  if (download) {
-    message("Downloading AVISO+ Date")
-    
-    # execute command to download files
-    system(command)
-  } else {
-    message("Not downloading AVISO+ data")
-  }
-  
-}
-
+aviso_download(
+  months, 
+  vars, 
+  bounds = ssh_bbox,
+  path_copernicusmarine,
+  path_save = here("~", "Box", "aviso_velocity", "data", "raw", "copernicus"),
+  download,
+  overwrite
+)
 ```
 
 
@@ -246,69 +201,73 @@ ssh_path <-
 ```
 
 ```{r load-multi}
-seq_nc <- expression(seq(1, nc_len, by = 1))
+# seq_nc <- expression(seq(1, nc_len, by = 1))
+# 
+# multi_day <- vector("list", length(ssh_path))
+# 
+# for (j in seq(ssh_path)) {
+#   # open data and extract variables
+#   ssh_nc <- nc_open(ssh_path[j])
+# 
+#   attributes(ssh_nc$var) # show vars names
+#   attributes(ssh_nc$dim) # show vars names
+# 
+#   # determine number of time dimensions
+#   nc_len   <- ssh_nc$dim$time$len
+#   dat_grid_temp <- vector("list", nc_len)
+# 
+#   # extract dates
+#   nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
+# 
+#   for (i in eval(seq_nc)) {
+#     # extract variables
+#     adt  <- ncvar_get(ssh_nc, "adt")[, , i]
+#     vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
+#     ugos <- ncvar_get(ssh_nc, "ugos")[, , i]
+#     lat  <- ncvar_get(ssh_nc, "latitude")
+#     lon  <- ncvar_get(ssh_nc, "longitude")
+# 
+#     # create grid data
+#     ssh_grid <-
+#       expand.grid(lon = lon, lat = lat) %>%
+#       mutate(
+#         adt     = as.vector(adt), # absolute dynamic topography
+#         vgos    = as.vector(vgos), # north geostrophic velocity
+#         ugos    = as.vector(ugos), # east geostrophic velocity
+#         vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
+#       )
+# 
+#     dat_grid_temp[[i]] <- ssh_grid
+#   }
+# 
+#   # set list names to date
+#   names(dat_grid_temp) <- nc_date
+# 
+#   # close `.nc` file
+#   nc_close(ssh_nc)
+# 
+#   dat_grid_temp
+# 
+#   multi_day[[j]] <- 
+#     dat_grid_temp %>%
+#     Filter(Negate(is.null), .)
+# }
+# 
+# # flatten list from months to days
+# dat_grid <-
+#   multi_day %>%
+#   list_flatten()
+# 
+# # convert to tibble
+# ssh_grid_tibble <-
+#   dat_grid %>%
+#   list_rbind(names_to = "date")
 
-multi_day <- vector("list", length(ssh_path))
+avios_days <- avios_load(ssh_path, .by = 7)
 
-for (j in seq(ssh_path)) {
-  # open data and extract variables
-  ssh_nc <- nc_open(ssh_path[j])
-
-  attributes(ssh_nc$var) # show vars names
-  attributes(ssh_nc$dim) # show vars names
-
-  # determine number of time dimensions
-  nc_len   <- ssh_nc$dim$time$len
-  dat_grid_temp <- vector("list", nc_len)
-
-  # extract dates
-  nc_date <- as_date(ncvar_get(ssh_nc, "time"), origin = as_date(ssh_nc$dim$time$units))
-
-  for (i in eval(seq_nc)) {
-    # extract variables
-    adt  <- ncvar_get(ssh_nc, "adt")[, , i]
-    vgos <- ncvar_get(ssh_nc, "vgos")[, , i]
-    ugos <- ncvar_get(ssh_nc, "ugos")[, , i]
-    lat  <- ncvar_get(ssh_nc, "latitude")
-    lon  <- ncvar_get(ssh_nc, "longitude")
-
-    # create grid data
-    ssh_grid <-
-      expand.grid(lon = lon, lat = lat) %>%
-      mutate(
-        adt     = as.vector(adt), # absolute dynamic topography
-        vgos    = as.vector(vgos), # north geostrophic velocity
-        ugos    = as.vector(ugos), # east geostrophic velocity
-        vel_mag = sqrt(vgos^2 + ugos^2) # calculate current velocity
-      )
-
-    dat_grid_temp[[i]] <- ssh_grid
-  }
-
-  # set list names to date
-  names(dat_grid_temp) <- nc_date
-
-  # close `.nc` file
-  nc_close(ssh_nc)
-
-  dat_grid_temp
-
-  multi_day[[j]] <- 
-    dat_grid_temp %>%
-    Filter(Negate(is.null), .)
-}
-
-# flatten list from months to days
-dat_grid <-
-  multi_day %>%
-  list_flatten()
-
-# convert to tibble
-ssh_grid_tibble <-
-  dat_grid %>%
-  list_rbind(names_to = "date")
-
-
+ssh_grid_tibble <- avios_days$tibble
+dat_grid        <- avios_days$gridded
+  
 ssh_grid_tibble %>%
   distinct(date)
 ```
@@ -322,18 +281,20 @@ multi_rast <-
   rast()
 multi_rast
 
+extents <- ext(multi_rast)
+ylim    <- extents[3:4]
+xlim    <- extents[1:2]
+
 # load coastline
 coast <-
   rnaturalearth::ne_coastline(10, returnclass = "sf") %>%
   st_crop(
-    xmin = terra::ext(multi_rast)[1][[1]],
-    ymin = terra::ext(multi_rast)[3][[1]],
-    xmax = terra::ext(multi_rast)[2][[1]],
-    ymax = terra::ext(multi_rast)[4][[1]]
+    xmin = xlim[1][[1]],
+    ymin = ylim[1][[1]],
+    xmax = xlim[2][[1]],
+    ymax = ylim[2][[1]],
   )
-
-ylim <- c(terra::ext(multi_rast)[3], terra::ext(multi_rast)[4])
-xlim <- c(terra::ext(multi_rast)[1], terra::ext(multi_rast)[2])
+coast
 ```
 
 # Create Transects
@@ -380,7 +341,7 @@ rast_names <-
 
 time(multi_rast)  <- rast_names
 names(multi_rast) <- paste(names(multi_rast), rast_names, sep = "_")
-# names(multi_rast)
+
 
 vel_ext_transect <- 
  terra::extract(multi_rast, linestring, xy = TRUE) %>%
@@ -397,9 +358,68 @@ vel_ext_transect <-
   print()
 ```
 
+# Extract Distance from Shore
+
+```{r distance-from-shore}
+# extract starting point of each transect
+polyline_pts <- 
+  linestring %>% 
+  st_coordinates() %>%
+  as_tibble(.name_repair = janitor::make_clean_names) %>%
+  slice_head(by = l1) %T>% 
+  print()
+
+left_join(
+  polyline_pts,
+  
+  # extract first value along transect >0.5 m/s
+  filter(vel_ext_transect, vel_mag >= 0.5) %>%
+    slice_head(by = c(ID, date)),
+  
+  by = c("l1" = "ID"),
+  suffix = c("_shr", "_fc")
+  ) %>%
+  rowwise() %>%
+  mutate(
+    dist = geodist_vec(
+      x_shr, y_shr, 
+      x_fc, y_fc, 
+      measure = "geodesic") / 1000
+    ) %>%
+  ungroup()
+```
+
+
+```{r distance-from-shore}
+dist_from_shore <-
+  left_join(
+    polyline_pts,
+
+    # extract first value along transect >0.5 m/s
+    vel_ext_transect,
+    # filter(vel_ext_transect, vel_mag >= 0.5),
+    by = c("l1" = "ID"),
+    suffix = c("_shr", "_fc")
+  ) %>%
+  rowwise() %>%
+  mutate(
+    dist = geodist_vec(
+      x_shr, y_shr,
+      x_fc, y_fc,
+      measure = "geodesic"
+    ) / 1000
+  ) %>%
+  ungroup() %T>%
+  print()
+
+dist_from_shore %>%
+  # extract first value along transect >0.5 m/s
+  filter(vel_mag >= 0.5) %>%
+  slice_head(by = c(l1, date))
+```
+
 
 # Plots
-
 
 ```{r set-file-suffix}
 date_suffix <- 
@@ -413,30 +433,25 @@ TODO: try this method to show distance from shore
 
 ```{r trasect-view}
 trasect_plt <- 
-  vel_ext_transect %>%
-  mutate(
-    .by = ID,
-    lagx = first(x), 
-    lagy = first(y)
-    ) %>%
-  rowwise() %>%
-  mutate(dist = geodist_vec(lagx, lagy, x, y, measure = "geodesic") / 1000) %>%
-  ggplot(aes(x = dist, y = vel_mag, color = as.factor(ID))) +
+  dist_from_shore %>%
+  ggplot(aes(x = dist, y = vel_mag, color = as.factor(l1))) +
   geom_hline(yintercept = 0.5, color = "red") +
   geom_path() +
   geom_point() +
-  labs(color = "ID", x = "Distance from Shore (km)", y = expression("Velocity"~(m~s^-1))) +
+  labs(
+    x = "Distance from Shore (km)", 
+    y = expression("Velocity"~(m~s^-1)),
+    color = "ID"
+    ) +
   coord_cartesian(expand = FALSE) +
   theme_bw() +
   # facet_wrap(~date)
-  # gganimate::transition_states(date) +
-  # labs(title = "Date: {closest_state}")
   gganimate::transition_time(date2) +
-  labs(title = "Date: {frame_time }")
+  labs(title = "Date: {frame_time}")
 
 if (FALSE) {
   anim_save(
-    file      = glue("trasect_plot_{date_suffix}.mp4"),
+    file      = glue("trasect_plot4_{date_suffix}.mp4"),
     animation = trasect_plt,
     path      = animate_save,
     renderer  = ffmpeg_renderer(format = "mp4", ffmpeg = ffmpeg_path),
@@ -450,24 +465,48 @@ if (FALSE) {
 }
 ```
 
-```{r mag-vel-vectors}
-tictoc::tic()
+For `vel_vect`, may want to have more vectors along keys so instead of filtering
+for every `slice_by`, should include a polygon to keep?
+
+```{r vars-plt-mag-vel-vectors}
 slice_by      <- 5
 length_divide <- 2
+filt <- 
+  . %>% 
+  filter()
+  # filter(date == first(date))
 
+ssh_tile <- ssh_grid_tibble %>% filt
+pts_lt   <- filter(vel_ext_transect, vel_mag < 0.5) %>% filt
+pts_gt   <- filter(vel_ext_transect, vel_mag >= 0.5) %>% filt
+vel_vect <- slice(ssh_grid_tibble, seq(1, n(), by = slice_by)) %>% filt
+```
+
+
+```{r mag-vel-vectors}
+tictoc::tic()
 plt_mag_vel_vect <- 
   ggplot() +
-  geom_tile(data = ssh_grid_tibble, aes(x = lon, y = lat, fill = vel_mag)) +
+  geom_tile(data = ssh_tile, aes(x = lon, y = lat, fill = vel_mag)) +
   geom_sf(data = coast) +
   scale_fill_viridis_b() +
   geom_sf(data = linestring, color = "red")  +
-  geom_point(data = filter(vel_ext_transect, vel_mag < 0.5), aes(x = x,  y = y), color = "blue",
-             size = 0.5) +
-  geom_point(data = filter(vel_ext_transect, vel_mag >= 0.5), aes(x = x,  y = y), 
+  
+  # less than 0.5 m/s
+  geom_point(data = pts_lt, 
+             aes(x = x,  y = y), 
+             color = "blue",
+             size  = 0.5) +
+  
+  # greater than 0.5 m/s
+  geom_point(data = pts_gt, 
+             aes(x = x,  y = y), 
              color = "green",
-             size = 0.5) +
+             size  = 0.5) +
+  
+  # velocity vectors
   geom_segment(
-    data = slice(ssh_grid_tibble, seq(1, n(), by = slice_by)),
+    data = vel_vect,
     aes(
       x     = lon, 
       xend  = lon + ugos/length_divide, 
@@ -502,36 +541,9 @@ anim_save(
   res    = 300,
   
   nframes  = nlyr(multi_rast),
-  # duration = nlyr(multi_rast) / 4,
   fps      = 20
   )
 tictoc::toc()
 ```
 
-# Extract Distance from Shore
 
-```{r distance-from-shore}
-# extract starting point of each transect
-polyline_pts <- 
-  linestring %>% 
-  st_coordinates() %>%
-  as_tibble(.name_repair = janitor::make_clean_names) %>%
-  slice_head(by = l1) %T>% 
-  print()
-
-left_join(
-  polyline_pts,
-  filter(vel_ext_transect, vel_mag >= 0.5) %>%
-    slice_head(by = c(ID, date)),
-  by = c("l1" = "ID"),
-  suffix = c("_shr", "_fc")
-  ) %>%
-  rowwise() %>%
-  mutate(
-    dist = geodist_vec(
-      x_shr, y_shr, 
-      x_fc, y_fc, 
-      measure = "geodesic") / 1000
-    ) %>%
-  ungroup()
-```
