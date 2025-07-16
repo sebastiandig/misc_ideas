@@ -50,6 +50,8 @@ ffmpeg_path <-
 
 animate_save <- here("data", "plots", "animate")
 dir_create(animate_save)
+
+source(here("scripts", "aviso_functions.R"))
 ```
 
 
@@ -123,7 +125,7 @@ path_copernicusmarine <- here("copernicusmarine.exe")
 dir_create(path_save)
 
 # set spatial extent
-ssh_bbox <-
+aviso_bbox <-
   c(
     xmin = -83.8125,
     xmax = -78.3125,
@@ -164,7 +166,7 @@ overwrite <- FALSE
 aviso_download(
   months, 
   vars, 
-  bounds = ssh_bbox,
+  bounds = aviso_bbox,
   path_copernicusmarine,
   path_save = here("~", "Box", "aviso_velocity", "data", "raw", "copernicus"),
   download,
@@ -181,18 +183,18 @@ aviso_download(
 If there are multiple time dimensions, will load each date into its own list
 
 ```{r path-multi}
-# ssh_path <-
+# aviso_path <-
 #   here::here("data", "raw") %>%
 #   rstudioapi::selectFile(path = .)
 
-ssh_path_full <-
+aviso_path_full <-
   # here::here("data", "raw") %>%
   here("~", "Box", "aviso_velocity", "data", "raw", "copernicus") %>%
   # rstudioapi::selectDirectory(path = .) %>%
   dir_ls(regexp = "mems_obs-sl_glo")
 
-ssh_path <-
-  ssh_path_full[11:11] %T>% 
+aviso_path <-
+  aviso_path_full[11:11] %T>% 
   {
     .[] %>%
     str_extract("(\\d{4}-.*)\\.nc", group = 1) %>%
@@ -201,13 +203,15 @@ ssh_path <-
 ```
 
 ```{r load-multi}
-avios_days <- avios_load(ssh_path, .by = 7)
+aviso_days <- aviso_load(aviso_path, .by = 7)
 
-ssh_grid_tibble <- avios_days$tibble
+aviso_grid_tibble <- avios_days$tibble
 dat_grid        <- avios_days$gridded
   
-ssh_grid_tibble %>%
+aviso_grid_tibble %>%
   distinct(date)
+
+rm(aviso_days)
 ```
 
 ## Create Multi-day Raster
@@ -233,6 +237,8 @@ coast <-
     ymax = ylim[2][[1]],
   )
 coast
+
+rm(extents)
 ```
 
 # Create Transects
@@ -414,10 +420,10 @@ filt <-
   filter()
   # filter(date == first(date))
 
-ssh_tile <- ssh_grid_tibble %>% filt
+aviso_tile <- aviso_grid_tibble %>% filt
 pts_lt   <- filter(vel_ext_transect, vel_mag < 0.5) %>% filt
 pts_gt   <- filter(vel_ext_transect, vel_mag >= 0.5) %>% filt
-vel_vect <- slice(ssh_grid_tibble, seq(1, n(), by = slice_by)) %>% filt
+vel_vect <- slice(aviso_grid_tibble, seq(1, n(), by = slice_by)) %>% filt
 ```
 
 
@@ -426,7 +432,7 @@ plt_mag_vel_vect <-
   ggplot() +
   
   # velocity pixels
-  geom_tile(data = ssh_tile, aes(x = lon, y = lat, fill = vel_mag)) +
+  geom_tile(data = aviso_tile, aes(x = lon, y = lat, fill = vel_mag)) +
 
   # coast
   geom_sf(data = coast) +
