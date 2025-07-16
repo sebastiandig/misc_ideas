@@ -416,7 +416,8 @@ test2 <-
  dist_from_shore2 %>%
   mutate(
     months = format(date2, "%B %Y"),
-    months = my(months),
+    months = my(months)
+    ) %>% 
   ggplot(aes(x = dist, y = vel_mag, color = date)) +
   geom_hline(yintercept = 0.5, color = "red") +
   geom_path(show.legend = FALSE) +
