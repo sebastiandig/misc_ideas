@@ -65,7 +65,7 @@ aviso_download <- function(
 
 
 
-avios_load <- function(ssh_path, .by = 1) {
+aviso_load <- function(ssh_path, .by = 1) {
   seq_nc <- expression(seq(1, nc_len, by = .by))
 
   multi_day <- vector("list", length(ssh_path))
