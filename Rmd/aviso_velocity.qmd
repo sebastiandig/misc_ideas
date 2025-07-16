@@ -194,7 +194,7 @@ aviso_path_full <-
   dir_ls(regexp = "mems_obs-sl_glo")
 
 aviso_path <-
-  aviso_path_full[11:11] %T>% 
+  aviso_path_full[1:6] %T>% 
   {
     .[] %>%
     str_extract("(\\d{4}-.*)\\.nc", group = 1) %>%
@@ -203,10 +203,10 @@ aviso_path <-
 ```
 
 ```{r load-multi}
-aviso_days <- aviso_load(aviso_path, .by = 7)
+aviso_days <- aviso_load(aviso_path, .by = 3)
 
-aviso_grid_tibble <- avios_days$tibble
-dat_grid        <- avios_days$gridded
+aviso_grid_tibble <- aviso_days$tibble
+dat_grid          <- aviso_days$gridded
   
 aviso_grid_tibble %>%
   distinct(date)
@@ -244,18 +244,30 @@ rm(extents)
 # Create Transects
 
 ```{r edit-transects}
-transect_file <- here(path_save, "..", "transects.shp")
+transect_file <- here(path_save, "..", "transects2.shp")
 
 if (file_exists(transect_file)) {
   message("Reading transects shapefile")
   linestring <- st_read(transect_file)
 } else {
+  
+  stations_path <- rstudioapi::selectFile() 
+  station_sht   <- readxl::excel_sheets(stations_path) 
+  station       <- readxl::read_excel(
+    stations_path, 
+    station_sht[9], 
+    .name_repair = janitor::make_clean_names
+    ) %>%
+    filter(str_detect(geo_loc_name, "(?i)florida keys") & !str_detect(line_id, "PL")) %>%
+    select(station_id, station_class, "lon" = mean_lon, "lat" = mean_lat, line_id)
+  
   message("Creating transects.")
   lyr_name <- grep("vel_mag", names(multi_rast), value = TRUE)[1]
   
   polyline <-
-    (mapview::mapView(multi_rast, layer = lyr_name) +
-      mapview::mapview(coast)
+    ((mapview::mapView(multi_rast, layer = lyr_name) +
+      mapview::mapview(coast)) +
+      mapview::mapview(station, xcol = "lon", ycol = "lat")
     ) %>%
     mapedit::editMap()
 
@@ -374,6 +386,53 @@ date_suffix <-
 
 TODO: try this method to show distance from shore
 <https://stackoverflow.com/questions/71473958/how-to-keep-points-in-gganimate-after-each-frame-is-rendered>
+
+```{r}
+dist_from_shore2 <- 
+  c("MQ", arrange(station, lon)  %>%
+   distinct(line_id) %>%
+   pull(1)
+   ) %>%
+  tibble(line_name = .) %>%
+  add_row(.after = 9, tibble(line_name = "MR2")) %>%
+  mutate(rows = row_number(),
+         line_name = fct_inorder(line_name)) %>%
+  left_join(
+    x = dist_from_shore,
+    y = .,
+    by = c("l1" = "rows")
+  )
+
+test2 <- 
+  dist_from_shore2 %>%
+  mutate(
+    months = format(date2, "%B %Y"),
+    months = my(months),
+         ) %>%
+  summarise(
+    .by = c(months, l1, line_name, dist),
+    vel_mag = mean(vel_mag, na.rm = TRUE)
+  ) 
+ dist_from_shore2 %>%
+  mutate(
+    months = format(date2, "%B %Y"),
+    months = my(months),
+  ggplot(aes(x = dist, y = vel_mag, color = date)) +
+  geom_hline(yintercept = 0.5, color = "red") +
+  geom_path(show.legend = FALSE) +
+  geom_point(show.legend = FALSE) +
+  geom_path(data = test2,  color = "black", show.legend = FALSE) +
+  geom_point(data = test2, color = "black",  show.legend = FALSE) +
+  labs(
+    x = "Distance from Shore (km)", 
+    y = expression("Velocity"~(m~s^-1)),
+    color = "ID"
+    ) +
+  coord_cartesian(expand = FALSE) +
+  theme_bw() +
+  facet_grid(months ~ line_name)
+```
+
 
 ```{r trasect-view}
 trasect_plt <- 
