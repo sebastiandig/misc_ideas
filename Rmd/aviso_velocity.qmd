@@ -17,7 +17,10 @@ A threshold of >= 0.5 m/s is used to determine the FC based on a Zhang et al., 2
 
 12 transects are added to determine the location of the FC based on the typical
 MBON/SFER cruise transects. These transects are as close as possible to the 
-various transects and are named after the `Line Names` inherent to them. 
+various transects and are named after the `Line Names` inherent to them. Will
+need a `fknms_` metadata spreadsheet to get transect locations.
+- can be found in Box > mbon_imars_cruises > blank_sheets > pre_cruise_blank_sheets
+  - file: fknms_sample_logsheet_MM_YYYY_blank.xlsx
 
 To save videos per year:
 - need to have downloaded `ffmpeg` to animate vectors
@@ -39,8 +42,6 @@ librarian::shelf(
   forcats, lubridate, glue, fs, magrittr, here,
   
   # additional
-  # ggspatial, sf, ncdf4, stars, terra, geodist,
-  
   gganimate, transformr
 )
 
