@@ -658,10 +658,20 @@ test <-
   tidyterra::as_tibble(xy = TRUE) %>%
   rename("lon" = x, "lat" = y, "adt" = 3, "vgos" = 4, "ugos" = 5, "vel_mag" = 6)
 
+test2 <-
+  multi_rast %>%
+  terra::subset(1:4) %>%
+  mask(fl_keys_poly, inverse = TRUE) %>%
+  tidyterra::as_tibble(xy = TRUE) %>%
+  rename("lon" = x, "lat" = y, "adt" = 3, "vgos" = 4, "ugos" = 5, "vel_mag" = 6) %>%
+  slice(seq(1, n(), by = slice_by))
+
  ggplot() +
   
   # velocity pixels
   # geom_sf(data = test2)
+  geom_tile(data = test2, aes(x = lon, y = lat, fill = vel_mag),
+            na.rm = TRUE) +
   geom_tile(data = test, aes(x = lon, y = lat, fill = vel_mag),
             na.rm = TRUE) +
 
@@ -671,6 +681,19 @@ test <-
   # velocity vectors
   geom_segment(
     data = test,
+    aes(
+      x     = lon, 
+      xend  = lon + ugos/length_divide, 
+      y     = lat, 
+      yend  = lat + vgos/length_divide, 
+      color = vel_mag
+      ),
+    arrow     = arrow(length = unit(0.15/2, "cm")), # adjust arrow size
+    linewidth = 0.25,                              # adjust arrow thickness
+    na.rm     = TRUE
+  ) +
+  geom_segment(
+    data = test2,
     aes(
       x     = lon, 
       xend  = lon + ugos/length_divide, 
