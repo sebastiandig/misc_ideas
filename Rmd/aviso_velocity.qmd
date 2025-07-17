@@ -113,6 +113,8 @@ v - northward
   err_vgosa      - vector velocity error [m/s]
 
 ```{r download-aviso-setup}
+if (FALSE) {
+  
 # set date range by month
 months <-
   seq(as_date("2015-01-01"),
@@ -150,11 +152,14 @@ vars <-
   )
 
 cat("Date Range: ", format(months[c(1, length(months))], "%B %Y"), sep = "\n- ")
+}
 ```
 
 ### Download AVISO+ Data
 
 ```{r download-aviso}
+if (FALSE) {
+  
 # set to TRUE if downloading data
 download <- FALSE
 # download <- TRUE
@@ -172,6 +177,7 @@ aviso_download(
   download,
   overwrite
 )
+}
 ```
 
 
@@ -194,7 +200,8 @@ aviso_path_full <-
   dir_ls(regexp = "mems_obs-sl_glo")
 
 aviso_path <-
-  aviso_path_full[1:6] %T>% 
+  aviso_path_full %>%
+  Filter(\(.x) str_detect(.x, year_to_run), .) %T>% 
   {
     .[] %>%
     str_extract("(\\d{4}-.*)\\.nc", group = 1) %>%
@@ -203,7 +210,8 @@ aviso_path <-
 ```
 
 ```{r load-multi}
-aviso_days <- aviso_load(aviso_path, .by = 3)
+skip_dates <- 1
+aviso_days <- aviso_load(aviso_path, .by = skip_dates)
 
 aviso_grid_tibble <- aviso_days$tibble
 dat_grid          <- aviso_days$gridded
@@ -246,20 +254,24 @@ rm(extents)
 ```{r edit-transects}
 transect_file <- here(path_save, "..", "transects2.shp")
 
+# stations_path <- rstudioapi::selectFile() 
+stations_path <- 
+  here("data", "raw") %>%
+  dir_ls(regexp = "fknms")
+station_sht   <- readxl::excel_sheets(stations_path) 
+station       <- 
+  readxl::read_excel(
+    stations_path, 
+    station_sht[9], 
+    .name_repair = janitor::make_clean_names
+  ) %>%
+  filter(str_detect(geo_loc_name, "(?i)florida keys") & !str_detect(line_id, "PL")) %>%
+  select(station_id, station_class, "lon" = mean_lon, "lat" = mean_lat, line_id)
+
 if (file_exists(transect_file)) {
   message("Reading transects shapefile")
   linestring <- st_read(transect_file)
 } else {
-  
-  stations_path <- rstudioapi::selectFile() 
-  station_sht   <- readxl::excel_sheets(stations_path) 
-  station       <- readxl::read_excel(
-    stations_path, 
-    station_sht[9], 
-    .name_repair = janitor::make_clean_names
-    ) %>%
-    filter(str_detect(geo_loc_name, "(?i)florida keys") & !str_detect(line_id, "PL")) %>%
-    select(station_id, station_class, "lon" = mean_lon, "lat" = mean_lat, line_id)
   
   message("Creating transects.")
   lyr_name <- grep("vel_mag", names(multi_rast), value = TRUE)[1]
@@ -380,7 +392,7 @@ dist_from_shore %>%
 ```{r set-file-suffix}
 date_suffix <- 
   c(first(rast_names), last(rast_names)) %>%
-  paste0(collapse = "_") %T>% 
+  paste0("_", skip_dates, collapse = "_") %T>% 
   print()
 ```
 
@@ -436,6 +448,8 @@ test2 <-
 
 
 ```{r trasect-view}
+if (FALSE) {
+  
 trasect_plt <- 
   dist_from_shore %>%
   ggplot(aes(x = dist, y = vel_mag, color = as.factor(l1))) +
@@ -467,6 +481,7 @@ if (FALSE) {
     fps     = 20
   )
 }
+}
 ```
 
 For `vel_vect`, may want to have more vectors along keys so instead of filtering
@@ -488,7 +503,7 @@ vel_vect <- slice(aviso_grid_tibble, seq(1, n(), by = slice_by)) %>% filt
 
 
 ```{r mag-vel-vectors}
-plt_mag_vel_vect <- 
+plt_mag_vel_vect <-
   ggplot() +
   
   # velocity pixels
@@ -536,6 +551,15 @@ plt_mag_vel_vect <-
   scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
   # facet_wrap(~date)
   theme_bw() +
+  theme(
+    legend.key.size = unit(0.25, "cm"),
+    text = element_text(size = 4),
+    legend.position = "bottom",
+    legend.margin = margin(t = -10),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+    ) +
+  
   gganimate::transition_states(date, transition_length = 0) +
   labs(title = "Date: {closest_state}")
 
@@ -550,10 +574,138 @@ anim_save(
   width  = 800,
   res    = 300,
   
+  # duration = 1,
   nframes  = nlyr(multi_rast),
-  fps      = 20
+  # fps      = 20
   )
 tictoc::toc()
+
+for (i in 1:2) {
+  beepr::beep(8)
+
+  Sys.sleep(20)
+}
 ```
 
+
+```{r}
+year_to_run <- "2021"
+```
+
+
+
+# Create Polygon
+
+```{r edit-transects}
+transect_file <- here(path_save, "..", "fl_keys_polygon.shp")
+
+# stations_path <- rstudioapi::selectFile() 
+stations_path <- 
+  here("data", "raw") %>%
+  dir_ls(regexp = "fknms")
+station_sht   <- readxl::excel_sheets(stations_path) 
+station       <- 
+  readxl::read_excel(
+    stations_path, 
+    station_sht[9], 
+    .name_repair = janitor::make_clean_names
+  ) %>%
+  filter(str_detect(geo_loc_name, "(?i)florida keys") & !str_detect(line_id, "PL")) %>%
+  select(station_id, station_class, "lon" = mean_lon, "lat" = mean_lat, line_id)
+
+if (file_exists(transect_file)) {
+  message("Reading transects shapefile")
+  linestring <- st_read(transect_file)
+} else {
+  
+  message("Creating transects.")
+  lyr_name <- grep("vel_mag", names(multi_rast), value = TRUE)[1]
+  
+  fl_polygon <-
+    ((mapview::mapView(multi_rast, layer = lyr_name) +
+      mapview::mapview(coast)) +
+      mapview::mapview(station, xcol = "lon", ycol = "lat")
+    ) %>%
+    mapedit::editMap()
+
+  fl_keys_poly <- fl_polygon$finished
+
+  names(fl_keys_poly) <- c("id", "type", "geometry")
+
+  message(paste0("Saving transects as `", basename(transect_file), "`."))
+  
+  st_write(
+    fl_keys_poly,
+    transect_file
+  )
+}
+```
+
+```{r}
+plot(fl_keys_poly)
+test2 <-
+  aviso_grid_tibble %>%
+  filter(date == first(date)) %>%
+  st_as_sf(coords = c("lon", "lat"), remove = FALSE) %>%
+  st_set_crs(st_crs(4326)) %>%
+  st_crop(fl_keys_poly) %>%
+  as_tibble()
+
+test <-
+  multi_rast %>%
+  terra::subset(1:4) %>%
+  mask(fl_keys_poly) %>%
+  tidyterra::as_tibble(xy = TRUE) %>%
+  rename("lon" = x, "lat" = y, "adt" = 3, "vgos" = 4, "ugos" = 5, "vel_mag" = 6)
+
+ ggplot() +
+  
+  # velocity pixels
+  # geom_sf(data = test2)
+  geom_tile(data = test, aes(x = lon, y = lat, fill = vel_mag),
+            na.rm = TRUE) +
+
+  # coast
+  geom_sf(data = coast) +
+  geom_sf(data = fl_keys_poly, fill = NA) +
+  # velocity vectors
+  geom_segment(
+    data = test,
+    aes(
+      x     = lon, 
+      xend  = lon + ugos/length_divide, 
+      y     = lat, 
+      yend  = lat + vgos/length_divide, 
+      color = vel_mag
+      ),
+    arrow     = arrow(length = unit(0.15/2, "cm")), # adjust arrow size
+    linewidth = 0.25,                              # adjust arrow thickness
+    na.rm     = TRUE
+  ) +
+
+  # transects
+  geom_sf(data = linestring, color = "red")  +
+
+  # less than 0.5 m/s
+  geom_point(data = filter(pts_lt, date == first(date)),
+             aes(x = x,  y = y),
+             color = "blue",
+             size  = 0.5) +
+
+  # greater than 0.5 m/s
+  geom_point(data = filter(pts_gt, date == first(date)),
+             aes(x = x,  y = y),
+             color = "green",
+             size  = 0.5) +
+     # styling
+  labs(x = NULL, y = NULL,
+       color = expression("Velocity"~(m~s^-1)),
+       fill = expression("Velocity"~(m~s^-1))) +
+  coord_sf(expand = FALSE, ylim = ylim, xlim = xlim) +
+  scale_fill_viridis_b(na.value = NA) +
+  scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
+  theme_bw()
+  
+  
+```
 
