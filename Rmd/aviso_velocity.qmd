@@ -8,9 +8,21 @@ editor: source
 
 # ---- Summary of Document ----
 
-Will need to have downloaded `ffmpeg` to animate vectors
+Download AVISO+ data to get geostrophic velocities in the Florida Keys. The 
+geostrophic velocities can be used to estimate where the Florida Current (FC) is
+in relation to the coastline. The years used are 2015 - Nov 2024 (based on 
+data availability).
 
-<https://www.gyan.dev/ffmpeg/builds/>
+A threshold of >= 0.5 m/s is used to determine the FC based on a Zhang et al., 2022.
+
+12 transects are added to determine the location of the FC based on the typical
+MBON/SFER cruise transects. These transects are as close as possible to the 
+various transects and are named after the `Line Names` inherent to them. 
+
+To save videos per year:
+- need to have downloaded `ffmpeg` to animate vectors
+  - <https://www.gyan.dev/ffmpeg/builds/>
+  - then find the path to the *bin/ffmpeg.exe* in order to run the animation
 
 # ---- Setup ----
 
