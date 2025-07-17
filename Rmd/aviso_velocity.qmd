@@ -54,11 +54,6 @@ shelf(ggspatial, sf, ncdf4, stars, terra, geodist,)
 
 # set paths to downloaded data, ffmpeg, and animation
 path_save <- here("data", "raw", "copernicus")
-ffmpeg_path <- 
-  here("C:\\", "Program Files",
-       "ffmpeg-2025-07-12-git-35a6de137a-full_build", "bin",
-       "ffmpeg.exe"
-       )
 
 animate_save <- here("data", "plots", "animate")
 dir_create(animate_save)
@@ -66,12 +61,29 @@ dir_create(animate_save)
 source(here("scripts", "aviso_functions.R"))
 ```
 
-### Set `ffmpeg` location for CMS computer
+### Set `ffmpeg.exe` location 
 
 ```{r cms-computer-location}
 if (Sys.getenv("USERNAME") == "sebastian15") {
-  ffmpeg_path <- here("C:\\", "Users", "sebastian15", "AppData", "Roaming", 
-                      "ffmpeg-7.1.1-full_build", "bin", "ffmpeg.exe")
+  # CMS computer
+  ffmpeg_path <- 
+    here(
+      "C:\\", "Users", "sebastian15", "AppData", "Roaming",
+      "ffmpeg-7.1.1-full_build", "bin", "ffmpeg.exe"
+    )
+} else if (Sys.getenv("USERNAME") == "spd19") {
+  # personal computer
+  ffmpeg_path <-
+    here(
+      "C:\\", "Program Files",
+      "ffmpeg-2025-07-12-git-35a6de137a-full_build", "bin",
+      "ffmpeg.exe"
+    )
+} else {
+  message("Select `ffmpeg.exe` file.")
+  ffmpeg_path <- rstudioapi::selectFile(
+    caption = "Select `ffmpeg.exe` file",
+    label   = "Select ffmpeg.exe")
 }
 ```
 
