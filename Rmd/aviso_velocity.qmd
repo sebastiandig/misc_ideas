@@ -6,16 +6,16 @@ format: html
 editor: source
 ---
 
-# 1.0 ---- Summary of Document ----
+# ---- Summary of Document ----
 
 Will need to have downloaded `ffmpeg` to animate vectors
 
 <https://www.gyan.dev/ffmpeg/builds/>
 
-# 2.0 ---- Setup ----
+# ---- Setup ----
 
 
-## 2.1 Load Libraries
+## Load Libraries
 
 ```{r setup, include=FALSE}
 if (!nzchar(system.file(package = "librarian"))) 
@@ -54,8 +54,17 @@ dir_create(animate_save)
 source(here("scripts", "aviso_functions.R"))
 ```
 
+### Set `ffmpeg` location for CMS computer
 
-# AVISO+ Sea Surface Height and Velocity
+```{r cms-computer-location}
+if (Sys.getenv("USERNAME") == "sebastian15") {
+  ffmpeg_path <- here("C:\\", "Users", "sebastian15", "AppData", "Roaming", 
+                      "ffmpeg-7.1.1-full_build", "bin", "ffmpeg.exe")
+}
+```
+
+
+# ---- AVISO+ Sea Surface Height and Velocity ----
 
 Data downloaded from `Copernicus` for both absolute dynamic topography (m) and
 north/east surface velocities (m/s)
@@ -81,7 +90,9 @@ Velocites extraction inspired from:
 <https://help.marine.copernicus.eu/en/articles/9711615-how-to-plot-current-vectors-using-r>
 
 
-## Download Data from `Copernicusmarine` using `copernicusmarine.exe` File
+## Download Data from `Copernicusmarine` App
+
+- using `copernicusmarine.exe` File
 
 From: <https://help.marine.copernicus.eu/en/articles/10750437-copernicus-marine-toolbox-executable-no-installation>
 
@@ -182,7 +193,7 @@ aviso_download(
 
 
 
-# Multiday Plots
+# ---- Multiday Plots ----
 
 ## Load Muliple Dates
 
@@ -326,7 +337,7 @@ vel_ext_transect <-
   print()
 ```
 
-# Extract Distance from Shore
+# ---- Extract Distance from Shore ----
 
 ```{r distance-from-shore}
 # extract starting point of each transect
@@ -387,7 +398,7 @@ dist_from_shore %>%
 ```
 
 
-# Plots
+# ---- Plots ----
 
 ```{r set-file-suffix}
 date_suffix <- 
@@ -594,7 +605,7 @@ year_to_run <- "2021"
 
 
 
-# Create Polygon
+# ---- Create Polygon ----
 
 ```{r edit-transects}
 transect_file <- here(path_save, "..", "fl_keys_polygon.shp")
