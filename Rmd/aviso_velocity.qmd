@@ -235,9 +235,12 @@ aviso_path_full <-
   # rstudioapi::selectDirectory(path = .) %>%
   dir_ls(regexp = "mems_obs-sl_glo")
 
+time_to_run <- "2021"
+
 aviso_path <-
   aviso_path_full %>%
-  Filter(\(.x) str_detect(.x, year_to_run), .) %T>% 
+  Filter(\(.x) str_detect(.x, time_to_run), .) %>%
+  .[1] %T>% 
   {
     .[] %>%
     str_extract("(\\d{4}-.*)\\.nc", group = 1) %>%
@@ -419,7 +422,10 @@ dist_from_shore <-
 dist_from_shore %>%
   # extract first value along transect >0.5 m/s
   filter(vel_mag >= 0.5) %>%
-  slice_head(by = c(l1, date))
+  filter(.by = c(date2, l1), dist == min(dist))
+
+
+  
 ```
 
 
@@ -435,22 +441,49 @@ date_suffix <-
 TODO: try this method to show distance from shore
 <https://stackoverflow.com/questions/71473958/how-to-keep-points-in-gganimate-after-each-frame-is-rendered>
 
-```{r}
-dist_from_shore2 <- 
+```{r add-line_names}
+transect_names <-   
   c("MQ", arrange(station, lon)  %>%
    distinct(line_id) %>%
    pull(1)
    ) %>%
   tibble(line_name = .) %>%
   add_row(.after = 9, tibble(line_name = "MR2")) %>%
-  mutate(rows = row_number(),
-         line_name = fct_inorder(line_name)) %>%
+  mutate(
+    rows      = row_number(),
+    line_name = fct_inorder(line_name)
+    )
+
+dist_from_shore2 <- 
   left_join(
-    x = dist_from_shore,
-    y = .,
+    x  = dist_from_shore,
+    y  = transect_names,
     by = c("l1" = "rows")
+  ) %>%
+  relocate(line_name, .after = l1) %T>% 
+  print()
+
+dist_fc <- 
+  dist_from_shore2 %>%
+  # extract first value along transect >0.5 m/s
+  filter(vel_mag >= 0.5) %>%
+  filter(.by = c(date2, line_name), dist == min(dist))
+
+write_csv(
+  dist_fc, 
+  here("data", "processed", glue("dist_above_5_{date_suffix}.csv")),
+  na = ""
   )
 
+write_csv(
+  dist_fc, 
+  here("data", "processed", glue("fc_dist_{date_suffix}.csv")),
+  na = ""
+  )
+```
+
+
+```{r}
 test2 <- 
   dist_from_shore2 %>%
   mutate(
@@ -461,7 +494,8 @@ test2 <-
     .by = c(months, l1, line_name, dist),
     vel_mag = mean(vel_mag, na.rm = TRUE)
   ) 
- dist_from_shore2 %>%
+
+dist_from_shore2 %>%
   mutate(
     months = format(date2, "%B %Y"),
     months = my(months)
@@ -487,8 +521,9 @@ test2 <-
 if (FALSE) {
   
 trasect_plt <- 
-  dist_from_shore %>%
-  ggplot(aes(x = dist, y = vel_mag, color = as.factor(l1))) +
+  dist_from_shore2 %>%
+  # filter(between(date2, first(date2), first(date2) + days(1))) %>%
+  ggplot(aes(x = dist, y = vel_mag, color = as.factor(line_name))) +
   geom_hline(yintercept = 0.5, color = "red") +
   geom_path() +
   geom_point() +
@@ -499,7 +534,17 @@ trasect_plt <-
     ) +
   coord_cartesian(expand = FALSE) +
   theme_bw() +
-  # facet_wrap(~date)
+  facet_wrap(~line_name) +
+  theme(
+    text            = element_text(size = 4),
+    legend.key.size = unit(0.25, "cm"),
+    legend.key.spacing = unit(0.05, "cm"),
+    legend.position = "bottom",
+    legend.margin   = margin(t = -10),
+    axis.text       = element_blank(),
+    axis.ticks      = element_blank()
+    ) +
+  guides(colour = "none") +
   gganimate::transition_time(date2) +
   labs(title = "Date: {frame_time}")
 
@@ -512,9 +557,9 @@ if (FALSE) {
     
     height  = 800,
     width   = 800,
-    res     = 300,
-    nframes = nlyr(multi_rast),
-    fps     = 20
+    res     = 300
+    # nframes = nlyr(multi_rast),
+    # fps     = 20
   )
 }
 }
