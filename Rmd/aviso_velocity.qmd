@@ -474,13 +474,13 @@ dir_create(here("data", "processed"))
 dist_from_shore2 %>% 
   select(
     line_name,
-    "shore_lon_dd" = x_shr,
-    "shore_lat_dd" = y_shr,
+    "shore_lon_dd"      = x_shr,
+    "shore_lat_dd"      = y_shr,
     "fl_current_lon_dd" = x_fc,
     "fl_current_lat_dd" = y_fc,
-    "velocity" = vel_mag,
-    "date" = date2,
-    "distance_km" = dist
+    "velocity"          = vel_mag,
+    "date"              = date2,
+    "distance_km"       = dist
   ) %>% 
   arrange(date)%>% 
   write_csv(
@@ -491,13 +491,13 @@ dist_from_shore2 %>%
 dist_fc %>% 
   select(
     line_name,
-    "shore_lon_dd" = x_shr,
-    "shore_lat_dd" = y_shr,
+    "shore_lon_dd"      = x_shr,
+    "shore_lat_dd"      = y_shr,
     "fl_current_lon_dd" = x_fc,
     "fl_current_lat_dd" = y_fc,
-    "velocity" = vel_mag,
-    "date" = date2,
-    "distance_km" = dist
+    "velocity"          = vel_mag,
+    "date"              = date2,
+    "distance_km"       = dist
   ) %>% 
   arrange(date) %>% 
   write_csv(
