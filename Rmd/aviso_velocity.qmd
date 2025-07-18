@@ -235,12 +235,12 @@ aviso_path_full <-
   # rstudioapi::selectDirectory(path = .) %>%
   dir_ls(regexp = "mems_obs-sl_glo")
 
-time_to_run <- "2021"
+time_to_run <- "20"
 
 aviso_path <-
   aviso_path_full %>%
   Filter(\(.x) str_detect(.x, time_to_run), .) %>%
-  .[1] %T>% 
+  .[] %T>% 
   {
     .[] %>%
     str_extract("(\\d{4}-.*)\\.nc", group = 1) %>%
@@ -413,8 +413,10 @@ dist_from_shore <-
     dist = geodist_vec(
       x_shr, y_shr,
       x_fc, y_fc,
-      measure = "geodesic"
-    ) / 1000
+      measure = "geodesic",
+      paired = TRUE
+    ) / 1000,
+    # dist = as.vector(dist)
   ) %>%
   ungroup() %T>%
   print()
@@ -424,8 +426,6 @@ dist_from_shore %>%
   filter(vel_mag >= 0.5) %>%
   filter(.by = c(date2, l1), dist == min(dist))
 
-
-  
 ```
 
 
@@ -469,14 +469,38 @@ dist_fc <-
   filter(vel_mag >= 0.5) %>%
   filter(.by = c(date2, line_name), dist == min(dist))
 
-write_csv(
-  dist_fc, 
-  here("data", "processed", glue("dist_above_5_{date_suffix}.csv")),
-  na = ""
-  )
+dir_create(here("data", "processed"))
 
-write_csv(
-  dist_fc, 
+dist_from_shore2 %>% 
+  select(
+    line_name,
+    "shore_lon_dd" = x_shr,
+    "shore_lat_dd" = y_shr,
+    "fl_current_lon_dd" = x_fc,
+    "fl_current_lat_dd" = y_fc,
+    "velocity" = vel_mag,
+    "date" = date2,
+    "distance_km" = dist
+  ) %>% 
+  arrange(date)%>% 
+  write_csv(
+    here("data", "processed", glue("dist_above_5_{date_suffix}.csv")),
+    na = ""
+    )
+
+dist_fc %>% 
+  select(
+    line_name,
+    "shore_lon_dd" = x_shr,
+    "shore_lat_dd" = y_shr,
+    "fl_current_lon_dd" = x_fc,
+    "fl_current_lat_dd" = y_fc,
+    "velocity" = vel_mag,
+    "date" = date2,
+    "distance_km" = dist
+  ) %>% 
+  arrange(date) %>% 
+  write_csv(
   here("data", "processed", glue("fc_dist_{date_suffix}.csv")),
   na = ""
   )
