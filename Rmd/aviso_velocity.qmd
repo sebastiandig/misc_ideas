@@ -333,6 +333,21 @@ if (file_exists(transect_file)) {
     transect_file
   )
 }
+
+# if need to edit the `linestring` object
+if (FALSE) {
+  linestring <-
+    mapview::mapview(linestring) %>%
+    mapedit::editMap("linestring")
+  
+  # select specific lines
+  mapedit::selectFeatures(linestring)
+  #   st_write(
+  #   linestring,
+  #   transect_file
+  # )
+}
+
 ```
 
 
