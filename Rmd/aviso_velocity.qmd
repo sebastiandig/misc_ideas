@@ -561,11 +561,11 @@ if (FALSE) {
   
 trasect_plt <- 
   dist_from_shore2 %>%
-  # filter(between(date2, first(date2), first(date2) + days(1))) %>%
+  filter(between(date2, first(date2), first(date2) + days(1))) %>%
   ggplot(aes(x = dist, y = vel_mag, color = as.factor(line_name))) +
   geom_hline(yintercept = 0.5, color = "red") +
   geom_path() +
-  geom_point() +
+  geom_point(size = 1) +
   labs(
     x = "Distance from Shore (km)", 
     y = expression("Velocity"~(m~s^-1)),
@@ -575,7 +575,7 @@ trasect_plt <-
   theme_bw() +
   facet_wrap(~line_name) +
   theme(
-    text            = element_text(size = 4),
+    text            = element_text(size = 2),
     legend.key.size = unit(0.25, "cm"),
     legend.key.spacing = unit(0.05, "cm"),
     legend.position = "bottom",
@@ -589,7 +589,8 @@ trasect_plt <-
 
 if (FALSE) {
   anim_save(
-    file      = glue("trasect_plot4_{date_suffix}.mp4"),
+    # file      = glue("trasect_plot4_{date_suffix}.mp4"),
+    file      = glue("trasect_plot_2015.mp4"),
     animation = trasect_plt,
     path      = animate_save,
     renderer  = ffmpeg_renderer(format = "mp4", ffmpeg = ffmpeg_path),
