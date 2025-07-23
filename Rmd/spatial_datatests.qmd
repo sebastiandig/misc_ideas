@@ -396,3 +396,152 @@ left_join(
 
 ```
 
+# Smoothers
+
+Sobel
+Laplacian
+Gaussian
+
+
+```{r rast-smoothers}
+rssh_grid_rast
+
+# Define a kernel
+weight_mat <-
+  list(
+    # Sobel horizontal edges
+    sobel_x = matrix(
+      c(
+        -1, 0, 1,
+        -2, 0, 2,
+        -1, 0, 1
+      ),
+      nrow = 3, byrow = TRUE
+    ),
+    # Sobel vertical edges
+    sobel_x = matrix(
+      c(
+        -1, -2, -1,
+        0, 0, 0,
+        1, 2, 1
+      ),
+      nrow = 3, byrow = TRUE
+    ),
+    
+    # Laplacian
+    laplce = matrix(c(0, 1, 0, 1, -4, 1, 0, 1, 0), nrow = 3),
+
+    # Gaussian
+    gaussian_kernel = function(size, sigma) {
+      x <- seq(-size, size, length.out = 2 * size + 1)
+      kernel <- outer(x, x, function(x, y) exp(-(x^2 + y^2) / (2 * sigma^2)))
+      return(kernel / sum(kernel)) # Normalize the kernel
+    }
+  )
+
+
+# Apply the Sobel kernel 
+# horizontal edges
+edges_x <- focal(rssh_grid_rast[[4]], w = weight_mat[[1]], fun = sum, na.policy = "omit")
+# vertical edges
+edges_y <- focal(rssh_grid_rast[[4]], w = weight_mat[[2]], fun = sum, na.policy = "omit")
+
+# Combine horizontal and vertical edges (magnitude of gradient)
+edges <- sqrt(edges_x^2 + edges_y^2)
+
+# Plot the sobel results
+{
+  par(mfcol = c(2, 2))
+  plot(rssh_grid_rast[[4]], main = "Original Raster")
+  plot(edges, main = "Edge Detection Result")
+  plot(edges_x, main = "X Edge Detection Result")
+  plot(edges_y, main = "Y Edge Detection Result")
+  par(mfcol = c(1, 1))
+}
+
+# Laplacian
+edge_lap <- focal(rssh_grid_rast[[4]], w = weight_mat[[3]], fun = sum, na.policy = "omit")
+{
+  par(mfcol = c(2, 1))
+  plot(rssh_grid_rast[[4]], main = "Original Raster")
+  plot(edge_lap, main = "Laplacian filter")
+  par(mfcol = c(1, 1))
+}
+
+# Gaussian results: three ways to same results
+# custom function
+sig         <- 1
+window_size <- 3
+
+cust_gaus <- (window_size - 1) / 2
+
+# gaussian kernels
+weight_mat[[4]](sigma = sig, size = cust_gaus) 
+spatialEco::gaussian.kernel(sig, window_size)
+# plot gauss filter
+persp(
+# rgl::persp3d(
+  seq(window_size), seq(window_size), 
+  spatialEco::gaussian.kernel(sig, window_size), 
+  col = "lightblue", theta = 30, phi = 20, expand = 0.5, 
+  xlab = "X-axis", ylab = "Y-axis", zlab = "Z-axis", main = "3D Matrix Plot")
+
+
+gaussian_filt <- focal(
+  x         = rssh_grid_rast[[4]],
+  w         = weight_mat[[4]](size = cust_gaus, sigma = sig),
+  fun       = "sum",
+  na.rm     = TRUE,
+  na.policy = "omit",
+  expand    = FALSE
+)
+
+spatialeco <-
+  spatialEco::raster.gaussian.smooth(
+    x         = rssh_grid_rast[[4]],
+    s         = sig,
+    n         = window_size,
+    type      = "sum",
+    na.rm     = TRUE,
+    na.policy = "omit",
+    expand    = FALSE
+  )
+ 
+spatialeco1 <- focal(
+  x         = rssh_grid_rast[[4]], 
+  w         = spatialEco::gaussian.kernel(sig, window_size), 
+  fun       = "sum",  
+  na.rm     = TRUE,
+  na.policy = "omit",
+  expand    = FALSE
+  )
+
+
+# Plot the Gaussian results
+{
+  par(mfcol = c(2, 2))
+  plot(rssh_grid_rast[[4]], main = "Original Raster")
+  plot(gaussian_filt, main = glue("Gaussian (σ = {sig}, size = {window_size})"))
+  plot(spatialeco, main = glue("spatialeco Gaus (σ = {sig}, size = {window_size})"))
+  plot(spatialeco1, main = glue("eco Gaus (σ = {sig}, size = {window_size})"))
+  par(mfcol = c(1, 1))
+  }
+
+
+```
+
+```{r}
+x <- seq(-10, 10, length = 30)
+y <- seq(-10, 10, length = 30)
+z <- outer(x, y, function(x, y) sin(sqrt(x^2 + y^2)))
+x
+y
+z
+persp(x, y, z, col = "lightblue", theta = 30, phi = 20, expand = 0.5, 
+      xlab = "X-axis", ylab = "Y-axis", zlab = "Z-axis", main = "3D Matrix Plot")
+
+persp(seq(window_size), seq(13), spatialEco::gaussian.kernel(sig, window_size), 
+      col = "lightblue", theta = 30, phi = 20, expand = 0.5, 
+      xlab = "X-axis", ylab = "Y-axis", zlab = "Z-axis", main = "3D Matrix Plot")
+```
+
