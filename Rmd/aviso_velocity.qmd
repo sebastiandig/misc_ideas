@@ -8,6 +8,11 @@ editor: source
 
 # ---- Summary of Document ----
 
+```{r setup}
+stop("STOP! This has been moved to: <https://github.com/USF-IMARS/geostrophic_currents>")
+```
+
+
 Download AVISO+ data to get geostrophic velocities in the Florida Keys. The 
 geostrophic velocities can be used to estimate where the Florida Current (FC) is
 in relation to the coastline. The years used are 2015 - Nov 2024 (based on 
@@ -32,7 +37,7 @@ To save videos per year:
 
 ## Load Libraries
 
-```{r setup, include=FALSE}
+```{r include=FALSE}
 if (!nzchar(system.file(package = "librarian"))) 
   install.packages("librarian")
 
@@ -235,7 +240,7 @@ aviso_path_full <-
   # rstudioapi::selectDirectory(path = .) %>%
   dir_ls(regexp = "mems_obs-sl_glo")
 
-time_to_run <- "20"
+time_to_run <- "2016"
 
 aviso_path <-
   aviso_path_full %>%
@@ -430,8 +435,7 @@ dist_from_shore <-
       x_fc, y_fc,
       measure = "geodesic",
       paired = TRUE
-    ) / 1000,
-    # dist = as.vector(dist)
+    ) / 1000
   ) %>%
   ungroup() %T>%
   print()
@@ -851,5 +855,211 @@ test2 <-
   theme_bw()
   
   
+```
+
+
+
+
+
+# Create Transects along Shelf
+
+```{r edit-transects}
+transect_file <- here(path_save, "..", "transects_along.shp")
+
+# stations_path <- rstudioapi::selectFile() 
+stations_path <- 
+  here("data", "raw") %>%
+  dir_ls(regexp = "fknms")
+station_sht   <- readxl::excel_sheets(stations_path) 
+station       <- 
+  readxl::read_excel(
+    stations_path, 
+    station_sht[9], 
+    .name_repair = janitor::make_clean_names
+  ) %>%
+  filter(str_detect(geo_loc_name, "(?i)florida keys") & !str_detect(line_id, "PL")) %>%
+  select(station_id, station_class, "lon" = mean_lon, "lat" = mean_lat, line_id)
+
+if (file_exists(transect_file)) {
+  message("Reading transects shapefile")
+  linestring <- st_read(transect_file)
+} else {
+  
+  message("Creating transects.")
+  lyr_name <- grep("vel_mag", names(multi_rast), value = TRUE)[1]
+  
+  polyline <-
+    ((mapview::mapView(multi_rast, layer = lyr_name) +
+      mapview::mapview(coast)) +
+      mapview::mapview(station, xcol = "lon", ycol = "lat")
+    ) %>%
+    mapedit::editMap()
+
+  linestring <- polyline$finished
+
+  names(linestring) <- c("id", "type", "geometry")
+
+  message(paste0("Saving transects as `", basename(transect_file), "`."))
+  
+  st_write(
+    linestring,
+    transect_file
+  )
+}
+
+# if need to edit the `linestring` object
+if (FALSE) {
+  linestring <-
+    (
+      mapview::mapView(multi_rast, layer = lyr_name) +
+      mapview::mapview(linestring) +
+       
+    mapview::mapview(coast) +
+    mapview::mapview(station, xcol = "lon", ycol = "lat")) %>%
+    mapedit::editMap("linestring")
+  
+  # select specific lines
+  mapedit::selectFeatures(linestring)
+  #   st_write(
+  #   linestring,
+  #   transect_file
+  # )
+}
+
+```
+
+
+```{r extract-along-transect}
+n_layers <- nlyr(multi_rast) / length(dat_grid)
+
+rast_names <- 
+  names(dat_grid) %>% 
+  rep(each = n_layers) %>% 
+  as_date()
+
+time(multi_rast)  <- rast_names
+names(multi_rast) <- paste(names(multi_rast), rast_names, sep = "_")
+
+
+vel_ext_transect <- 
+ terra::extract(multi_rast, linestring, xy = TRUE) %>%
+ select(ID, "lon" = x , "lat" = y, contains(c("vel_mag", "gos"))) %>%
+  pivot_longer(
+    cols      = c(-ID, -lon, -lat),     # columns to pivot long,
+    names_to  = "name",  # desired name for category column
+    values_to = "vel_mag", # desired name for value column
+    ) %>%
+  mutate(
+    date = str_extract(name, "\\d.*"),
+    date2 = as_date(date),
+    name = str_remove(name, "_\\d{4}.*")
+  ) %>%
+  pivot_wider(
+    data         = .,
+    # id_cols      = c(), # *optional* vector of unaffected columns,
+    names_from   = c(name), # category column(s) to pivot wide
+    values_from  = c(vel_mag), # value column(s) that hold data for each category column
+    names_sep    = "_",
+    names_repair = janitor::make_clean_names
+    ) %T>% 
+  print()
+```
+
+
+```{r}
+length_divide <- 2
+vel_ext_transect %>%
+  filter(date2 == sample(date2, 1)) %>%
+  
+  ggplot() +
+  # coast
+  geom_sf(data = coast) +
+  # geom_line(aes(x = lon, y = lat)) +
+   # transects
+  geom_sf(data = linestring, color = "red")  +
+  
+  
+  # velocity vectors
+  geom_segment(
+    # data = vel_vect,
+    aes(
+      x     = lon, 
+      xend  = lon + ugos/length_divide, 
+      y     = lat, 
+      yend  = lat + vgos/length_divide, 
+      color = vel_mag
+      ),
+    arrow     = arrow(length = unit(0.15/2, "cm")), # adjust arrow size
+    linewidth = 0.25,                              # adjust arrow thickness
+    na.rm     = TRUE
+  ) +
+  labs(x = NULL, y = NULL) +
+  scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
+  coord_sf(ylim = c(24,26), xlim = c(-82, -80)) +
+  theme_bw()
+```
+
+
+```{r}
+vel_ext_transect %>%
+  filter(between(date2, first(date2), first(date2) + 5)) %>%
+  ggplot() +
+ 
+  # velocity vectors
+  geom_segment(
+    # data = vel_vect,
+    aes(
+      x     = lon, 
+      xend  = lon + ugos/length_divide, 
+      y     = 0, 
+      yend  = vgos/length_divide, 
+      color = vel_mag
+      ),
+    arrow     = arrow(length = unit(0.15/2, "cm")), # adjust arrow size
+    linewidth = 0.25,                              # adjust arrow thickness
+    na.rm     = TRUE
+  ) +
+  coord_cartesian(expand = FALSE) +
+  facet_wrap(~date2) +
+  scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
+
+  # coord_sf(ylim = c(24,26), xlim = c(-82, -80)) +
+  theme_bw()
+
+date_filt <- 
+  vel_ext_transect %>%
+  filter(ugos < 0 ) %>%
+  distinct(date2)
+
+
+vel_ext_transect %>%
+  filter(date2 %in% date_filt$date2) %>%
+  filter(date2 %in% sample(date_filt$date2, 6)) %>%
+  arrange(date2) %>%
+  # filter(between(date2, first(date2), first(date2) + 5)) %>%
+  ggplot() +
+ 
+  # velocity vectors
+  geom_segment(
+    # data = vel_vect,
+    aes(
+      x     = lon, 
+      xend  = lon + ugos/length_divide, 
+      y     = 0, 
+      yend  = vgos/length_divide, 
+      color = vel_mag
+      ),
+    arrow     = arrow(length = unit(0.15/2, "cm")), # adjust arrow size
+    linewidth = 0.25,                              # adjust arrow thickness
+    na.rm     = TRUE
+  ) +
+  labs(x = NULL, y = expression("Velocity"~(m~s^-1)), color = "Magnitude") +
+  coord_cartesian(expand = FALSE) +
+  facet_wrap(~date2) +
+  scale_color_viridis_b(option = "magma", breaks = c(0.25, seq(0, 2, by = 0.5))) +
+
+  # coord_sf(ylim = c(24,26), xlim = c(-82, -80)) +
+  theme_bw()
+
 ```
 
