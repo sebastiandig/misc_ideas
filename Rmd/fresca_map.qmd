@@ -1,0 +1,293 @@
+---
+title: "Fresca Map"
+author: "Sebastian Di Geronimo"
+date: 2025-06-04
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+This document is to create a map of the sampling locations and type for the
+FRESCA project. 
+
+All that's required is to have the adjoining `mapping_script.R` to download 
+the topography and coastline data, pull the objects to memory and create
+a base map to add points to.
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, dplyr, stringr,
+  glue, fs, magrittr, here,
+  
+  # additional
+  ggrepel, ggnewscale, janitor, readxl, rerddap, rlang, terra, metR,
+  cowplot
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+source(here("scripts", "mapping_script.R"))
+
+```
+
+
+## 2.2. Locate Site Data
+
+The file needs to be in the same folder that this file is located.
+
+Site File name: `sfer_sta_list_Multistressor.xlsx`
+
+Select a location for the downloads of topography and coastline data:
+Use the form:
+here("<first folder>", "<second folder>", "<ect>")
+
+```{r path-to-data}
+# locate the data file
+map_file <- 
+  here() %>%
+  dir_ls(regexp = "sfer_sta_list_Multistressor", recurse = TRUE)
+
+
+# path to add base map files
+  # map_loc <- here()
+  map_loc <- rstudioapi::selectDirectory()
+  map_topo <- here("data", "map_shp", "fresca")
+
+```
+
+
+## 2.3 Load Site Data
+
+
+```{r load-data}
+# load file
+map_dat <- 
+  readxl::read_excel(map_file) %>%
+  janitor::clean_names() %>%
+  mutate(
+    description = if_else(is.na(description), "CTD", description)
+    ) %T>% 
+  print()
+
+# extract net tows and incubation locations
+zoo_incubation <-
+  map_dat %>%
+  filter(str_detect(description, "Net")) %>%
+  separate_longer_delim(
+    description,
+    delim = "/"
+  ) %>%
+  filter(
+    !str_detect(description, "CTD")
+   & !str_detect(description, "200")
+   & !str_detect(description, "Incubation")
+   ) %>%
+  mutate(
+    description = str_replace(description, "500", "500/200 um)"),
+    description = paste(description, "Incubation", sep = "/")
+  ) %T>%
+  print()
+
+# remove net tows and incubations from CTD and flow through locations
+map_dat <- 
+  map_dat %>%
+  separate_longer_delim(
+    description,
+    delim = "/"
+  ) %>%
+  filter(str_detect(description, "CTD|Flow")) %>%
+  mutate(description = if_else(
+    !is.na(trace_metals),
+    paste(description, trace_metals, sep = "/"),
+    description
+    )) %T>% 
+  print()
+```
+
+
+
+
+# 3.0 ---- Base Map Data ----
+
+Topography, ETOPO1, 0.0166667 degrees, Global (longitude -180 to 180), (Ice 
+Sheet Surface) from https://coastwatch.pfeg.noaa.gov/erddap/griddap/
+
+Global Self-consistent, Hierarchical, High-resolution Geography Database (GSHHG)
+from https://www.ngdc.noaa.gov/mgg/shorelines/
+
+Edit the spatial extent below if needed a bigger map:
+exnt <- 
+  c(
+    xmin =  , # West
+    xmax = ,                         # East
+    ymin = ,                          # South
+    ymax =    # North 
+    )
+  
+
+```{r base-map}
+if (exists("base_plt")) {
+  
+  cli::cli_alert_info("{.var base_plot} is already loaded!")
+  
+} else {
+  
+  # spatial extent
+  exnt <- 
+    c(
+      xmin =  min(map_dat$dec_lon) - 0.2, # West
+      xmax = -80,                         # East
+      ymin = 24,                          # South
+      ymax = max(map_dat$dec_lat) + 0.2   # North 
+      )
+  
+  
+  ## ---- download topography (.nc) and coastline (.shp)
+  world_download(
+    path_land  = map_loc,
+    path_topo  = map_topo,
+    extent     = exnt,
+    use_suffix = NULL,
+    .timeout = 300     # may need to increase if download of GSHHG fails
+  )
+  
+  ## ---- Load Base Maps for Plotting
+  # select and read coastline file from GSHHS then crop
+  map_obj <-
+    load_map_obj(
+      .map_coast = map_loc,
+      .map_state = NULL,
+      .map_bath  = map_topo,
+      .map_file  = "etopo1.nc",
+      .extent    = exnt
+    )
+
+  ## ---- Plot Base Map
+  base_plt <-
+    base_map_plot(
+      .topo     = map_obj$coast_topo, 
+      .bathy    = map_obj$bathy, 
+      .extent   = exnt,
+      .breaks_z = c(1000, 500, 100, 50, 25, 10)
+      )
+  base_plt
+}
+```
+
+# ---- Map Sample Locations ----
+
+## Plot Map
+
+
+```{r add-stations, fig.width=8.5, fig.height=11}
+# change colors 
+colors_sel <- 
+  c("Flow Through"              = "#1f78b4", 
+    "CTD/Trace Metals"          = "#FF3030", 
+    "CTD"                       = "forestgreen", 
+    "Net Tow (64um)/Incubation" = "#1f78b4",
+    "Net Tow (64 um + 500/200 um)/Incubation" = "#FF3030"
+    )
+
+set.seed(123)
+fresca_map <- 
+  
+  # ---- base map ---- #
+  base_plt +
+  
+  # ---- Zooplankton ---- #
+  geom_point(
+    data  = zoo_incubation,
+    aes(
+      x     = dec_lon,
+      y     = dec_lat,
+      color = description
+    ),
+    stroke = 1,
+    shape  = 5,
+    size   = 2.5
+  ) +
+  # labs(color = "Zooplankton Mesh Size") +
+  scale_color_manual(
+    name   = "Samples",
+    values = colors_sel
+    ) +
+  
+  
+  # ---- Site Locations ---- #
+  new_scale_color() +
+  geom_point(
+    data = map_dat,
+    aes(
+      x     = dec_lon, 
+      y     = dec_lat, 
+      color = description,
+      shape = description),
+  ) +
+    
+  
+  
+  # ---- Site Names ---- #
+  geom_text_repel(
+    data  = map_dat,
+    aes(
+      x             = dec_lon,
+      y             = dec_lat,
+      label         = waypoint,
+      segment.color = "gray"
+        ),
+    size     = 1.5,
+    hjust    = 0,
+    family   = "serif",
+    bg.color = "white",
+    min.segment.length = 0,
+  ) +
+  scale_color_manual(
+    name   = "Samples",
+    values = colors_sel
+    ) +
+  labs(shape = "Samples") + 
+  
+  
+  # ---- theme --- #
+  theme(
+    legend.position        = "inside",
+    legend.position.inside = c(0.2, 0.14),
+    legend.text            = element_text(size = 10),
+    legend.title           = element_text(size = 15),
+    legend.background      = element_rect(color = "black")
+  )
+
+fresca_map
+```
+
+
+# Save Map
+
+```{r}
+# save map
+ cowplot::save_plot(
+  here("data", "fresca_map3.png"),
+  plot        = fresca_map,
+  dpi         = 600,
+  base_width  = 8.5,
+  base_height = 11
+ )
+```
+
