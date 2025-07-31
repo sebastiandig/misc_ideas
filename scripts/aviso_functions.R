@@ -1,4 +1,23 @@
-
+#' Download AVISO+ Data
+#'
+#' This function aids in downloading AVISO+ data from Copernicus. This requires
+#' previous download and log in of `copernicusmarine.exe` from: 
+#' <https://help.marine.copernicus.eu/en/articles/10750437-copernicus-marine-toolbox-executable-no-installation>
+#'
+#' @param months Months of data to download.
+#' @param vars Variables to download
+#' "adt", "err_sla", "err_ugosa", "err_vgosa", "flag_ice", "sla", 
+#' "tpa_correction", "ugos", "ugosa", "vgos", "vgosa"
+#' 
+#' @param bounds Bounding box consisting of c(xmin, xmax, ymin, ymax).
+#' @param path_copernicusmarine Path to `copernicusmarine.exe` file.
+#' @param path_save Path for saved data.
+#' @param download Logical to download or not
+#' @param overwrite Logical to overwrite existing data 
+#'
+#' @return Nothing, side effect of download files separated into months
+#' @examples
+#' # ADD_EXAMPLES_HERE
 aviso_download <- function(
     months,
     vars,
@@ -64,15 +83,24 @@ aviso_download <- function(
 }
 
 
-
-aviso_load <- function(ssh_path, .by = 1) {
+#' Load AVISO+ Data
+#'
+#' FUNCTION_DESCRIPTION
+#'
+#' @param data_path Path to data
+#' @param .by Number of days skip
+#'
+#' @return A list with a tibble and gridded data 
+#' @examples
+#' # ADD_EXAMPLES_HERE
+aviso_load <- function(data_path, .by = 1) {
   seq_nc <- expression(seq(1, nc_len, by = .by))
 
-  multi_day <- vector("list", length(ssh_path))
+  multi_day <- vector("list", length(data_path))
 
-  for (j in seq(ssh_path)) {
+  for (j in seq(data_path)) {
     # open data and extract variables
-    ssh_nc <- nc_open(ssh_path[j])
+    ssh_nc <- nc_open(data_path[j])
 
     attributes(ssh_nc$var) # show vars names
     attributes(ssh_nc$dim) # show vars names
