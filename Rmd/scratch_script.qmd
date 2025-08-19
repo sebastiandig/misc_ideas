@@ -1086,3 +1086,153 @@ ggplot(test_gdb2) +
 
 ```
 
+
+# Open Various Files from ERDDAP
+
+<https://gcoos5.geos.tamu.edu/erddap/>
+
+Search:
+Walton Smith, max time =
+<https://gcoos5.geos.tamu.edu/erddap/search/advanced.html?page=1&itemsPerPage=1000&searchFor=walton+smith&protocol=%28ANY%29&cdm_data_type=%28ANY%29&institution=%28ANY%29&ioos_category=%28ANY%29&keywords=%28ANY%29&long_name=%28ANY%29&standard_name=%28ANY%29&variableName=%28ANY%29&maxLat=&minLon=&maxLon=&minLat=&minTime=2016-01-01T01%3A00%3A00Z&maxTime=>
+
+```{r}
+data_path <- here("data", "raw", "erddap") %>%
+  dir_ls() %T>% 
+  print()
+
+data_path[2] %>%
+  # read_csv(n_max = 50)
+  read_lines(n_max = 50)
+data_path[3] %>%
+  # read_csv(n_max = 50)
+  read_lines(n_max = 50)
+
+```
+
+
+# THREDDS HYCOM-TSIS Test
+
+Info: <https://www.hycom.org/data/gomb0pt01/gom-reanalysis>
+From: <https://tds.hycom.org/thredds/catalog/datasets/GOMb0.01/reanalysis/data/catalog.html>
+
+Help: <https://docs.unidata.ucar.edu/tds/current/userguide/ncss_grid.html>
+- dateTime has the form: '-'? yyyy '-' mm '-' dd 'T' hh ':' mm ':' ss ('.' s+)? (zzzzzz)?
+
+Base URL:
+https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/YYYY/xxx_archv.YYYY_DDD_HH_NN.nc
+
+Experiment Numbers:
+This part `xxx_archv.YYYY_DDD_HH_NN.nc` is described here
+xxx: experiment number (i.e. 010, 023 or 026 for date ranges)
+YYYY: year
+DDD: day (julian day)
+HH: hour
+NN: Netcdf type (i.e. 2d (surface) or 3z (with depth))
+
+HYCOM-TSIS GOMb0.01:
+010_archv.YYYY_DDD_HH_NN.nc: 2001_001_00 to 2017_152_18
+023_archv.YYYY_DDD_HH_NN.nc: 2017_152_19 to 2024_032_18
+026_archv.YYYY_DDD_HH_NN.nc: 2024_001_19 to *PRESENT*
+
+
+Parameters used in link for 3z:
+- variables
+  - var=salinity&
+  - var=u&
+  - var=v&
+  - var=w_velocity&
+  - var=water_temp
+- lat/lon
+  - north=26.4375&
+  - west=-83.8125&
+  - east=-78.3125&
+  - south=22.8125
+- horizStride=1
+  - number of data points to skip along horiztonal (x and y)
+- vertStride=1
+  - number of data points to skip along vertical (z)
+- time=2017-01-02T10%3A01%3A52.500Z
+  - yyyy-mm-ddThh:mm::ss
+  - %3A is : (colon in URL encoding)
+- vertCoord=0.0
+  - single level 0.0, 2.0, 4.0, ..., 5000 m
+
+- accept=netcdf4
+  - type of netcdf (netcdf or netcdf4)
+
+```{r}
+dwnld_path <- here("data", "raw", "hycom")
+dir_create(dwnld_path)
+
+base_url <- paste0(
+  "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/{year}/",
+  "{experiment}_archv.{year}_{julian}_{hh}_3z.nc?",
+  "var=salinity&var=u&var=v&var=w_velocity&var=water_temp&",
+  "north={ymax}&west={xmin}&east={xmax}&south={ymin}&",
+  # "disableLLSubset=on&",
+  "disableProjSubset=on&",
+  "horizStride={horizon}&",
+  "time={year}-{mm}-{dd}T{hh}%3A{mmin}%3A{ss}Z&", 
+  "vertCoord={vert}&accept=netcdf4"
+  )
+
+experiment <- "010"
+year       <- "2017"
+julian     <- "003"
+hh         <- "12"
+mm         <- "01"
+dd         <- "03"
+hh         <- "12"
+mmin       <- "00" 
+ss         <- "00"
+vert       <- "0.0"
+horizon    <- 5 
+
+xmin <- -83.8125
+xmax <- -78.3125
+ymin <- 22.8125
+ymax <- 26.4375
+
+# xmin <- -83
+# xmax <- -82
+# ymin <- 22
+# ymax <- 23
+
+base_url
+glue(base_url) %>%
+  download.file(destfile = here(dwnld_path, glue("hycom_{year}_{julian}.nc4")),
+  method = "curl"
+  )
+
+
+download.file(
+  url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2017/010_archv.2017_003_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=23&west=-90.5&east=-89&south=22.5&horizStride=1&time=2017-01-03T12%3A00%3A00Z&vertCoord=0&accept=netcdf4",
+  destfile = here(dwnld_path, "test5.nc4"),
+  method = "curl"
+  )
+
+options(timeout = max(5000, getOption("timeout")))
+# options(timeout = 60)
+
+```
+
+https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2017/
+https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2017/
+
+010_archv.2017_003_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&
+010_archv.2017_003_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&
+
+var=water_temp&north=26.4375&west=-83.8125&east=-78.3125&south=22.8125
+var=water_temp&north=31.9   &west=-98.0000&east=-77.0000&south=20&
+
+disableLLSubset=on&disableProjSubset=on&horizStride=1&time=2017-01-03T
+disableProjSubset=on&horizStride=1&time=2017-01-03T
+
+12%3A00%3A00Z&vertCoord=0.0&accept=netcdf4
+12%3A00%3A00Z&vertCoord=0.0&accept=netcdf4
+
+
+
+
+
+
