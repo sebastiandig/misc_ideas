@@ -36,6 +36,7 @@
 #'                                 ) 
 #' @param file_suffix Suffix to end of topography name
 #' @param .timeout Number of seconds to download world map before error timeout 
+#' @param etopo_version Default is "etopo180", can be "etopo5"
 #'
 #' @author Sebastian Di Geronimo (2023-01-11)
 #' 
@@ -49,7 +50,8 @@ world_download <- function(
     extent      = NULL,
     file_suffix = NULL,
     use_suffix  = NULL,
-    .timeout    = 300) {
+    .timeout    = 300,
+    etopo_version = "etopo180") {
   # ========================================================================== #
   # ---- Load libraries
   # ========================================================================== #
@@ -98,7 +100,7 @@ world_download <- function(
     
     topo_file <- here(
       path_topo,
-      glue("etopo1{file_suffix}.nc",
+      glue("{etopo_version}{file_suffix}.nc",
            .null = ""
       )
     )
@@ -141,11 +143,12 @@ world_download <- function(
       
       # ERDDAP extract and save
       griddap(
-        info("etopo180"),
+        info(etopo_version),
         latitude  = extent[3:4],
         longitude = extent[1:2],
         stride    = c(1, 1),
-        fields    = "altitude",
+        fields    = "all",
+        # fields    = "altitude",
         store     = disk(here(path_topo, "temp"))
       )
       
