@@ -1095,7 +1095,7 @@ Search:
 Walton Smith, max time =
 <https://gcoos5.geos.tamu.edu/erddap/search/advanced.html?page=1&itemsPerPage=1000&searchFor=walton+smith&protocol=%28ANY%29&cdm_data_type=%28ANY%29&institution=%28ANY%29&ioos_category=%28ANY%29&keywords=%28ANY%29&long_name=%28ANY%29&standard_name=%28ANY%29&variableName=%28ANY%29&maxLat=&minLon=&maxLon=&minLat=&minTime=2016-01-01T01%3A00%3A00Z&maxTime=>
 
-```{r}
+```{r didnt-finish}
 data_path <- here("data", "raw", "erddap") %>%
   dir_ls() %T>% 
   print()
@@ -1108,6 +1108,9 @@ data_path[3] %>%
   read_lines(n_max = 50)
 
 ```
+
+
+
 
 
 # THREDDS HYCOM-TSIS Test
@@ -1204,9 +1207,14 @@ glue(base_url) %>%
   method = "curl"
   )
 
+download.file(
+  url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2017/010_archv.2017_003_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=23&west=-90&east=-89.8&south=22.8&horizStride=1&vertCoord=0.0&accept=netcdf4",
+  destfile = here(dwnld_path, "test_no_time.nc4"),
+  method = "curl"
+  )
 
 download.file(
-  url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2017/010_archv.2017_003_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=23&west=-90.5&east=-89&south=22.5&horizStride=1&time=2017-01-03T12%3A00%3A00Z&vertCoord=0&accept=netcdf4",
+  url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_04_3z.nc?disableLLSubset=on&disableProjSubset=on&horizStride=1&time=&vertCoord=&accept=netcdf4",
   destfile = here(dwnld_path, "test5.nc4"),
   method = "curl"
   )
@@ -1214,6 +1222,13 @@ download.file(
 options(timeout = max(5000, getOption("timeout")))
 # options(timeout = 60)
 
+
+httr::HEAD("https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2017/010_archv.2017_003_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=23&west=-90.5&east=-89&south=22.5&horizStride=1&time=2017-01-03T12%3A00%3A00Z&vertCoord=1.7&accept=netcdf4") %>%
+  httr::status_code()
+
+shelf(curl)
+handle <- curl::new_handle()
+curl::curl_fetch_memory("https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2017/010_archv.2017_003_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=23&west=-90.5&east=-89&south=22.5&horizStride=1&time=2017-01-03T12%3A00%3A00Z&vertCoord=1.7&accept=netcdf4", handle)
 ```
 
 https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2017/
@@ -1235,4 +1250,364 @@ disableProjSubset=on&horizStride=1&time=2017-01-03T
 
 
 
+```{r}
+# shelf(rvest)
+
+# hycom_url <- "https://data.hycom.org/datasets/GOMb0.01/reanalysis/data/"
+hycom_url <- "https://tds.hycom.org/thredds/catalog/datasets/GOMb0.01/reanalysis/data/"
+
+# experiment <- "010"
+# year       <- test4$year
+# julian     <- "003"
+# hh         <- "12"
+# mm         <- "01"
+# dd         <- "03"
+# hh         <- "12"
+# mmin       <- "00" 
+# ss         <- "00"
+# xmin <- -83.812
+# xmax <- -83.5
+# ymin <- 25.5
+# ymax <- 26
+
+vert       <- format(0, nsmall = 1)
+horizon    <- 1
+xmin <- -83.8125
+xmax <- -78.3125
+ymin <- 22.8125
+ymax <- 26.4375
+
+test3 <- 
+  paste0(hycom_url, "catalog.html") %>%
+  read_html() %>%
+  html_elements("a tt") %>%
+  rvest::html_text() %>%
+  str_subset("\\d{4}") %>%
+  str_remove("/") %>%
+  as.numeric() %>%
+  tibble(file = hycom_url, year = .) %>%
+  filter(year >= 2015) %>%
+  mutate(file_yr = glue("{file}{year}/")) %>%
+  mutate(
+    file_day = map(
+      file_yr,
+      \(.file) {
+        paste0(.file, "catalog.html") %>%
+          read_html() %>%
+          html_element("body") %>%
+          html_table() %>%
+          pull(1) %>%
+          str_subset("12_3z\\.nc") %>%
+          tibble(file = .file, day = .) %>%
+          mutate(
+            part_url = str_extract(file, "datasets/GO.*"),
+            file_day = paste0(file, "catalog.html?dataset=", part_url, day)
+          )
+      }
+    )
+  ) %T>% 
+  print()
+
+
+test4 <-
+  test3 %>%
+  unnest(file_day, names_sep = "_") %T>% 
+  print() %>%
+  # slice(1, .by = year) %>%
+  mutate(
+    info = map(
+      file_day_file_day,
+      \(.path) {
+        .path %>%
+          read_html() %>%
+          html_element("body") %>%
+          html_element("ol") %>%
+          html_text() %>%
+          str_extract("NetcdfSubset.*\\.nc") %>%
+          str_remove("NetcdfSubset:.*//") %>%
+          paste0("https://", ., "/dataset.html")
+      }
+    )
+  ) %>%
+  unnest(info) %T>% 
+  print() 
+
+test_temp <- 
+  test4 %>%
+  mutate(
+    date = map(
+      info,
+      \(.path) {
+        .path %>%
+          read_html() %>%
+          html_element("body") %>%
+          html_elements("h3 span") %>%
+          html_text() %>%
+          str_subset("\\d{4}.*") %>%
+          str_replace_all(":", "%3A")
+      }
+    )
+  ) %>%
+  unnest(date) %T>% 
+  print() 
+
+specifics <-
+  paste0(
+    "var=salinity&var=u&var=v&var=w_velocity&var=water_temp&",
+    "north={ymax}&west={xmin}&east={xmax}&south={ymin}&",
+    "disableProjSubset=on&",
+    "horizStride={horizon}&",
+    "time={date}&",
+    "vertCoord={vert}&accept=netcdf4"
+  )
+
+
+test5 <-
+  test_temp %>%
+  mutate(
+    .keep = "used",
+    date,
+    final_path =
+      str_remove(info, "grid/") %>%
+      str_replace("/dataset.html", "?"),
+    final_path = paste0(
+      final_path, specifics
+      # "var=salinity&var=u&var=v&var=w_velocity&var=water_temp&",
+      # "north={ymax}&west={xmin}&east={xmax}&south={ymin}&",
+      # "disableProjSubset=on&",
+      # "horizStride={horizon}&",
+      # "time={date}&",
+      # "vertCoord={vert}&accept=netcdf4"
+    ), 
+    file_name = paste0("hycom_", str_remove(date, "T.*"), ".nc4"),
+    file_name = str_replace_all(file_name, "-", "_")
+  ) %T>%
+  print() 
+  
+    # rename("dates2" = date) %>%
+    
+  # mutate(
+  #   final_path = map2_chr(
+  #     # list(
+  #       final_path, 
+  #     date,
+  #     # specifics),
+  #     \(final, date, specifics) {
+  #     glue(
+  #     final
+  #       # "var=salinity&var=u&var=v&var=w_velocity&var=water_temp&",
+  #       # "north={ymax}&west={xmin}&east={xmax}&south={ymin}&",
+  #       # "disableProjSubset=on&",
+  #       # "horizStride={horizon}&",
+  #       # "time={date}&",
+  #       # "vertCoord={vert}&accept=netcdf4"
+  #      ) }
+  #     ),
+  #   file_name = paste0("hycom_", str_remove(date, "T.*"), ".nc4"),
+  #   file_name = str_replace_all(file_name, "-", "_"),
+  # ) %T>%
+  # print() 
+
+
+# write_csv(test5, here(rstudioapi::selectDirectory(), "hycom_100deg_download_instructions.csv"))
+
+
+ 
+test6 <- 
+  test5 %>%
+  mutate(
+    final_path = map2_chr(
+      final_path,
+      date,
+      \(final, date) {
+        glue(final)
+      }
+    )
+  ) %T>%
+  print() 
+
+test6 %>%
+  slice(1250:1251) %$%
+  walk2(
+    final_path,
+    file_name,
+    \(.url, .file_name) {
+      print(.url)
+      cat("\n\n\n")
+      print(.file_name)
+      try(
+        download.file(
+          url      = .url,
+          destfile = here(dwnld_path, .file_name),
+          method   = "curl"
+        )
+      )
+    }
+  )
+
+# download.file(
+#   url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_04_3z.nc?disableLLSubset=on&disableProjSubset=on&horizStride=1&time=&vertCoord=&accept=netcdf4",
+#   destfile = here(dwnld_path, "test5.nc4"),
+#   method = "curl"
+#   )
+
+
+```
+
+
+```{r}
+# test4$info %>%
+#   str_remove("grid/") %>%
+#   str_replace("/dataset.html", "?")
+# 
+# base_url <- 
+#   test4$info %>%
+#   str_remove("grid/") %>%
+#   str_replace("/dataset.html", "?") %>%
+#   glue(
+#   # "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/{year}/",
+#   # "{experiment}_archv.{year}_{julian}_{hh}_3z.nc?",
+#   "var=salinity&var=u&var=v&var=w_velocity&var=water_temp&",
+#   "north={ymax}&west={xmin}&east={xmax}&south={ymin}&",
+#   # "disableLLSubset=on&",
+#   "disableProjSubset=on&",
+#   "horizStride={horizon}&",
+#   # "time={year}-{mm}-{dd}T{hh}%3A{mmin}%3A{ss}Z&", 
+#   glue("time={test4$date}&"),
+#   "vertCoord={vert}&accept=netcdf4"
+#   )
+
+
+
+# https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/{year}/
+# https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_12_3z.nc/dataset.html
+
+
+download.file(
+  # url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_04_3z.nc?disableLLSubset=on&disableProjSubset=on&horizStride=1&time=&vertCoord=&accept=netcdf4",
+  url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2020/023_archv.2020_001_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=26&west=-83.812&east=-83.5&south=25.5&disableProjSubset=on&horizStride=5&time=2020-01-01T12%3A00%3A00Z&vertCoord=0.0&accept=netcdf4",
+  destfile = here(dwnld_path, "test8.nc4"),
+  method = "curl"
+  )
+"https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=26&west=-83.812&east=-83.7&south=25.95&disableProjSubset=on&horizStride=5&time=2019-01-01T12%3A00%3A00Z&vertCoord=0.0&accept=netcdf4"
+"https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=26&west=-83.812&east=-83.7&south=25.95&disableProjSubset=on&horizStride=1&time=2019-01-01T12%3A00%3A00Z&vertCoord=0.0&accept=netcdf4"
+# "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=26&west=-83.812&east=-83.5&south=25.8&horizStride=5&time=2019-01-01T12%3A00%3A00Z&vertCoord=0.0&accept=netcdf4"
+
+"https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=26&west=-83.812&east=-83.7&south=25.95&disableProjSubset=on&horizStride=1&time=2019-01-01T12%3A00%3A00Z&vertCoord=0.0&accept=netcdf4"
+
+download.file(
+  # url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_04_3z.nc?disableLLSubset=on&disableProjSubset=on&horizStride=1&time=&vertCoord=&accept=netcdf4",
+url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=26&west=-83.812&east=-83.5&south=25.8&horizStride=5&time=2019-01-01T12%3A00%3A00Z&vertCoord=0.0&accept=netcdf4",
+  # url = "https://ncss.hycom.org/thredds/ncss/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_12_3z.nc?var=salinity&var=u&var=v&var=w_velocity&var=water_temp&north=26&west=-83.812&east=-83.7&south=25.95&disableProjSubset=on&horizStride=5&time=2019-01-01T12%3A00%3A00Z&vertCoord=0.0&accept=netcdf4",
+  destfile = here(dwnld_path, "test7.nc4"),
+  method = "curl"
+  )
+```
+
+
+```{r}
+hycom_yr_url <-
+"https://tds.hycom.org/thredds/catalog/datasets/GOMb0.01/reanalysis/data/2023/"
+
+test <-
+  paste0(hycom_yr_url, "catalog.html") %>%
+  read_html() %>%
+  html_element("body") %>% 
+  html_table() %>%
+  pull(1) %>%
+  str_subset("12_3z\\.nc") %>%
+  tibble(file = hycom_yr_url, day = .) %>%
+  mutate(
+    part_url = str_extract(file, "datasets/GO.*"),
+    file_day = paste0(file, "catalog.html?dataset=", part_url, day)
+  )
+
+
+
+  # html_element("tbody")
+  # html_elements("pre a") %>%
+  html_text() %>%
+  str_subset("12_3z\\.nc") %>%
+  tibble(file = hycom_yr_url, day = .) 
+
+  
+test %>%
+  mutate(
+    part_url = str_extract(file, "datasets/GO.*"),
+    file_day = paste0(file, "catalog.html?dataset=", part_url, day)
+  )
+
+
+test2 <- 
+  # "https://tds.hycom.org/thredds/catalog/datasets/GOMb0.01/reanalysis/data/2023/catalog.html?dataset=datasets/GOMb0.01/reanalysis/data/2023/023_archv.2019_001_12_3z.nc" %>%
+  # "https://tds.hycom.org/thredds/catalog/datasets/GOMb0.01/reanalysis/data/2019/catalog.html?dataset=datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_12_3z.nc"
+
+  # "https://tds.hycom.org/thredds/catalog/datasets/GOMb0.01/reanalysis/data/2023/catalog.html?dataset=datasets/GOMb0.01/reanalysis/data/2023/023_archv.2023_004_12_3z.nc" %>%
+ read_html() 
+
+test2 %>%
+ html_element("body") %>%
+ html_element("ol") %>%
+ 
+ html_text() %>%
+ str_extract("NetcdfSubset.*\\.nc") %>%
+ str_remove("NetcdfSubset:.*//") %>%
+ paste0("https://", ., "/dataset.html")
+
+
+"https://ncss.hycom.org/thredds/ncss/grid/datasets/GOMb0.01/reanalysis/data/2019/023_archv.2019_001_12_3z.nc/dataset.html" %>%
+ read_html() %>%
+ html_element("body") %>%
+ html_elements("h3 span") %>%
+ html_text() %>%
+ str_subset("\\d{4}.*")
+
+```
+
+
+
+# PhyDOTax
+
+<https://github.com/sherrypalacios/PHYDOTax>
+
+From: Testing a Hyperspectral, Bio‐Optic al Approach to Identification of Phytoplankton Community Composition in the Chesapeake Bay Estuary
+
+```{r}
+rrs_path <- rstudioapi::selectFile() 
+rrs_path <- here::here("data", "raw", "phydotax") |>
+  fs::dir_ls()
+
+librarian::shelf(librarian, ncdf4)
+
+
+rrs_nc <- nc_open(rrs_path[1])
+print(rrs_nc)
+
+attributes(rrs_nc$var)
+attributes(rrs_nc$dim)
+
+ncvar_get(rrs_nc, "__xarray_dataarray_variable__")[,,]
+ncvar_get(rrs_nc, "z_number_components")
+ncvar_get(rrs_nc, "y_mixture_run_num")
+ncvar_get(rrs_nc, "x_phytotype")
+rrs_nc$var$`__xarray_dataarray_variable__`
+
+nc_close(rrs_nc)
+
+rrs_unk <- rstudioapi::selectFile()
+
+rrs_unk_nc <- nc_open(rrs_unk[2])
+print(rrs_unk_nc)
+
+attributes(rrs_unk_nc$var)
+attributes(rrs_unk_nc$dim)
+
+ncvar_get(rrs_unk_nc, "__xarray_dataarray_variable__")[,,] 
+ncvar_get(rrs_unk_nc, "z_number_components")
+ncvar_get(rrs_unk_nc, "y_wavelength")
+ncvar_get(rrs_unk_nc, "x_mixture_run_num")
+rrs_unk_nc$var$`__xarray_dataarray_variable__`$dim
+
+nc_close(rrs_unk_nc)
+```
 
