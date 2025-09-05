@@ -1,0 +1,155 @@
+---
+title: "Bulk Inversion Model"
+author: "Sebastian Di Geronimo"
+date: 2025-08-07
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+Adpated from:
+<https://github.com/SIO-Ocean-Optics-Research-Laboratory/LS2_Distribution>
+
+LS2 is a bulk inversion model for estimating the seawater inherent optical 
+properties of the spectral absorption, a(λ), and backscattering, bb(λ), 
+coefficients as well as their non-water components anw(λ) and bbp(λ) from 
+measurements of remote-sensing reflectance, Rrs(λ). 
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+# b_p from [Chla]
+
+Estimate $ b_p(\lambda) $ from chla
+Uses empirical relationship from Morel and Maritorena (2001)
+
+See: <https://github.com/SIO-Ocean-Optics-Research-Laboratory/LS2_Distribution/blob/main/bp_from_Chla.m>
+
+```{r}
+bp_from_chla <- function(lambda, chla) {
+  # b_p at 660 nm
+  bp_660 <- 0.347 * chla^(0.766)
+
+  # b_p (m^-1) at different wavelengths
+  bp <- bp_660 * (lambda / 660)^(-1)
+  
+  return(bp)
+}
+
+lambda_range <- 200:700
+chla_val     <- c(1, 2, 0.5, 0.25, 6)
+
+dat_b_p <- bp_from_chla(lambda_range, chla_val[1])
+dat_b_p
+
+{
+  dat_b_p <- matrix(lambda_range, ncol = 1)
+  for (chl in chla_val) {
+    temp    <- bp_from_chla(lambda_range, chl)
+    dat_b_p <- cbind(dat_b_p, temp)
+  }
+  colnames(dat_b_p) <- c("lambda", paste("chl", chla_val, sep = "_"))
+  print(head(dat_b_p))
+  print(tail(dat_b_p))
+
+  colors_pal <- palette.colors(n = length(chla_val), palette = "Okabe-Ito")
+  plot(
+    dat_b_p,
+    type = "l", col = colors_pal[1],
+    xlim = range(lambda_range),
+    ylim = c(0, max(dat_b_p[, -1] * 1.1)),
+    xlab = "λ",
+    ylab = "b_p"
+  )
+  for (i in seq(length(chla_val) - 1)) {
+    lines(dat_b_p[, c(1, i + 2)], col = colors_pal[i + 1])
+  }
+  legend("topright",
+    as.character(chla_val),
+    lty = 1,
+    col = colors_pal
+  )
+  title("b_p values across [Chla]")
+}
+```
+
+# Implements the LS2 inversion model
+
+see: <https://github.com/SIO-Ocean-Optics-Research-Laboratory/LS2_Distribution/blob/main/LS2_main.m>
+
+Reference: 
+
+Loisel, H., D. Stramski, D. Dessaily, C. Jamet, L. Li, and R.A. Reynolds. 2018. 
+An inverse model for estimating the optical absorption and backscattering 
+coefficients of seawater from remote-sensing reflectance over a broad range of 
+oceanic and coastal marine environments. Journal of Geophysical Research: 
+Oceans, 123, 2141–2171. doi: 10.1002/2017JC013632 
+
+
+TODO: determine what's in the `LS2_LUT.mat`
+```{r}
+
+#' FUNCTION_TITLE
+#'
+#' FUNCTION_DESCRIPTION
+#'
+#' @param sza Solar zenith angle [deg]
+#' @param lambda Input light wavelength [nm] of Rrs and output wavelength of 
+#'               model derived IOPs
+#' @param Rrs Spectral remote-sensing reflectance [sr^-1] at light wavelength 
+#'            lambda
+#' @param Kd DESCRIPTION.
+#' @param aw DESCRIPTION.
+#' @param bw DESCRIPTION.
+#' @param bp DESCRIPTION.
+#' @param LS2_LUT DESCRIPTION.
+#' @param Flag_Raman DESCRIPTION.
+#'
+#' @return RETURN_DESCRIPTION
+#' @examples
+#' # ADD_EXAMPLES_HERE
+ls2_main <- function(sza, lambda, Rrs, Kd, aw, bw, bp, LS2_LUT, Flag_Raman) {
+  library("pracma")
+  # Step 1: Calculation of muw, the cosine of the angle of refraction of the
+  # solar beam just beneath the sea surface
+  nw <- 1.34 # Refractive index of seawater
+  muw <- cosd(asind(sind(sza) / nw)) # [dim]
+
+  return(
+    list(
+      a,
+      anw,
+      bb,
+      bbp,
+      kappa
+    )
+  )
+}
+
+
+```
+
