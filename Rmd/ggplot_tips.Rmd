@@ -1315,3 +1315,39 @@ pacman::p_unload("all")
 ```{r show-point-shapes}
 ggpubr::show_point_shapes()
 ```
+
+# Rescale Color Gradient in ggplot2 
+Sep 05, 2025
+
+Within scale_x_gradientn, can set the midpoint using argument `rescaler` 
+- ex: `rescaler = ~ scales::rescale_mid(.x, mid = 0)`
+
+```{r rescale-color}
+library(ggplot2)
+data_2 <- data.frame(
+  name = paste('Pathway', 1:5),
+  p_val = c(0.01, 0.05, 0.03, 0.001, 0.02),
+  z_score = c(-2, -3, -3, -4, -2.5)
+)
+
+# mid[point set to 0
+data_2 |>
+  ggplot(aes(x = p_val, y = fct_reorder(name, p_val))) +
+  geom_bar(aes(fill = z_score), stat = 'identity') +
+  scale_fill_gradientn(
+    colours = c('#709AE1', '#FFFFFF', '#FD7446'),
+    rescaler = ~ scales::rescale_mid(.x, mid = 0),
+    limits = c(-4, 0))
+
+# mid[point set to -3
+data_2 |>
+  ggplot(aes(x = p_val, y = fct_reorder(name, p_val))) +
+  geom_bar(aes(fill = z_score), stat = 'identity') +
+  scale_fill_gradientn(
+    colours = c('#709AE1', '#FFFFFF', '#FD7446'),
+    rescaler = ~ scales::rescale_mid(.x, mid = -3),
+    limits = c(-4, 0))
+  
+
+```
+
