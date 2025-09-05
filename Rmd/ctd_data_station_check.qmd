@@ -1,0 +1,277 @@
+---
+title: "Check CTD Data Station Names"
+author: "Sebastian Di Geronimo"
+date: 2025-08-28
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+## 2.2 Load Dataset
+
+```{r load-data}
+file_paths <- rstudioapi::selectDirectory()
+
+dat3 <- 
+  file_paths %>%
+  dir_ls(regexp = "\\.csv") %>%
+  tibble(file = .) %>%
+  
+  # slice(20:22) %>%
+  # slice_sample(prop = 0.1) %>%
+  mutate(
+    file = as.character(file),
+    data = imap(
+      file,
+      \(.x, idx) {
+        print(glue("{idx}: {basename(.x)}"))
+        read_csv(.x, show_col_types = FALSE, 
+                 col_types = cols(.default = col_character())) %>%
+        select(station, cruise_id, latitude, longitude) %>%
+        distinct()
+        
+        }
+      )
+  ) %T>% 
+  print()
+
+# tst <- 
+ file_paths %>%
+  dir_ls(regexp = "\\.csv") %>%
+  class()
+  imap(
+      # file,
+      \(x, idx) {
+        # print(x)
+        print(idx)
+        # print(glue("{idx}: "))
+        # read_csv(.x, show_col_types = FALSE) %>%
+        # select(station, cruise_id)
+        
+        }
+      )
+
+
+imap_chr(sample(10), \(x, idx) paste0(idx, ": ", x))
+
+dat3 %>%
+  unnest(data) %>%
+  distinct(cruise_id, station) %>%
+  # arrange(station) %>%
+  mutate(
+    stn = str_remove(station, "WB22215\\."),
+    stn = str_remove(stn, "^\\.0{1,2}|^\\.|^0{1,2}"),
+    stn = if_else(str_detect(stn, "LK|^21"), "21/LK", stn),
+    stn = str_replace(stn, "MR.REDO", "MR"),
+    stn = str_replace(stn, "TB1_RECAST", "TB1B"),
+    stn = str_replace(stn, "_(\\d)$", ".\\1"),
+    stn = str_replace(stn, "(CAL)(0)(\\d)", "\\1\\3"),
+    stn = str_replace(stn, "225", "22.5"),
+    stn = str_replace(stn, "675", "6.75"),
+    stn = str_replace(stn, "7.B", "7B"),
+    stn = str_replace(stn, "57.3.2", "57.3B"),
+    stn = str_replace(stn, "AM1", "AMI"),
+    stn = str_replace(stn, "1016", "16"),
+    stn = str_replace(stn, "116", "16"),
+    stn = str_replace(stn, "117", "17"),
+    stn = str_replace(stn, "120", "20"),
+    stn = str_replace(stn, "95", "9.5"),
+    stn = case_when(
+      str_detect(stn, "DT0") ~ str_replace(stn, "DT0", "DT"),
+      str_detect(stn, "DT") ~ str_remove(stn, "\\."),
+      str_detect(stn, "EH") ~ str_replace(stn, "EH0", "EH"),
+      .default = stn
+    ),
+    stn = case_when(
+      str_detect(cruise_id, "WS0914") ~ str_replace(stn, "65", "6.5"),
+      .default = stn
+    )
+    
+    
+  ) %>%
+  arrange(stn)  %T>% 
+  print() %>% 
+  slice(1001:n()) %>%
+  print() %>%
+  slice(1001:n()) %>%
+  print() %>%
+  slice(1001:n()) %>%
+  print()
+  filter(station != stn) %>%
+  distinct(station, stn)
+  filter(str_detect(station, "65")) 
+```
+
+
+```{r}
+ file_paths %>%
+  dir_ls(regexp = "\\.csv")
+```
+
+
+1016
+116
+117
+120
+15.5SURFACE
+15_5
+205
+225A
+30B
+33UP
+495
+57.3.2
+675
+
+```{r}
+stn16 <- "C:/Users/spd19/Box/mbon_imars_cruises/ctd_data/cleaned_ctd_data/WS23061.csv" %>%
+ read_csv(show_col_types = FALSE) %>%
+  distinct(station, latitude, longitude) %>%
+  filter(str_detect(station, "16"))
+
+"C:/Users/spd19/Box/mbon_imars_cruises/ctd_data/cleaned_ctd_data/WS0914.csv" %>%
+ read_csv(show_col_types = FALSE) %>% 
+  distinct(station, latitude, longitude) %>%
+    # filter(str_detect(station, "1")) %>%
+  # arrange(time_elapsed)
+ ggplot(aes(x = longitude, y = latitude)) +
+  geom_point() +
+  ggrepel::geom_label_repel(aes(label = station), max.overlaps = 100, min.segment.length = 0) +
+  # geom_point(data = stn16, color = "red") +
+  # ggrepel::geom_label_repel(data = stn16, aes(label = station), max.overlaps = 100, min.segment.length = 0, color = "red") +
+  theme_bw()
+```
+
+```{r}
+ylim <- range(unnest(dat3, data)$latitude) |> as.numeric() 
+xlim <- range(unnest(dat3, data)$longitude) |> as.numeric() 
+
+base_plt <- 
+  rnaturalearth::ne_coastline(10, "sf") %>%
+  ggplot() +
+  geom_sf(color = "grey50") +
+  coord_sf(xlim = xlim, ylim = ylim) +
+  labs(x = NULL, y = NULL)
+base_plt
+dat3 %>%
+  # slice(1:3) %>%
+  # unnest(data)
+  mutate(
+    
+  plt = map(
+    data,
+    \(.dat) {
+      plt <- 
+        
+       dat2 <-  .dat %>%
+      hablar::retype()
+      
+      base_plt +
+      # ggplot(aes(x = longitude, y = latitude, label = station)) +
+  geom_point(data = dat2, aes(x = longitude, y = latitude, label = station)) +
+  ggrepel::geom_label_repel(data = dat2, aes(x = longitude, y = latitude, label = station),
+                            max.overlaps = 100, min.segment.length = 0) +
+  theme_bw() +
+        facet_grid(~cruise_id) 
+      }
+        )
+  ) %>%
+  pull(plt) 
+%T>%
+  print() %>%
+  map(
+    ~ plotly::ggplotly(.x)
+  )
+
+camcorder::gg_record(here("data", "plots", "ctd_cam_fix"))
+```
+
+```{r}
+dat3 %>%
+  unnest(data) %>%
+  # distinct(cruise_id, station) %>%
+  # arrange(station) %>%
+  mutate(
+    stn = str_remove(station, "WB22215\\."),
+    stn = str_remove(stn, "^\\.0{1,2}|^\\.|^0{1,2}"),
+    stn = if_else(str_detect(stn, "LK|^21"), "21/LK", stn),
+    stn = str_replace(stn, "MR.REDO", "MR"),
+    stn = str_replace(stn, "TB1_RECAST", "TB1B"),
+    stn = str_replace(stn, "_(\\d)$", ".\\1"),
+    stn = str_replace(stn, "(CAL)(0)(\\d)", "\\1\\3"),
+    stn = str_replace(stn, "225", "22.5"),
+    stn = str_replace(stn, "675", "6.75"),
+    stn = str_replace(stn, "7.B", "7B"),
+    stn = str_replace(stn, "57.3.2", "57.3B"),
+    stn = str_replace(stn, "AM1", "AMI"),
+    stn = str_replace(stn, "1016", "16"),
+    stn = str_replace(stn, "116", "16"),
+    stn = str_replace(stn, "117", "17"),
+    stn = str_replace(stn, "120", "20"),
+    stn = str_replace(stn, "95", "9.5"),
+    stn = case_when(
+      str_detect(stn, "DT0") ~ str_replace(stn, "DT0", "DT"),
+      str_detect(stn, "DT") ~ str_remove(stn, "\\."),
+      str_detect(stn, "EH") ~ str_replace(stn, "EH0", "EH"),
+      .default = stn
+    ),
+    stn = case_when(
+      str_detect(cruise_id, "WS0914") ~ str_replace(stn, "65", "6.5"),
+      .default = stn
+    )
+    
+    
+  ) %>%
+  nest(.by = file)  %>%
+  mutate(
+    
+  plt = map(
+    data,
+    \(.dat) {
+      plt <- 
+        
+       dat2 <-  .dat %>%
+      hablar::retype()
+      
+      base_plt +
+      # ggplot(aes(x = longitude, y = latitude, label = station)) +
+  geom_point(data = dat2, aes(x = longitude, y = latitude, label = stn)) +
+  ggrepel::geom_label_repel(data = dat2, aes(x = longitude, y = latitude, label = stn),
+                            max.overlaps = 100, min.segment.length = 0) +
+  theme_bw() +
+        facet_grid(~cruise_id) 
+      }
+        )
+  ) %>%
+  pull(plt) 
+```
+
