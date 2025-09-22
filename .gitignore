@@ -11,8 +11,8 @@ docs/
 # populus program: https://github.com/cbs-rlt/populus
 *.jar
 
-# copernicusmarine program:
+# copernicusmarine program: https://help.marine.copernicus.eu/en/articles/10750437-copernicus-marine-toolbox-executable-no-installation
 copernicusmarine.*
 
-# panopoly program
+# panopoly program: https://www.giss.nasa.gov/tools/panoply/
 Panoply - Shortcut.lnk
