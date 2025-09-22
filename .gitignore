@@ -10,3 +10,9 @@ docs/
 
 # populus program: https://github.com/cbs-rlt/populus
 *.jar
+
+# copernicusmarine program:
+copernicusmarine.*
+
+# panopoly program
+Panoply - Shortcut.lnk
