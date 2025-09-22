@@ -8,7 +8,9 @@ editor: source
 
 # 1.0 ---- Summary of Document ----
 
+Plot sampling points of mangroves in Belize. 
 
+Will need `xlsx` of points to run.
 
 # 2.0 ---- Setup ----
 
@@ -25,7 +27,7 @@ librarian::shelf(
   forcats, lubridate, glue, fs, magrittr, here,
   
   # additional
-  
+  OpenStreetMap, leaflet
 )
 
 conflicts_prefer(
@@ -49,25 +51,24 @@ loc_dat <-
 
 ```
 
-```{r}
-shelf(leaflet)
+# 3.0 Plot using `leaflet`
 
+Overall points
+
+```{r leaflet}
 leaflet::leaflet() %>%
   addTiles() %>%
-  # setView(mean(loc_dat$long), mean(loc_dat$lat), zoom = 12) %>%
   addMarkers(loc_dat$long, loc_dat$lat)
 
-
 ```
 
-```{r}
-shelf(OpenStreetMap)
-```
-# Using OpenStreeMap
+
+# 4.0 Plt using `OpenStreeMap`
 
 Inspired from: <https://ajsmit.github.io/Intro_R_Official/mapping-google.html>
 
-```{r}
+```{r mangrove-stations}
+# add boundaries for openstreemap
 adj_deg <- 0.01 # degree widen
 bounds <- 
   c(
@@ -75,10 +76,12 @@ bounds <-
     range(loc_dat$lat) + c(-adj_deg, adj_deg)
   ) %T>%
   print()
+
+# extract openstreemap tiles
 osm_map <-
   openmap(
-    bounds[c(4, 1)],
-    bounds[c(3, 2)],
+    bounds[c(4, 1)], # upperleft
+    bounds[c(3, 2)], # loweright
     zoom = 13,
     type = "esri-topo", 
     mergeTiles = TRUE
@@ -86,22 +89,28 @@ osm_map <-
   openproj()
 
 loc_map <- 
+  # plot openstreemap
   OpenStreetMap::autoplot.OpenStreetMap(osm_map) +
+  
+  # add mangrove points
   geom_point(
     data = loc_dat,
     aes(x = long, y = lat)
   ) +
+  
+  # add station labels
   ggrepel::geom_text_repel(
     data = loc_dat,
     aes(x = long, y = lat, label = samplingpoint),
-    max.overlaps = 15,
+    max.overlaps       = 15,
     min.segment.length = 0.05,
-    size = 2.5,
-    # fontface = "bold", 
-    # color = "white",
-    # bg.color = "black",
-    # bg.r = 0.15,
-    # segment.color = "black"
+    size               = 2.5,
+    # # uncomment for bold letters
+    # fontface           = "bold",
+    # color              = "white",
+    # bg.color           = "black",
+    # bg.r               = 0.15,
+    # segment.color      = "black"
   ) +
   labs(
     x = "Longitude (°E)", 
@@ -110,6 +119,7 @@ loc_map <-
   theme_bw() +
   coord_sf(expand = FALSE)
 
+# ---- subset map ---- #
 loc_map
 ylims <- c(NA, 16.56)
 loc_map +
@@ -127,24 +137,33 @@ loc_map +
   scale_y_continuous(limits = ylims, expand = expansion()) +
   scale_x_continuous(limits = xlims, expand = expansion()) +
   coord_sf(ylim = ylims, xlim = xlims)
+```
 
+# 5.0 Save Plots using `camcorder`
 
+After running, will need to redisplay plots for it to
+
+```{r camcorder}
 shelf(camcorder)
 camcorder::gg_record(
   dir    = here::here("data", "cam_test", "belieze_map"),
-  device         = "png",
-  # height         = 90 * 0.5625,
-  # width          = 90,
-  dpi            = 600,
-  units          = "mm",
-  bg             = "white"
+  device = "png",
+  dpi    = 600,
+  units  = "mm",
+  bg     = "white"
 )
 
 shell.exec(here::here("data", "cam_test", "belieze_map"))
-# camcorder::gg_stop_recording()
 
+# uncomment if need to resize
 # camcorder::gg_resize_film(width = 90, height = 90 * 0.5625,  dpi = 600, units = "mm")
 
+```
+
+## 5.1 When done saving plots
+
+```{r stop-camcorder}
+camcorder::gg_stop_recording()
 ```
 
 
