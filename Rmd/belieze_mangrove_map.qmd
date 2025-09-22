@@ -1,0 +1,151 @@
+---
+title: "Mangrove Map"
+author: "Sebastian Di Geronimo"
+date: 2025-09-22
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+## 2.2 Load Dataset
+
+```{r load-data}
+loc_dat <- 
+  here("data", "raw") %>%
+  dir_ls(regexp = "Placencia") %>%
+  str_subset("~", negate = TRUE) %>%
+  readxl::read_xlsx(.name_repair = janitor::make_clean_names) %>%
+  drop_na(lat, long) %T>% 
+  print() 
+
+```
+
+```{r}
+shelf(leaflet)
+
+leaflet::leaflet() %>%
+  addTiles() %>%
+  # setView(mean(loc_dat$long), mean(loc_dat$lat), zoom = 12) %>%
+  addMarkers(loc_dat$long, loc_dat$lat)
+
+
+```
+
+```{r}
+shelf(OpenStreetMap)
+```
+# Using OpenStreeMap
+
+Inspired from: <https://ajsmit.github.io/Intro_R_Official/mapping-google.html>
+
+```{r}
+adj_deg <- 0.01 # degree widen
+bounds <- 
+  c(
+    range(loc_dat$long) + c(-adj_deg, adj_deg),
+    range(loc_dat$lat) + c(-adj_deg, adj_deg)
+  ) %T>%
+  print()
+osm_map <-
+  openmap(
+    bounds[c(4, 1)],
+    bounds[c(3, 2)],
+    zoom = 13,
+    type = "esri-topo", 
+    mergeTiles = TRUE
+  ) %>%
+  openproj()
+
+loc_map <- 
+  OpenStreetMap::autoplot.OpenStreetMap(osm_map) +
+  geom_point(
+    data = loc_dat,
+    aes(x = long, y = lat)
+  ) +
+  ggrepel::geom_text_repel(
+    data = loc_dat,
+    aes(x = long, y = lat, label = samplingpoint),
+    max.overlaps = 15,
+    min.segment.length = 0.05,
+    size = 2.5,
+    # fontface = "bold", 
+    # color = "white",
+    # bg.color = "black",
+    # bg.r = 0.15,
+    # segment.color = "black"
+  ) +
+  labs(
+    x = "Longitude (°E)", 
+    y = "Latitude (°S)"
+  ) +
+  theme_bw() +
+  coord_sf(expand = FALSE)
+
+loc_map
+ylims <- c(NA, 16.56)
+loc_map +
+  scale_y_continuous(limits = ylims, expand = expansion()) +
+  coord_sf(ylim = ylims)
+
+ylims <- c(16.56, NA)
+loc_map +
+  scale_y_continuous(limits = ylims, expand = expansion()) +
+  coord_sf(ylim = ylims)
+
+ylims <- c(16.545, 16.58)
+xlims <- c(-88.42, -88.34)
+loc_map +
+  scale_y_continuous(limits = ylims, expand = expansion()) +
+  scale_x_continuous(limits = xlims, expand = expansion()) +
+  coord_sf(ylim = ylims, xlim = xlims)
+
+
+shelf(camcorder)
+camcorder::gg_record(
+  dir    = here::here("data", "cam_test", "belieze_map"),
+  device         = "png",
+  # height         = 90 * 0.5625,
+  # width          = 90,
+  dpi            = 600,
+  units          = "mm",
+  bg             = "white"
+)
+
+shell.exec(here::here("data", "cam_test", "belieze_map"))
+# camcorder::gg_stop_recording()
+
+# camcorder::gg_resize_film(width = 90, height = 90 * 0.5625,  dpi = 600, units = "mm")
+
+```
+
+
+
