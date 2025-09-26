@@ -1474,3 +1474,24 @@ cbind(
 
 
 # ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Filter for strings when column should be numeric ---- #
+# ============================================================================ #
+# Sep 26, 2025
+# when loading in data, some columns are expected to be a certain type and 
+# when they get converted (i.e. numeric to character), you may want to see what 
+# strings to filter out and which can be converted back to numeric
+
+# does not convert to numeric
+tibble::tibble(num_col = c(month.name, 1:10)) %>%
+  dplyr::filter(is.na(as.numeric(num_col))) %>%
+  hablar::retype() 
+
+# does  convert to numeric
+tibble::tibble(num_col = c(month.name, 1:10)) %>%
+  dplyr::filter(!is.na(as.numeric(num_col))) %>%
+  hablar::retype() 
+
+# ============================================================================ #
