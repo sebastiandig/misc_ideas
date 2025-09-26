@@ -1484,14 +1484,19 @@ cbind(
 # when they get converted (i.e. numeric to character), you may want to see what 
 # strings to filter out and which can be converted back to numeric
 
-# does not convert to numeric
-tibble::tibble(num_col = c(month.name, 1:10)) %>%
+# does not convert to numeric and filters out non-numeric coercable
+tibble::tibble(num_col = c(month.name, 1:10, "2020-01-01")) %>%
   dplyr::filter(is.na(as.numeric(num_col))) %>%
   hablar::retype() 
 
-# does  convert to numeric
-tibble::tibble(num_col = c(month.name, 1:10)) %>%
+# does  convert to numeric by keeping values to convert to numeric
+tibble::tibble(num_col = c(month.name, 1:10, "2020-01-01")) %>%
   dplyr::filter(!is.na(as.numeric(num_col))) %>%
+  hablar::retype() 
+
+# does  convert to date
+tibble::tibble(num_col = c(month.name, 1:10, "2020-01-01")) %>%
+  dplyr::filter(!is.na(lubridate::as_date(num_col))) %>%
   hablar::retype() 
 
 # ============================================================================ #
