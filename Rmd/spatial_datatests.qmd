@@ -302,7 +302,7 @@ rssh_grid_rast <-
   ssh_grid %>%
   terra::rast(crs = "EPSG:4326") 
 
-transect_file <- here(path_save, "..", "transects.shp")
+transect_file <- here(path_save, "..", "transect_shp", "transects.shp")
 
 if (file_exists(transect_file)) {
   message("Reading transects shapefile")

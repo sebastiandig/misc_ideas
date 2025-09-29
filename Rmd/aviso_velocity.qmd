@@ -296,7 +296,7 @@ rm(extents)
 # Create Transects
 
 ```{r edit-transects}
-transect_file <- here(path_save, "..", "transects2.shp")
+transect_file <- here(path_save, "..", "transect_shp", "transects2.shp")
 
 # stations_path <- rstudioapi::selectFile() 
 stations_path <- 
@@ -722,7 +722,7 @@ year_to_run <- "2021"
 # ---- Create Polygon ----
 
 ```{r edit-transects}
-transect_file <- here(path_save, "..", "fl_keys_polygon.shp")
+transect_file <- here(path_save, "..", "fl_keys_poly", "fl_keys_polygon.shp")
 
 # stations_path <- rstudioapi::selectFile() 
 stations_path <- 
@@ -864,7 +864,7 @@ test2 <-
 # Create Transects along Shelf
 
 ```{r edit-transects}
-transect_file <- here(path_save, "..", "transects_along.shp")
+transect_file <- here(path_save, "..", "transect_shp", "transects_along.shp")
 
 # stations_path <- rstudioapi::selectFile() 
 stations_path <- 
