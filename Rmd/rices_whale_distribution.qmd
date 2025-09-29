@@ -1,0 +1,94 @@
+---
+title: "Rice's Whale Distrbution Map"
+author: "Sebastian Di Geronimo"
+date: 2025-09-29
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+Shapefile of Rice's Whale Distrbution from:
+<https://www.fisheries.noaa.gov/resource/map/rices-whale-core-distribution-area-map-gis-data>
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  sf,
+  rnaturalearth
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+## 2.2 Load Dataset
+
+```{r load-data}
+# set location to save data and plots
+dir_data_save <- here("data", "processed", "rices_whale_distribution")
+dir_plt_save  <- here("data", "plots", "rices_whale_distribution")
+
+# shapefile path
+whale_shp_path <- 
+  here("data", "raw") %>%
+  dir_ls(regexp = "Rices_whale") %>%
+  dir_ls(regexp = "shp$")
+
+# load whale distrbution shapefile
+whale_shp <- st_read(whale_shp_path)
+```
+
+
+## 2.3 Load Coastline
+
+```{r load-coast}
+# extract bounding box
+bbox  <- st_bbox(whale_shp)
+adj   <- 4 # add space around bounding box
+bbox2 <- c(
+  bbox["xmin"] - adj,
+  bbox["ymin"] - adj,
+  bbox["xmax"] + adj,
+  bbox["ymax"] + adj
+)
+
+# load coastline
+coast_shp <- 
+  rnaturalearth::ne_coastline(scale = 10, returnclass = "sf") %>%
+  st_crop(bbox2)
+```
+
+# 3.0 Plot Rice's Whale Distribution
+
+```{r plot-data}
+# plot distrbution
+ggplot() +
+  geom_sf(data = coast_shp) +
+  geom_sf(
+    data      = whale_shp, 
+    color     = "red", 
+    fill      = prismatic::clr_lighten("red"),
+    linewidth = 1,
+    linetype  = "dashed"
+    ) +
+  coord_sf(expand = FALSE) + 
+  theme_bw()
+```
+
