@@ -62,6 +62,9 @@ dir_data_location <- here("E:\\", "google_drive", ".shortcut-targets-by-id", "1E
   dir_ls() %T>% 
   print()
 
+# number of minutes to bin by
+min_bin <- 1
+
 # function factory to pre-set metric used to summarise
 set_func <- function(metric_name, ...) {
   fun <- switch(
@@ -97,8 +100,10 @@ path_rmyst <- "StarboardRMYoung"
 
 ```
 
+
 # Turner C3 Primary
-```{r}
+
+```{r path-c3-primary}
 c3p_path <- 
   dir_data_location %>%
   str_subset("Turner C3 Primary") %>%
@@ -107,7 +112,7 @@ c3p_path <-
   print()
 ```
 
-```{r}
+```{r load-c3-primary}
 c3p_load <- 
   c3p_path %>%
   read_delim(
@@ -122,7 +127,7 @@ c3p_load <-
   mutate(
     .after = computer_time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(computer_time, 60)
+    time_round = hms::round_hms(computer_time, 60 * min_bin)
   ) %T>% 
   print()
 
@@ -140,7 +145,7 @@ c3p_avg <-
 
 # Turner C3 Secondary
 
-```{r}
+```{r path-c3-secondary}
 c3s_path <- 
   dir_data_location %>%
   str_subset("Turner C3 Secondary") %>%
@@ -149,7 +154,7 @@ c3s_path <-
   print()
 ```
 
-```{r}
+```{r load-c3-secondary}
 c3s_load <- 
   c3s_path %>%
   read_delim(
@@ -164,7 +169,7 @@ c3s_load <-
   mutate(
     .after = computer_time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(computer_time, 60)
+    time_round = hms::round_hms(computer_time, 60 * min_bin)
   ) %T>% 
   print()
 
@@ -178,20 +183,9 @@ c3s_avg <-
   print()
 ```
 
-```{r}
-full_join(
-c3p_avg,
-c3s_avg,
-  by = c("computer_date", "time_round")
-) %>%
-  visdat::vis_miss()
-
-```
-
-
 # Fluorometer
 
-```{r}
+```{r path-fluoro}
 fluor_path <- 
   dir_data_location %>%
   str_subset("Fluorometer$") %>%
@@ -201,9 +195,7 @@ fluor_path <-
 ```
 
 
-
-
-```{r}
+```{r load-fluoro}
 fluor_load <-
   fluor_path %>%
   read_delim(
@@ -219,7 +211,7 @@ fluor_load <-
   mutate(
     .after = time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(time, 60)
+    time_round = hms::round_hms(time, 60 * min_bin)
   ) %T>% 
   print()
 
@@ -236,7 +228,7 @@ fluor_avg <-
 
 # DisOrgMat
 
-```{r}
+```{r path-disorg}
 dis_org_path <- 
   dir_data_location %>%
   str_subset("DisOrgMat$") %>%
@@ -245,7 +237,7 @@ dis_org_path <-
   print()
 ```
 
-```{r}
+```{r load-disorg}
 dis_org_load <-
   dis_org_path %>%
   read_delim(
@@ -261,7 +253,7 @@ dis_org_load <-
   mutate(
     .after = time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(time, 60)
+    time_round = hms::round_hms(time, 60 * min_bin)
   ) %T>% 
   print()
 
@@ -285,7 +277,7 @@ dis_org_avg <-
 
 
 
-```{r}
+```{r path-metero}
 meteor_path <- 
   dir_data_location %>%
   str_subset("PortRMYoung$") %>%
@@ -303,7 +295,7 @@ meteor_path <-
 - rel direction
 - true speed
 - true direction
-```{r}
+```{r path-wind}
 wind_path <- 
   dir_data_location %>%
   str_subset("StarboardRMYoung$") %>%
@@ -321,7 +313,7 @@ avg wind direction calc: <https://www.onsetcomp.com/resources/tech-notes/wind-da
 5. convert from radians to degrees
 6. modulo to keep withing 0 - 360 degrees 
 
-```{r}
+```{r load-wind}
 wind_dat <-
   wind_path %>%
   read_delim(
@@ -345,7 +337,7 @@ wind_dat <-
   mutate(
     .after = time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(time, 60)
+    time_round = hms::round_hms(time, 60 * min_bin)
   ) %T>%
   print()
 
@@ -376,6 +368,8 @@ wind_avg <-
   rename("date" = any_of(contains("date"))) %T>% 
   print()
 ```
+
+# Merge Data by Date and Time
 
 ```{r}
 reduce(
