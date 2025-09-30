@@ -1,0 +1,378 @@
+---
+title: "Processing Underway Flowthrough Data"
+author: "Sebastian Di Geronimo"
+date: 2025-09-25
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+```{r hms-round-test}
+ c("09:10:01", "08:10:02",  "08:20:45", "06:10:33", "06:10:30", "06:10:29") %>%
+  as_tibble() %>%
+  mutate(
+    time = hms(value),
+    time = as.POSIXct(time, origin = Sys.Date()),
+    time = round(time, "min"),
+    time = strftime(time, format = '%H:%M:%S')
+  )
+
+ 
+```
+
+
+## 2.2 Load Dataset
+
+```{r load-data}
+# set location to save data and plots
+dir_data_save <- here("data", "processed", "underway_flow_process")
+dir_plt_save  <- here("data", "plots", "underway_flow_process")
+
+# dir_data_location <- rstudioapi::selectDirectory()
+dir_data_location <- here("E:\\", "google_drive", ".shortcut-targets-by-id", "1E3fmKuWxmqhFspHhqvbFEI5qKGGKJgnk", "SFER Ship Exported Data", "WS23203_ShipExports", "WS23203_Kelble_VIDs") %>%
+  dir_ls() %T>% 
+  print()
+
+```
+
+```{r}
+# % path_base='/Users/ian.smith/Documents/MATLAB/WS21338Matlab/';
+path_c3p   <- "Turner C3 Primary"
+path_c3s   <- "Turner C3 Secondary"
+path_chlfl <- "Fluorometer"
+path_domfl <- "DisOrgMat"
+path_pos   <- "POSMV"
+path_tsg   <- "MicroTSG1"
+path_sb    <- "SBTemp"
+path_rain  <- "RainGauge"
+path_rmyp  <- "PortRMYoung"
+path_rmyst <- "StarboardRMYoung"
+
+```
+
+# Turner C3 Primary
+```{r}
+c3p_path <- 
+  dir_data_location %>%
+  str_subset("Turner C3 Primary") %>%
+  dir_ls(regexp = "dat") %>%
+  str_subset("String", negate = TRUE) %T>% 
+  print()
+```
+
+```{r}
+c3p_load <- 
+  c3p_path %>%
+  read_delim(
+    skip           = 1, 
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    # n_max          = 600
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  mutate(
+    .after = computer_time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = hms::round_hms(computer_time, 60)
+  ) %T>% 
+  print()
+
+c3p_avg <- 
+  c3p_load %>%
+  summarise(
+    .by = c(1, 3),
+    across(is.numeric, ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  rename("date" = any_of(contains("date"))) %T>% 
+  print()
+```
+
+
+
+# Turner C3 Secondary
+
+```{r}
+c3s_path <- 
+  dir_data_location %>%
+  str_subset("Turner C3 Secondary") %>%
+  dir_ls(regexp = "dat") %>%
+  str_subset("String", negate = TRUE) %T>% 
+  print()
+```
+
+```{r}
+c3s_load <- 
+  c3s_path %>%
+  read_delim(
+    skip           = 1, 
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    # n_max          = 600
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  mutate(
+    .after = computer_time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = hms::round_hms(computer_time, 60)
+  ) %T>% 
+  print()
+
+c3s_avg <- 
+  c3s_load %>%
+  summarise(
+    .by = c(1, 3),
+    across(is.numeric, ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  rename("date" = any_of(contains("date"))) %T>% 
+  print()
+```
+
+```{r}
+full_join(
+c3p_avg,
+c3s_avg,
+  by = c("computer_date", "time_round")
+) %>%
+  visdat::vis_miss()
+
+```
+
+
+# Fluorometer
+
+```{r}
+fluor_path <- 
+  dir_data_location %>%
+  str_subset("Fluorometer$") %>%
+  dir_ls(regexp = "dat") %>%
+  str_subset("String", negate = TRUE) %T>% 
+  print()
+```
+
+
+
+
+```{r}
+fluor_load <-
+  fluor_path %>%
+  read_delim(
+    skip           = 2, 
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    # n_max          = 600
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  janitor::remove_empty("cols") %>%
+  mutate(
+    .after = time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = hms::round_hms(time, 60)
+  ) %T>% 
+  print()
+
+fluor_avg <- 
+  fluor_load %>%
+  summarise(
+    .by = c(1, 3),
+    across(is.numeric, ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  rename("date" = any_of(contains("date"))) %T>% 
+  print()
+```
+
+
+# DisOrgMat
+
+```{r}
+dis_org_path <- 
+  dir_data_location %>%
+  str_subset("DisOrgMat$") %>%
+  dir_ls(regexp = "dat") %>%
+  str_subset("String", negate = TRUE) %T>% 
+  print()
+```
+
+```{r}
+dis_org_load <-
+  dis_org_path %>%
+  read_delim(
+    skip           = 2, 
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    # n_max          = 600
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  janitor::remove_empty("cols") %>%
+  mutate(
+    .after = time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = hms::round_hms(time, 60)
+  ) %T>% 
+  print()
+
+dis_org_avg <- 
+  dis_org_load %>%
+  summarise(
+    .by = c(1, 3),
+    across(is.numeric, ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  rename("date" = any_of(contains("date"))) %T>% 
+  print()
+```
+
+
+# PortRMYoung
+
+- Temperature
+- Humidity
+- Barometric
+- Pressure	
+
+
+
+```{r}
+meteor_path <- 
+  dir_data_location %>%
+  str_subset("PortRMYoung$") %>%
+  dir_ls(regexp = "dat") %>%
+  str_subset("String", negate = TRUE) %T>% 
+  print()
+```
+
+
+# StarboardRMYoung
+
+- date
+- time
+- rel speed
+- rel direction
+- true speed
+- true direction
+```{r}
+wind_path <- 
+  dir_data_location %>%
+  str_subset("StarboardRMYoung$") %>%
+  dir_ls(regexp = "dat") %>%
+  str_subset("String", negate = TRUE) %T>% 
+  print()
+```
+
+avg wind direction calc: <https://www.onsetcomp.com/resources/tech-notes/wind-data-averaging>
+
+1. convert direction (degrees) to radians
+2. create a sin and cos component
+3. take average based on time
+4. arctan2 for avg sin and cos
+5. convert from radians to degrees
+6. modulo to keep withing 0 - 360 degrees 
+
+```{r}
+wind_dat <-
+  wind_path %>%
+  read_delim(
+    skip           = 1,
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    na = c("-1.0")
+    # n_max          = 600
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  {
+    # rename columns by removing "seconds" and renaming columns
+    x <- str_subset(colnames(.), "seconds", negate = TRUE)
+    colnames(.) <- x
+    .
+  } %>%
+  janitor::remove_empty("cols") %>%
+  rename("time" = any_of(contains("time"))) %>%
+  mutate(
+    .after = time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = hms::round_hms(time, 60)
+  ) %T>%
+  print()
+
+# avg wind speed needs extract calculations because averaging angles
+wind_avg <- 
+  wind_dat %>%
+  mutate(
+    rel_sines    = sin(NISTunits::NISTdegTOradian(relative_dir)),
+    rel_cosines  = cos(NISTunits::NISTdegTOradian(relative_dir)),
+    true_sines   = sin(NISTunits::NISTdegTOradian(true_dir)),
+    true_cosines = cos(NISTunits::NISTdegTOradian(true_dir)),
+  ) %T>%
+  print() %>% 
+  summarise(
+    .by = c(1, 3),
+    across(is.numeric, ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  mutate(
+    across(where(is.numeric), ~ if_else(is.nan(.x), NA, .x)),
+    rel_dir_avg  = atan2(rel_sines, rel_cosines),
+    rel_dir_avg  = NISTunits::NISTradianTOdeg(rel_dir_avg),
+    rel_dir_avg  = rel_dir_avg %% 360,
+    true_dir_avg = atan2(true_sines, true_cosines),
+    true_dir_avg = NISTunits::NISTradianTOdeg(true_dir_avg),
+    true_dir_avg = true_dir_avg %% 360,
+  ) %>%
+  select(-contains(c("sines", "cosines"))) %>%
+  rename("date" = any_of(contains("date"))) %T>% 
+  print()
+```
+
+```{r}
+reduce(
+  list(c3p_avg, c3s_avg, dis_org_avg, fluor_avg, wind_avg),
+  full_join,
+  by = c("date", "time_round")
+  ) %T>% 
+  print() %>%
+  visdat::vis_miss()
+```
+
+
+
+path_pos   <- "POSMV"
+path_tsg   <- "MicroTSG1"
+path_sb    <- "SBTemp"
+path_rain  <- "RainGauge"
+path_rmyst <- "StarboardRMYoung"
