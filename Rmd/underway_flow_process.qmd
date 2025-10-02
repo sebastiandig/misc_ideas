@@ -25,7 +25,7 @@ librarian::shelf(
   forcats, lubridate, glue, fs, magrittr, here,
   
   # additional
-  
+  hms, NISTunits
 )
 
 conflicts_prefer(
@@ -37,13 +37,15 @@ conflicts_prefer(
 ```
 
 ```{r hms-round-test}
- c("09:10:01", "08:10:02",  "08:20:45", "06:10:33", "06:10:30", "06:10:29") %>%
+ c("09:10:01", "08:10:02",  "08:20:45", "06:10:33", "06:17:30", "06:15:29") %>%
   as_tibble() %>%
   mutate(
-    time = hms(value),
+    time = as_hms(value),
     time = as.POSIXct(time, origin = Sys.Date()),
     time = round(time, "min"),
-    time = strftime(time, format = '%H:%M:%S')
+    time = strftime(time, format = '%H:%M:%S'),
+    time2 = as_hms(value),
+    time2 = time_fun(time2)
   )
 
  
@@ -62,8 +64,6 @@ dir_data_location <- here("E:\\", "google_drive", ".shortcut-targets-by-id", "1E
   dir_ls() %T>% 
   print()
 
-# number of minutes to bin by
-min_bin <- 1
 
 # function factory to pre-set metric used to summarise
 set_func <- function(metric_name, ...) {
@@ -77,27 +77,209 @@ set_func <- function(metric_name, ...) {
   )
   
   function(x, ...) {
-    fun(x, ...)
+    fun(x, na.rm = TRUE, ...)
   }
 }
 
-func <- set_func("mean", na.rm = TRUE)
+func <- set_func("median")
+func(c(1, 4, 5, NA))
 
+# function factory to pre-set time rounding
+set_time_func <- function(metric_name, sec, ...) {
+  fun <- switch(
+    metric_name,
+    trunc = hms::trunc_hms,
+    round = hms::round_hms,
+    stop("Unknown metric")
+  )
+  
+  function(x, ...) {
+    fun(x, sec * 60, ...)
+  }
+}
+
+# number of minutes to bin by
+min_bin <- 1
+
+time_fun <- set_time_func("trunc", sec = min_bin)
+# time_fun <- set_time_func("round", sec = min_bin)
 ```
+
+
+To add multiple metrics: 
+  summarise(
+    across(
+      is.numeric,
+      list(
+        func = ~ func(.x),
+        var = ~ var(.x)
+      )
+    )
+  ) 
 
 ```{r}
 # % path_base='/Users/ian.smith/Documents/MATLAB/WS21338Matlab/';
-path_c3p   <- "Turner C3 Primary"
-path_c3s   <- "Turner C3 Secondary"
-path_chlfl <- "Fluorometer"
-path_domfl <- "DisOrgMat"
-path_pos   <- "POSMV"
-path_tsg   <- "MicroTSG1"
-path_sb    <- "SBTemp"
+path_c3p   <- "Turner C3 Primary"   #
+path_c3s   <- "Turner C3 Secondary" # 
+path_chlfl <- "Fluorometer"         #
+path_domfl <- "DisOrgMat"           #
+path_pos   <- "POSMV"             # 
+path_tsg   <- "MicroTSG1"           #
+path_sb    <- "SBTemp"              #
 path_rain  <- "RainGauge"
-path_rmyp  <- "PortRMYoung"
-path_rmyst <- "StarboardRMYoung"
+path_rmyp  <- "PortRMYoung"         #
+path_rmyst <- "StarboardRMYoung"    #
 
+```
+
+
+# POSMV
+
+```{r path-posmv}
+posmv_path <- 
+  dir_data_location %>%
+  str_subset("POSMV$") %>%
+  dir_ls(regexp = "dat") %>%
+  str_subset("String", negate = TRUE) %T>% 
+  {
+    sample(., 5) %>%
+    print()
+  }
+
+# VTG
+# COG (course over ground) and SOG (speed over ground)
+vtg_path <- 
+  posmv_path %>%
+  str_subset("VTG") %T>% 
+  {
+    basename(.) %>%
+    print()
+  }
+
+# HDT
+# true heading
+hdt_path <- 
+  posmv_path %>%
+  str_subset("HDT") %T>% 
+  {
+    basename(.) %>%
+    print()
+  }
+
+# GGA
+# lat/lon
+gga_path <- 
+  posmv_path %>%
+  str_subset("GGA") %T>% 
+  {
+    basename(.) %>%
+    print()
+  }
+
+```
+
+```{r load-posmv}
+vtg_load <- 
+  vtg_path %>%
+  read_delim(
+    skip           = 1,
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    n_max          = 100
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  rename("time" = any_of(contains("computer_time"))) %>%
+  mutate(
+    .after = time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = time_fun(time)
+  ) %>%
+  select(contains("date"):cog, contains("sog")) %T>%
+  print()
+
+hdt_load <- 
+  hdt_path %>%
+  read_delim(
+    skip           = 1,
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    # n_max          = 100
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  rename("time" = any_of(contains("computer_time"))) %>%
+  mutate(
+    .after = time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = time_fun(time)
+  ) %>%
+  select(contains("date"):true_heading) %T>%
+  print()
+
+gga_load <-
+  gga_path %>%
+  read_delim(
+    skip           = 1,
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    # n_max          = 100
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  rename("time" = any_of(contains("computer_time"))) %>%
+  mutate(
+    .after = time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = time_fun(time)
+  ) %>%
+  mutate(
+    .keep  = "unused",
+    .after = time_round,
+    lat    = lat_deg + lat_min / 60,
+    lon    = -(lon_deg + lon_min / 60),
+  )  %>%
+  select(computer_date:lon) %T>%
+  print()
+
+posmv_avg <- 
+  reduce(
+  list(gga_load, hdt_load, vtg_load),
+  full_join,
+  by = c("computer_date", "time", "time_round")
+  ) %>%
+  mutate(
+    .keep = "unused",
+    trh_sines   = sin(NISTdegTOradian(true_heading)),
+    trh_cosines = cos(NISTdegTOradian(true_heading)),
+    cog_sines   = sin(NISTdegTOradian(cog)),
+    cog_cosines = cos(NISTdegTOradian(cog)),
+  ) %T>%
+  print() %>% 
+  summarise(
+    .by = c(1, 3),
+    across(is.numeric, ~ func(.x))
+  ) %>%
+  mutate(
+    across(where(is.numeric), ~ if_else(is.nan(.x), NA, .x)),
+    true_head_avg = NISTradianTOdeg(atan2(trh_sines, trh_cosines)),
+    true_head_avg = true_head_avg %% 360,
+    cog_avg       = NISTradianTOdeg(atan2(cog_sines, cog_cosines)),
+    cog_avg       = cog_avg %% 360,
+  ) %>%
+  select(-contains(c("sines", "cosines"))) %>%
+  rename("date" = any_of(contains("date"))) %T>% 
+  print() 
+
+
+posmv_avg %>%
+  filter(
+    date == as_date("2023-07-22") 
+    & time_round >= as_hms("10:00:00")
+  )
 ```
 
 
@@ -109,7 +291,10 @@ c3p_path <-
   str_subset("Turner C3 Primary") %>%
   dir_ls(regexp = "dat") %>%
   str_subset("String", negate = TRUE) %T>% 
-  print()
+  {
+    sample(., 5) %>%
+    print()
+  }
 ```
 
 ```{r load-c3-primary}
@@ -124,10 +309,11 @@ c3p_load <-
   ) %T>%
   print() %>%
   hablar::retype(-contains("time")) %>%
+  rename("time" = any_of(contains("computer_time"))) %>%
   mutate(
-    .after = computer_time,
+    .after = time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(computer_time, 60 * min_bin)
+    time_round = time_fun(time)
   ) %T>% 
   print()
 
@@ -151,7 +337,10 @@ c3s_path <-
   str_subset("Turner C3 Secondary") %>%
   dir_ls(regexp = "dat") %>%
   str_subset("String", negate = TRUE) %T>% 
-  print()
+  {
+    sample(., 5) %>%
+    print()
+  }
 ```
 
 ```{r load-c3-secondary}
@@ -166,10 +355,11 @@ c3s_load <-
   ) %T>%
   print() %>%
   hablar::retype(-contains("time")) %>%
+  rename("time" = any_of(contains("computer_time")))%>%
   mutate(
-    .after = computer_time,
+    .after = time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(computer_time, 60 * min_bin)
+    time_round = time_fun(time)
   ) %T>% 
   print()
 
@@ -191,7 +381,10 @@ fluor_path <-
   str_subset("Fluorometer$") %>%
   dir_ls(regexp = "dat") %>%
   str_subset("String", negate = TRUE) %T>% 
-  print()
+  {
+    sample(., 5) %>%
+    print()
+  }
 ```
 
 
@@ -206,12 +399,17 @@ fluor_load <-
     # n_max          = 600
   ) %T>%
   print() %>%
+  mutate(gain_chlfl = str_remove(gain, "X")) %>%
+  rename(
+    "chl_chlfl" = conc, "volt_chlfl" = raw_voltage,
+    "flow_chlfl" = flow
+    ) %>%
   hablar::retype(-contains("time")) %>%
   janitor::remove_empty("cols") %>%
   mutate(
     .after = time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(time, 60 * min_bin)
+    time_round = time_fun(time)
   ) %T>% 
   print()
 
@@ -234,7 +432,10 @@ dis_org_path <-
   str_subset("DisOrgMat$") %>%
   dir_ls(regexp = "dat") %>%
   str_subset("String", negate = TRUE) %T>% 
-  print()
+  {
+    sample(., 5) %>%
+    print()
+  }
 ```
 
 ```{r load-disorg}
@@ -248,12 +449,17 @@ dis_org_load <-
     # n_max          = 600
   ) %T>%
   print() %>%
+  mutate(gain_domfl = str_remove(gain, "X")) %>%
+  rename(
+    "dom_domfl" = conc, "volt_domfl" = raw_voltage,
+    "flow_domfl" = flow
+    )  %>%
   hablar::retype(-contains("time")) %>%
   janitor::remove_empty("cols") %>%
   mutate(
     .after = time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(time, 60 * min_bin)
+    time_round = time_fun(time)
   ) %T>% 
   print()
 
@@ -275,14 +481,48 @@ dis_org_avg <-
 - Barometric
 - Pressure	
 
-
-
 ```{r path-metero}
 meteor_path <- 
   dir_data_location %>%
   str_subset("PortRMYoung$") %>%
   dir_ls(regexp = "dat") %>%
   str_subset("String", negate = TRUE) %T>% 
+  {
+    sample(., 5) %>%
+    print()
+  }
+```
+
+```{r load-metero}
+meteor_dat <- 
+  meteor_path %>%
+  read_delim(
+    skip           = 1,
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    # n_max          = 100
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  rename(
+    "time"     = any_of(contains("time")),
+    "air_temp" = temperature
+    ) %>%
+  mutate(
+    .after = time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = time_fun(time)
+  ) %T>%
+  print()
+
+meteor_avg <-
+  meteor_dat %>%
+  summarise(
+    .by = c(1, 3),
+    across(where(is.numeric), ~ func(.x))
+  ) %>%
+  rename("date" = any_of(contains("date"))) %T>%
   print()
 ```
 
@@ -301,7 +541,10 @@ wind_path <-
   str_subset("StarboardRMYoung$") %>%
   dir_ls(regexp = "dat") %>%
   str_subset("String", negate = TRUE) %T>% 
-  print()
+  {
+    sample(., 5) %>%
+    print()
+  }
 ```
 
 avg wind direction calc: <https://www.onsetcomp.com/resources/tech-notes/wind-data-averaging>
@@ -333,7 +576,11 @@ wind_dat <-
     .
   } %>%
   janitor::remove_empty("cols") %>%
-  rename("time" = any_of(contains("time"))) %>%
+  rename(
+    "time" = any_of(contains("time")),
+    "true_wind_speed" = true_speed,
+    "rel_wind_speed" = relative_speed
+    ) %>%
   mutate(
     .after = time,
     across(contains("date"), ~ mdy(.x)),
@@ -345,6 +592,7 @@ wind_dat <-
 wind_avg <- 
   wind_dat %>%
   mutate(
+    .keep = "unused",
     rel_sines    = sin(NISTunits::NISTdegTOradian(relative_dir)),
     rel_cosines  = cos(NISTunits::NISTdegTOradian(relative_dir)),
     true_sines   = sin(NISTunits::NISTdegTOradian(true_dir)),
@@ -353,38 +601,228 @@ wind_avg <-
   print() %>% 
   summarise(
     .by = c(1, 3),
-    across(is.numeric, ~ func(.x))
+    across(where(is.numeric), ~ func(.x))
   ) %>%
   mutate(
     across(where(is.numeric), ~ if_else(is.nan(.x), NA, .x)),
-    rel_dir_avg  = atan2(rel_sines, rel_cosines),
-    rel_dir_avg  = NISTunits::NISTradianTOdeg(rel_dir_avg),
-    rel_dir_avg  = rel_dir_avg %% 360,
-    true_dir_avg = atan2(true_sines, true_cosines),
-    true_dir_avg = NISTunits::NISTradianTOdeg(true_dir_avg),
-    true_dir_avg = true_dir_avg %% 360,
+    rel_wind_dir  = NISTradianTOdeg(atan2(rel_sines, rel_cosines)),
+    rel_wind_dir  = rel_wind_dir %% 360,
+    true_wind_dir = NISTradianTOdeg(atan2(true_sines, true_cosines)),
+    true_wind_dir = true_wind_dir %% 360,
   ) %>%
   select(-contains(c("sines", "cosines"))) %>%
   rename("date" = any_of(contains("date"))) %T>% 
   print()
 ```
 
+
+# MicroTSG1
+
+```{r path-microtsg}
+microtsg_path <- 
+  dir_data_location %>%
+  str_subset("MicroTSG1$") %>%
+  dir_ls(regexp = "dat") %>%
+  str_subset("String", negate = TRUE) %T>% 
+  {
+    sample(., 5) %>%
+    print()
+  }
+```
+
+```{r load-microtsg}
+microtsg_load <-
+  microtsg_path %>%
+  read_delim(
+    skip           = 4,
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    # n_max          = 100
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  rename("time" = any_of(contains("computer_time"))) %>%
+  mutate(
+    .after = time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = time_fun(time)
+  )  %>%
+  select(
+    date, time, time_round, "temp_tsg" = temperature, 
+    "cond_tsg" = conductivity, "sal_tsg" = salinity
+    ) %T>%
+  print()
+
+microtsg_avg <- 
+  microtsg_load %>%
+  summarise(
+    .by = c(1, 3),
+    across(where(is.numeric), ~ func(.x))
+  ) %>%
+  rename("date" = any_of(contains("date"))) %T>%
+  print()
+```
+
+# SBTemp
+
+```{r path-sbtemp}
+sbtemp_path <- 
+  dir_data_location %>%
+  str_subset("SBTemp$") %>%
+  dir_ls(regexp = "dat") %>%
+  str_subset("String", negate = TRUE) %T>% 
+  {
+    sample(., 5) %>%
+    print()
+  }
+```
+
+```{r load-sbtemp}
+sbtemp_load <-
+  sbtemp_path %>%
+  read_delim(
+    skip           = 4,
+    delim          = "\t",
+    name_repair    = janitor::make_clean_names,
+    show_col_types = FALSE,
+    # n_max          = 100
+  ) %T>%
+  print() %>%
+  hablar::retype(-contains("time")) %>%
+  rename("time" = any_of(contains("computer_time"))) %>%
+  mutate(
+    .after = time,
+    across(contains("date"), ~ mdy(.x)),
+    time_round = time_fun(time),
+    across(where(is.numeric), ~ na_if(.x, 0))
+  ) %>%
+  select(date:temperature)%>%
+  rename("temp_sb" = temperature) %T>%
+  print()
+
+sbtemp_avg <- 
+  sbtemp_load %>%
+  summarise(
+    .by = c(1, 3),
+    across(where(is.numeric), ~ func(.x))
+  ) %>%
+  rename("date" = any_of(contains("date"))) %T>%
+  print()
+```
+
+
 # Merge Data by Date and Time
 
-```{r}
-reduce(
-  list(c3p_avg, c3s_avg, dis_org_avg, fluor_avg, wind_avg),
+```{r merge-data}
+merge_dat <- 
+  reduce(
+  list(posmv_avg,  wind_avg, meteor_avg, microtsg_avg, sbtemp_avg,
+       c3p_avg, c3s_avg, fluor_avg, dis_org_avg),
   full_join,
   by = c("date", "time_round")
-  ) %T>% 
-  print() %>%
+  ) %>%
+  mutate(
+    .before = date,
+    date_time = ymd_hms(paste(date, time_round))
+  ) %>%
+  arrange(date_time) %T>% 
+  print() 
+
+merge_dat %>%
+  # slice_head(prop = 0.5) %>%
+  slice_tail(prop = 0.5) %>%
   visdat::vis_miss()
 ```
 
 
 
-path_pos   <- "POSMV"
-path_tsg   <- "MicroTSG1"
-path_sb    <- "SBTemp"
 path_rain  <- "RainGauge"
-path_rmyst <- "StarboardRMYoung"
+
+# Search All Folders
+
+```{r}
+dir_paths <-
+  here("E:\\", "google_drive", ".shortcut-targets-by-id", "1E3fmKuWxmqhFspHhqvbFEI5qKGGKJgnk", "SFER Ship Exported Data") %>%
+  dir_ls() %T>%
+  {
+    basename(.) %>%
+    print()
+  } %>%
+  tibble(dir = .) %>%
+  # slice(1:10) %>%
+  
+  mutate(
+    cruise = basename(dir),
+    number = str_extract(cruise, "\\d+"),
+    subdir = map_chr(
+      .x = dir,
+      \(.x) {
+        x <-
+          dir_ls(
+            .x, 
+            regexp  = "(?i)VIDs",
+            type    = "directory"
+            ) 
+        x <- ifelse(length(x) > 0, as.character(x), NA)
+      }
+    ), 
+    subdir2 = map(
+      .x = subdir,
+      \(.x) {
+        if (is.na(.x)) return(NA)
+        dir_ls(.x, type = "directory")
+      }
+    )
+  ) %>%
+  arrange(number) %T>% 
+  print() %>%
+  unnest(subdir2) %>%
+  mutate(
+    sub = basename(subdir2),
+    count_files = map_int(
+      subdir2,
+      \(.x) {
+        if (is.na(.x)) return(NA)
+        dir_ls(.x, type = "file") %>%
+          str_subset("desktop", negate = TRUE) %>%
+        length()
+
+        }
+    )
+  ) %>%
+  filter(count_files > 0) %T>% 
+  # filter(replace_na(!str_detect(sub, "^Baro$|Barometer2|BowRMYoung"), TRUE)) %T>% 
+  print()
+
+dir_paths %>%
+  count(sub)
+
+dir_paths %>%
+  filter(is.na(subdir2)) %>%
+  count(cruise)
+dir_paths %>%
+  filter(!is.na(subdir2)) %>%
+  count(cruise)
+
+dir_paths %>%
+  arrange(sub, cruise) %>%
+  select(cruise, sub, count_files) %T>%
+  print(.) %>%
+  slice_tail(n = 58)
+  
+filt_names <- paste("DisOrgMat",
+"Fluorometer",
+"MicroTSG1",
+"PortRMYoung",
+"POSMV",
+"RainGauge",
+"SBTemp",
+"StarboardRMYoung",
+"Turner C3 Primary",
+"Turner C3 Secondary", sep = "|")
+
+dir_paths %>%
+  filter(replace_na(!str_detect(sub, filt_names), TRUE))
+```
+
