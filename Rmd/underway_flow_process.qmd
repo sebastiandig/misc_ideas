@@ -50,9 +50,50 @@ conflicts_prefer(
 
  
 ```
-
-
 ## 2.2 Load Dataset
+
+- has Turner C7
+WS14335_ShipExports,
+WS15103_ShipExports,
+WS15148_ShipExports,
+WS15208_ShipExports,
+WS15264_ShipExports,
+WS15320_ShipExports,
+WS18120_ShipExports,
+WS18218_ShipExports,
+WS18285_ShipExports,
+WS18351_ShipExports,
+WS19028_ShipExports,
+WS19119_ShipExports,
+WS19266_ShipExports,
+WS19322_ShipExports,
+WS20231_ShipExports,
+WS20279_ShipExports,
+WS20342_ShipExports,
+WS21032_ShipExports,
+WS21093_ShipExports,
+WS21151_ShipExports
+
+- has Turner C3 with secondary
+WS21212_ShipExports,
+WS21278_ShipExports,
+WS21338_ShipExports,
+WS22022_ShipExports,
+WS22072_ShipExports,
+WS22141_ShipExports,
+WS22281_ShipExports,
+WS22337_ShipExports,
+WS23011_ShipExports,
+WS23061_ShipExports,
+WS23203_ShipExports,
+WS23259_ShipExports,
+WS24139_ShipExports,
+WS24205_ShipExports,
+WS24258_ShipExports,
+WS25024_ShipExports,
+WS25130_ShipExports,
+WS25221_ShipExports
+
 
 ```{r load-data}
 # set location to save data and plots
@@ -60,10 +101,15 @@ dir_data_save <- here("data", "processed", "underway_flow_process")
 dir_plt_save  <- here("data", "plots", "underway_flow_process")
 
 # dir_data_location <- rstudioapi::selectDirectory()
-dir_data_location <- here("E:\\", "google_drive", ".shortcut-targets-by-id", "1E3fmKuWxmqhFspHhqvbFEI5qKGGKJgnk", "SFER Ship Exported Data", "WS23203_ShipExports", "WS23203_Kelble_VIDs") %>%
+dir_data_location <- 
+  here(
+    "E:\\", "google_drive", ".shortcut-targets-by-id", 
+    "1E3fmKuWxmqhFspHhqvbFEI5qKGGKJgnk", "SFER Ship Exported Data", 
+    "WS21278_ShipExports"
+    ) %>%
+  dir_ls(regexp = "(?i)vids", type = "directory") %>%
   dir_ls() %T>% 
   print()
-
 
 # function factory to pre-set metric used to summarise
 set_func <- function(metric_name, ...) {
@@ -82,7 +128,7 @@ set_func <- function(metric_name, ...) {
 }
 
 func <- set_func("median")
-func(c(1, 4, 5, NA))
+
 
 # function factory to pre-set time rounding
 set_time_func <- function(metric_name, sec, ...) {
@@ -140,7 +186,8 @@ posmv_path <-
   dir_data_location %>%
   str_subset("POSMV$") %>%
   dir_ls(regexp = "dat") %>%
-  str_subset("String", negate = TRUE) %T>% 
+  str_subset("String", negate = TRUE) %>%
+  sort() %T>% 
   {
     sample(., 5) %>%
     print()
@@ -189,7 +236,7 @@ vtg_load <-
     n_max          = 100
   ) %T>%
   print() %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   rename("time" = any_of(contains("computer_time"))) %>%
   mutate(
     .after = time,
@@ -207,9 +254,10 @@ hdt_load <-
     name_repair    = janitor::make_clean_names,
     show_col_types = FALSE,
     # n_max          = 100
-  ) %T>%
+  )  %>%
+     distinct(computer_date) %T>%
   print() %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   rename("time" = any_of(contains("computer_time"))) %>%
   mutate(
     .after = time,
@@ -229,7 +277,7 @@ gga_load <-
     # n_max          = 100
   ) %T>%
   print() %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   rename("time" = any_of(contains("computer_time"))) %>%
   mutate(
     .after = time,
@@ -274,12 +322,6 @@ posmv_avg <-
   rename("date" = any_of(contains("date"))) %T>% 
   print() 
 
-
-posmv_avg %>%
-  filter(
-    date == as_date("2023-07-22") 
-    & time_round >= as_hms("10:00:00")
-  )
 ```
 
 
@@ -290,7 +332,8 @@ c3p_path <-
   dir_data_location %>%
   str_subset("Turner C3 Primary") %>%
   dir_ls(regexp = "dat") %>%
-  str_subset("String", negate = TRUE) %T>% 
+  str_subset("String", negate = TRUE) %>%
+  sort() %T>% 
   {
     sample(., 5) %>%
     print()
@@ -298,23 +341,27 @@ c3p_path <-
 ```
 
 ```{r load-c3-primary}
-c3p_load <- 
+c3p_load <-
   c3p_path %>%
-  read_delim(
-    skip           = 1, 
-    delim          = "\t",
-    name_repair    = janitor::make_clean_names,
-    show_col_types = FALSE,
-    # n_max          = 600
-  ) %T>%
+  map(
+    ~ read_delim(
+      .x,
+      skip           = 1,
+      delim          = "\t",
+      name_repair    = janitor::make_clean_names,
+      show_col_types = FALSE,
+      # n_max          = 600
+    )
+  ) %>%
+  list_rbind() %T>%
   print() %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   rename("time" = any_of(contains("computer_time"))) %>%
   mutate(
     .after = time,
     across(contains("date"), ~ mdy(.x)),
     time_round = time_fun(time)
-  ) %T>% 
+  ) %T>%
   print()
 
 c3p_avg <- 
@@ -336,7 +383,8 @@ c3s_path <-
   dir_data_location %>%
   str_subset("Turner C3 Secondary") %>%
   dir_ls(regexp = "dat") %>%
-  str_subset("String", negate = TRUE) %T>% 
+  str_subset("String", negate = TRUE) %>%
+  sort() %T>% 
   {
     sample(., 5) %>%
     print()
@@ -344,23 +392,27 @@ c3s_path <-
 ```
 
 ```{r load-c3-secondary}
-c3s_load <- 
+c3s_load <-
   c3s_path %>%
-  read_delim(
-    skip           = 1, 
-    delim          = "\t",
-    name_repair    = janitor::make_clean_names,
-    show_col_types = FALSE,
-    # n_max          = 600
-  ) %T>%
+  map(
+    ~ read_delim(
+      .x,
+      skip           = 1,
+      delim          = "\t",
+      name_repair    = janitor::make_clean_names,
+      show_col_types = FALSE,
+      # n_max          = 600
+    )
+  ) %>%
+  list_rbind() %T>%
   print() %>%
-  hablar::retype(-contains("time")) %>%
-  rename("time" = any_of(contains("computer_time")))%>%
+  hablar::retype(-contains(c("time", "date"))) %>%
+  rename("time" = any_of(contains("computer_time"))) %>%
   mutate(
     .after = time,
     across(contains("date"), ~ mdy(.x)),
     time_round = time_fun(time)
-  ) %T>% 
+  ) %T>%
   print()
 
 c3s_avg <- 
@@ -373,6 +425,7 @@ c3s_avg <-
   print()
 ```
 
+
 # Fluorometer
 
 ```{r path-fluoro}
@@ -380,7 +433,8 @@ fluor_path <-
   dir_data_location %>%
   str_subset("Fluorometer$") %>%
   dir_ls(regexp = "dat") %>%
-  str_subset("String", negate = TRUE) %T>% 
+  str_subset("String", negate = TRUE) %>%
+  sort() %T>% 
   {
     sample(., 5) %>%
     print()
@@ -404,7 +458,7 @@ fluor_load <-
     "chl_chlfl" = conc, "volt_chlfl" = raw_voltage,
     "flow_chlfl" = flow
     ) %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   janitor::remove_empty("cols") %>%
   mutate(
     .after = time,
@@ -431,7 +485,8 @@ dis_org_path <-
   dir_data_location %>%
   str_subset("DisOrgMat$") %>%
   dir_ls(regexp = "dat") %>%
-  str_subset("String", negate = TRUE) %T>% 
+  str_subset("String", negate = TRUE) %>%
+  sort() %T>% 
   {
     sample(., 5) %>%
     print()
@@ -454,7 +509,7 @@ dis_org_load <-
     "dom_domfl" = conc, "volt_domfl" = raw_voltage,
     "flow_domfl" = flow
     )  %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   janitor::remove_empty("cols") %>%
   mutate(
     .after = time,
@@ -486,7 +541,8 @@ meteor_path <-
   dir_data_location %>%
   str_subset("PortRMYoung$") %>%
   dir_ls(regexp = "dat") %>%
-  str_subset("String", negate = TRUE) %T>% 
+  str_subset("String", negate = TRUE) %>%
+  sort() %T>% 
   {
     sample(., 5) %>%
     print()
@@ -504,7 +560,7 @@ meteor_dat <-
     # n_max          = 100
   ) %T>%
   print() %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   rename(
     "time"     = any_of(contains("time")),
     "air_temp" = temperature
@@ -540,7 +596,8 @@ wind_path <-
   dir_data_location %>%
   str_subset("StarboardRMYoung$") %>%
   dir_ls(regexp = "dat") %>%
-  str_subset("String", negate = TRUE) %T>% 
+  str_subset("String", negate = TRUE) %>%
+  sort() %T>% 
   {
     sample(., 5) %>%
     print()
@@ -568,7 +625,7 @@ wind_dat <-
     # n_max          = 600
   ) %T>%
   print() %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   {
     # rename columns by removing "seconds" and renaming columns
     x <- str_subset(colnames(.), "seconds", negate = TRUE)
@@ -584,7 +641,7 @@ wind_dat <-
   mutate(
     .after = time,
     across(contains("date"), ~ mdy(.x)),
-    time_round = hms::round_hms(time, 60 * min_bin)
+    time_round = time_fun(time)
   ) %T>%
   print()
 
@@ -593,10 +650,10 @@ wind_avg <-
   wind_dat %>%
   mutate(
     .keep = "unused",
-    rel_sines    = sin(NISTunits::NISTdegTOradian(relative_dir)),
-    rel_cosines  = cos(NISTunits::NISTdegTOradian(relative_dir)),
-    true_sines   = sin(NISTunits::NISTdegTOradian(true_dir)),
-    true_cosines = cos(NISTunits::NISTdegTOradian(true_dir)),
+    rel_sines    = sin(NISTdegTOradian(relative_dir)),
+    rel_cosines  = cos(NISTdegTOradian(relative_dir)),
+    true_sines   = sin(NISTdegTOradian(true_dir)),
+    true_cosines = cos(NISTdegTOradian(true_dir)),
   ) %T>%
   print() %>% 
   summarise(
@@ -623,7 +680,8 @@ microtsg_path <-
   dir_data_location %>%
   str_subset("MicroTSG1$") %>%
   dir_ls(regexp = "dat") %>%
-  str_subset("String", negate = TRUE) %T>% 
+  str_subset("String", negate = TRUE) %>%
+  sort() %T>% 
   {
     sample(., 5) %>%
     print()
@@ -641,7 +699,7 @@ microtsg_load <-
     # n_max          = 100
   ) %T>%
   print() %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   rename("time" = any_of(contains("computer_time"))) %>%
   mutate(
     .after = time,
@@ -671,7 +729,8 @@ sbtemp_path <-
   dir_data_location %>%
   str_subset("SBTemp$") %>%
   dir_ls(regexp = "dat") %>%
-  str_subset("String", negate = TRUE) %T>% 
+  str_subset("String", negate = TRUE) %>%
+  sort() %T>% 
   {
     sample(., 5) %>%
     print()
@@ -689,7 +748,7 @@ sbtemp_load <-
     # n_max          = 100
   ) %T>%
   print() %>%
-  hablar::retype(-contains("time")) %>%
+  hablar::retype(-contains(c("time", "date"))) %>%
   rename("time" = any_of(contains("computer_time"))) %>%
   mutate(
     .after = time,
@@ -733,8 +792,21 @@ merge_dat %>%
   # slice_head(prop = 0.5) %>%
   slice_tail(prop = 0.5) %>%
   visdat::vis_miss()
+
+merge_dat %>%
+  slice_head(prop = 0.5) %>%
+  # slice_tail(prop = 0.5) %>%
+  visdat::vis_miss()
 ```
 
+```{r}
+merge_dat %>%
+  distinct(date) %>%
+  arrange(date)
+hdt_load %>%
+  distinct(computer_date) %>%
+  arrange(computer_date)
+```
 
 
 path_rain  <- "RainGauge"
@@ -811,18 +883,27 @@ dir_paths %>%
   print(.) %>%
   slice_tail(n = 58)
   
-filt_names <- paste("DisOrgMat",
+filt_names <- paste(paste("DisOrgMat",
 "Fluorometer",
 "MicroTSG1",
 "PortRMYoung",
 "POSMV",
-"RainGauge",
+# "RainGauge",
 "SBTemp",
 "StarboardRMYoung",
 "Turner C3 Primary",
-"Turner C3 Secondary", sep = "|")
+"Turner C3 Secondary", sep = "$|"), "Turner" , sep = "|")
+
+# after WS21151_ShipExports went to Turner C3
 
 dir_paths %>%
-  filter(replace_na(!str_detect(sub, filt_names), TRUE))
+  filter(replace_na(str_detect(sub, filt_names), !TRUE))  %>%
+  arrange(sub) %>%
+  # select(cruise, sub)
+  # count(sub) 
+  count(cruise) %>%
+  filter(n == 8) %>%
+  pull(cruise) %>%
+  cat(., sep = ",\n")
 ```
 
