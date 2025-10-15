@@ -49,15 +49,18 @@ loc_dat <-
   dir_path %>%
   dir_ls(regexp = "(?i)schedule") %>%
   str_subset("~", negate = TRUE) %>% 
-  readxl::read_xlsx(.name_repair = janitor::make_clean_names, sheet = "Times (3)") %>%
+  readxl::read_xlsx(.name_repair = janitor::make_clean_names, sheet = "Times_alt") %>%
   janitor::remove_empty("cols") %>%
   drop_na(latitude_decimal_degree, longitude_decimal_degree) %T>%
-  # distinct(longitude_decimal_degree, latitude_decimal_degree, .keep_all = TRUE) %T>% 
   print() %>%
-  select(waypoint, "lat" = latitude_decimal_degree, "long" = longitude_decimal_degree, depth_m, departure_date_time_local) %>%
+  select(waypoint, description, 
+         "lat" = latitude_decimal_degree, "long" = longitude_decimal_degree, 
+         depth_m, departure_date_time_local
+         ) %>%
   mutate(
     long = -long,
-    date = as_date(departure_date_time_local)
+    date = as_date(departure_date_time_local),
+    description = if_else(str_detect(description, "0"), "CTD/Net Trawl", description)
     ) %T>% 
   print()
 
@@ -174,7 +177,7 @@ osm_map <-
   openmap(
     bounds[c(4, 1)], # upperleft
     bounds[c(3, 2)], # loweright
-    zoom = 8,
+    zoom = 9,
     # type = "esri-topo", 
     type = "esri-imagery", 
     mergeTiles = TRUE
@@ -223,46 +226,56 @@ loc_map_pts <-
     arrow_positions = 0.5,
     arrows = arrow(length = unit(0.1, "inches")),
     na.rm = TRUE,
-    show.legend = FALSE
+    key_glyph = draw_key_point
+    # show.legend = FALSE
   ) +
 
   # add station points
   geom_point(
     data = loc_dat,
-    aes(x = long, y = lat, fill = fct_reorder(format(date, "%B %d"), date)),
+    aes(
+      x = long, 
+      y = lat, 
+      fill = fct_reorder(format(date, "%B %d"), date), 
+      shape = description
+      ),
     size = 3,
-    shape = 21
+    # shape = 21
     # show.legend = FALSE
   ) +
 
   # add station labels
   ggrepel::geom_text_repel(
-    data = long_lat_lag,
+    data = distinct(long_lat_lag, waypoint, lat, long),
     aes(x = long, y = lat, label = waypoint),
     max.overlaps       = 15,
-    min.segment.length = 0.05,
-    size               = 4,
+    min.segment.length = 0.0,
+    size               = 3.5,
     # uncomment for bold letters
     fontface      = "bold",
     color         = "white",
     bg.color      = "black",
     bg.r          = 0.15,
     segment.color = "black",
-    direction     = "x"
+    # direction     = "x"
   ) +
   labs(
     title = "REACH-002 (October 27 - November 5)",
     x     = NULL, # "Longitude (°)",
     y     = NULL, # "Latitude (°)",
-    fill  = NULL
+    color = NULL,
+    shape = NULL
   ) +
+  scale_shape_manual(values = c(21:25)) +
   coord_sf(expand = FALSE, xlim = bounds[1:2], ylim = bounds[3:4]) +
   guides(
-    fill = guide_legend(
+    color = guide_legend(
       keywidth     = 0.05,
       keyheight    = 0.05,
       default.unit = "inch"
-    )
+    ),
+    shape = guide_legend(position = "bottom"),
+    fill = "none"
   ) +
   theme_bw() +
   theme(
@@ -302,7 +315,6 @@ shell.exec(here::here("data", "cam_test", "reach_map"))
 ```{r stop-camcorder}
 camcorder::gg_stop_recording()
 ```
-
 
 
 ```{r}
@@ -363,4 +375,6 @@ ggplot() +
     color = "black", fontface = "bold", size = 4
   )
 ```
+
+
 
