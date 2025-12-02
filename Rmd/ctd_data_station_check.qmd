@@ -41,7 +41,7 @@ conflicts_prefer(
 ```{r load-data}
 file_paths <- rstudioapi::selectDirectory()
 
-dat3 <- 
+# dat3 <- 
   file_paths %>%
   dir_ls(regexp = "\\.csv") %>%
   tibble(file = .) %>%
@@ -64,33 +64,19 @@ dat3 <-
   ) %T>% 
   print()
 
-# tst <- 
- file_paths %>%
-  dir_ls(regexp = "\\.csv") %>%
-  class()
-  imap(
-      # file,
-      \(x, idx) {
-        # print(x)
-        print(idx)
-        # print(glue("{idx}: "))
-        # read_csv(.x, show_col_types = FALSE) %>%
-        # select(station, cruise_id)
-        
-        }
-      )
+```
 
 
-imap_chr(sample(10), \(x, idx) paste0(idx, ": ", x))
-
-dat3 %>%
+```{r fix-names}
+ctd_fix_nm <- 
+  dat3 %>%
   unnest(data) %>%
   distinct(cruise_id, station) %>%
   # arrange(station) %>%
   mutate(
     stn = str_remove(station, "WB22215\\."),
     stn = str_remove(stn, "^\\.0{1,2}|^\\.|^0{1,2}"),
-    stn = if_else(str_detect(stn, "LK|^21"), "21/LK", stn),
+    stn = if_else(str_detect(stn, "LK|^21"), "21LK", stn),
     stn = str_replace(stn, "MR.REDO", "MR"),
     stn = str_replace(stn, "TB1_RECAST", "TB1B"),
     stn = str_replace(stn, "_(\\d)$", ".\\1"),
@@ -117,7 +103,9 @@ dat3 %>%
     )
     
     
-  ) %>%
+  )
+
+ctd_fix_nm %>%
   arrange(stn)  %T>% 
   print() %>% 
   slice(1001:n()) %>%
@@ -129,6 +117,13 @@ dat3 %>%
   filter(station != stn) %>%
   distinct(station, stn)
   filter(str_detect(station, "65")) 
+  
+ctd_fix_nm %>%
+  distinct(station, stn) %>%
+  write_csv(here("data", "processed", "ctd_station_name_map.csv"))
+
+ctd_fix_nm %>%
+  write_csv(here("data", "processed", "ctd_all_station_name_map.csv"))
 ```
 
 
@@ -223,7 +218,7 @@ dat3 %>%
   mutate(
     stn = str_remove(station, "WB22215\\."),
     stn = str_remove(stn, "^\\.0{1,2}|^\\.|^0{1,2}"),
-    stn = if_else(str_detect(stn, "LK|^21"), "21/LK", stn),
+    stn = if_else(str_detect(stn, "LK|^21"), "21LK", stn),
     stn = str_replace(stn, "MR.REDO", "MR"),
     stn = str_replace(stn, "TB1_RECAST", "TB1B"),
     stn = str_replace(stn, "_(\\d)$", ".\\1"),
@@ -274,4 +269,5 @@ dat3 %>%
   ) %>%
   pull(plt) 
 ```
+
 
