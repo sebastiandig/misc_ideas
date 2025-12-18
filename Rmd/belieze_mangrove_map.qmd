@@ -68,7 +68,7 @@ leaflet::leaflet() %>%
 Inspired from: <https://ajsmit.github.io/Intro_R_Official/mapping-google.html>
 
 ```{r mangrove-stations}
-# add boundaries for openstreemap
+# add boundaries for openstreetmap
 adj_deg <- 0.01 # degree widen
 bounds <- 
   c(
@@ -77,7 +77,7 @@ bounds <-
   ) %T>%
   print()
 
-# extract openstreemap tiles
+# extract openstreetmap tiles
 osm_map <-
   openmap(
     bounds[c(4, 1)], # upperleft
