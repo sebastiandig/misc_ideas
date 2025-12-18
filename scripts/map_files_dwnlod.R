@@ -382,7 +382,7 @@ load_map_obj <- function(
       bathy      = bathy
     )
   )
-  # ---- End of `load_map_obj` Function ----
+  # ---- End of `load_map_obj` Function ---- #
 }
 
 
