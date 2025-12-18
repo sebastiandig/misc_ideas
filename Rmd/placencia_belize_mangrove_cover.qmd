@@ -1,0 +1,202 @@
+---
+title: "Belize Mangrove Cover"
+author: "Sebastian Di Geronimo"
+date: 2025-12-18
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+Extracting mangrove area from `Mapping National Mangrove Cover for Belize Using Google Earth Engine and Sentinel-2 Imagery`
+Cissel et al., 2021
+
+Then cropping to bounding box of Palancia
+
+
+Help from: <https://sarahlistabarth.github.io/blog/posts/opening-kmz-files/>
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  fs, magrittr, here,
+  
+  # additional
+  sf, units, rstudioapi, archive, rnaturalearth
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+# 2.0 Placencia Bounding Box
+
+The bounding box was created from GEE:
+
+var roi = ee.Geometry.Polygon([
+  [
+    [-88.45002432342531, 16.692982197956695],
+    [-88.29913965385717, 16.692982197956695],
+    [-88.29913965385717, 16.497023893909766],
+    [-88.45002432342531, 16.497023893909766],
+    [-88.45002432342531, 16.692982197956695]
+  ]
+]);
+
+```{r placencia-bbox}
+placencia_bbox <-
+  tribble(
+    ~lon,               ~lat,
+    -88.45002432342531, 16.692982197956695,
+    -88.29913965385717, 16.692982197956695,
+    -88.29913965385717, 16.497023893909766,
+    -88.45002432342531, 16.497023893909766,
+    -88.45002432342531, 16.692982197956695
+  ) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_combine() %>%
+  st_cast("POLYGON") %>%
+  # convert to projection
+  st_transform(crs = "epsg:32616") %T>%
+  print()
+
+# bounding box 
+bbox <- st_bbox(placencia_bbox)
+```
+
+# 3.0 Locating and unzipping `kmz` file
+
+```{r kmz-to-kml}
+# path to kmz file
+mangrove_kmz <- rstudioapi::selectFile() %T>% 
+  print()
+
+# unzip kmz file
+archive_extract(
+  archive = mangrove_kmz,
+  dir = dirname(mangrove_kmz)
+  )
+
+# path to unzipped `kml` file
+mangrove_kml <- 
+  dirname(mangrove_kmz) %>%
+  dir_ls(regexp = "doc.kml") %T>% 
+  print()
+```
+
+## 3.1 Load `kml` file containing whole mangrove polygons for Belize
+
+```{r load-kml-file}
+# load kml file
+belize_mg_kml <- st_read(mangrove_kml) 
+
+# convert CRS to EPSG of Belize: EPSG:32616
+mg_trans <- st_transform(belize_mg_kml, crs = "epsg:32616")
+
+full_mg_bbox <- st_bbox(mg_trans)
+
+# print CRS
+cat("\n-----\n\n")
+st_crs(belize_mg_kml) # old: WGS84
+cat("\n-----\n\n")
+st_crs(mg_trans)      # new: projected UTM zone 16N
+```
+
+# 4.0 Plot Old and New CRS
+
+```{r plot-area}
+# old CRS 
+ggplot() +
+  geom_sf(data = belize_mg_kml, color = "blue") +
+  labs(title = paste("CRS:",st_crs(belize_mg_kml)$input)) +
+  theme_bw()
+
+# new CRS
+ggplot() +
+  geom_sf(data = mg_trans, color = "blue") +
+  labs(title = paste("CRS:",st_crs(mg_trans)$input)) +
+  theme_bw()
+```
+
+
+
+# 5.0 Plot Belize Mangrove with Placencia
+
+```{r placencia}
+# plot mangrove area on top of placencia
+ggplot() +
+  geom_sf(
+    data = rnaturalearth::ne_countries(returnclass = "sf", scale = "large") %>%
+  st_transform(crs = "epsg:32616")
+  ) +
+  geom_sf(data = mg_trans, fill = "blue", color = "blue") +
+  geom_sf(data = placencia_bbox, color = "red", fill = NA) +
+  # crop to Belize mangrove
+  coord_sf(
+    ylim = full_mg_bbox[c(2,4)],
+    xlim = full_mg_bbox[c(1,3)],
+    )
+
+ggplot() +
+  geom_sf(
+    data = rnaturalearth::ne_countries(returnclass = "sf", scale = "large") %>%
+    st_transform(crs = "epsg:32616")
+  ) +
+  geom_sf(data = mg_trans, fill = "blue") +
+  geom_sf(data = placencia_bbox, color = "red", fill = NA) +
+  # crop to Placencia bounding box
+  coord_sf(
+    ylim = bbox[c(2,4)],
+    xlim = bbox[c(1,3)],
+    )
+```
+
+## 5.1 Crop and Calculate Placencia Area
+
+Area of Placencia: 23.5378682228298 km^2
+
+```{r placencia-crop-area}
+# crop to bounding box
+placencia_mangrove <- 
+  st_crop(mg_trans,  st_bbox(placencia_bbox)) %>%
+  mutate(
+    area    = st_area(geometry),
+    area_km = set_units(area, "km2"),
+    area_km = drop_units(area_km)
+    ) %T>% 
+  print()
+
+# print area in km^2
+cat(paste("Area of Placencia:", placencia_mangrove$area_km, "km^2"))
+
+# final area used in area calculation
+ggplot() +
+  geom_sf(
+    data = rnaturalearth::ne_countries(returnclass = "sf", scale = "large") %>%
+    st_transform(crs = "epsg:32616")
+  ) +
+  geom_sf(data = placencia_mangrove, fill = "blue") +
+  geom_sf(data = placencia_bbox, color = "red", fill = NA) +
+    # crop to Placencia bounding box
+  coord_sf(
+    ylim = bbox[c(2,4)],
+    xlim = bbox[c(1,3)],
+    )
+```
+
+
+
+
