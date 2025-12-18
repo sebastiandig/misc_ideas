@@ -199,4 +199,19 @@ ggplot() +
 
 
 
+```{r}
+# shelf(maptiles, tidyterra)
+# nc_osm <- maptiles::get_tiles(mg_trans, zoom = 13)
+# 
+# ggplot() +
+# geom_spatraster_rgb(data = nc_osm) + # Add OSM tiles
+# theme_void() +
+#   geom_sf(data = placencia_mangrove, fill = "blue") +
+#   geom_sf(data = placencia_bbox, color = "red", fill = NA) +
+#     # crop to Placencia bounding box
+#   coord_sf(
+#     ylim = bbox[c(2,4)],
+#     xlim = bbox[c(1,3)],
+#     )
+```
 
