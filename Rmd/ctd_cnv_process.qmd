@@ -1,0 +1,125 @@
+---
+title: "Process CTD Data from cnv files"
+author: "Sebastian Di Geronimo"
+date: 2025-10-03
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+## 2.2 Load Dataset
+
+```{r load-data}
+# ctd_path <- rstudioapi::selectDirectory()
+ctd_path <- 
+  here("C:\\","Users", "spd19", "Box", "IMaRS_Projects", "FLRACEP V (REACH) project", "DataManagement",
+       "DataCollection", "REACH-001", "ship_data", "raw") %>%
+  dir_ls(regexp = "cnv$") %T>% 
+  print()
+```
+```{r}
+shelf(oce)
+```
+
+```{r}
+ctd_dat <- 
+  oce::read.ctd.sbe(ctd_path[1]) %>%
+  oce::ctdTrim()
+oce::plotProfile(ctd_dat) 
+```
+
+
+```{r}
+ctd_dat %>%
+  oce::ctdDecimate(p = 1, method = "approx") %>%
+  plot()
+```
+
+
+```{r}
+ctd_dat %>%
+  oce::ctdDecimate(p = 1, method = "boxcar") %>%
+  plot()
+```
+
+```{r}
+ctd_dat %>%
+  write.ctd(here("data", "processed", "ctd_test.csv"))
+
+shell.exec(here("data", "processed", "ctd_test.csv"))
+
+as.data.frame(ctd_dat@data)
+
+```
+
+
+
+```{r}
+here("data", "processed", "ctd_process") %>%
+  dir_ls(regexp = "filter") %>%
+  .[1] %>%
+  oce::read.ctd.sbe() %>%
+  plotProfile(Tlim = c(31, 32), Slim = c(36, 36.5))
+
+here("data", "processed", "ctd_process") %>%
+  dir_ls(regexp = "_filter") %>%
+  oce::read.ctd.sbe() %>%
+  ctdTrim(
+    removeDepthInversions = TRUE,
+  ) %>%
+  plotProfile(Tlim = c(31, 32), Slim = c(36, 36.5))
+  plotProfile(ctd_dat, Tlim = c(31, 32), Slim = c(36, 36.5))
+
+
+trim_by_depth <- function(data, parameters) {
+  parameters[1] < data$depth
+}
+
+here("data", "processed", "ctd_process") %>%
+  dir_ls(regexp = "_filter") %>%
+  oce::read.ctd.sbe() %>%
+  ctdTrim(
+    trim_by_depth,
+    parameters = 2
+  ) %>%
+  ctdDecimate(p = 0.5, method = "lm") %>%
+  plotProfile(Tlim = c(31, 32), Slim = c(36, 36.5))
+
+ctd_dat %>%
+  ctdTrim(
+    trim_by_depth,
+    parameters = 2
+  ) %>%
+  ctdDecimate(p = 0.5, method = "lm") %>%
+  plotProfile(Tlim = c(31, 32), Slim = c(36, 36.5))
+```
+
