@@ -40,8 +40,11 @@ conflicts_prefer(
 
 ```{r load-data}
 file_paths <- rstudioapi::selectDirectory()
+```
 
-# dat3 <- 
+
+```{r load-data}
+dat3 <-
   file_paths %>%
   dir_ls(regexp = "\\.csv") %>%
   tibble(file = .) %>%
@@ -153,6 +156,7 @@ stn16 <- "C:/Users/spd19/Box/mbon_imars_cruises/ctd_data/cleaned_ctd_data/WS2306
   distinct(station, latitude, longitude) %>%
   filter(str_detect(station, "16"))
 
+# show 6.5 as 65
 "C:/Users/spd19/Box/mbon_imars_cruises/ctd_data/cleaned_ctd_data/WS0914.csv" %>%
  read_csv(show_col_types = FALSE) %>% 
   distinct(station, latitude, longitude) %>%
@@ -270,4 +274,119 @@ dat3 %>%
   pull(plt) 
 ```
 
+# -------------------------------
+
+# search through TAMU ERRDAP
+
+```{r libs}
+shelf(rerddap, cli)
+```
+
+## Set database Website
+
+Once you find an ERDDAP with the data you want, you can change the location here
+
+TAMU ERDDAP publishes the CTD data from the SFP/MBON cruises
+- "https://gcoos5.geos.tamu.edu/erddap/"
+
+PFEG ERDDAP (not used)
+- "https://upwell.pfeg.noaa.gov/erddap/" 
+- contains meteorological data
+  - wanted to use
+    - wind speed 
+    - Ekman transport
+
+```{r set-database}
+# this database contains CTD data from Walton Smith Cruises
+"https://gcoos5.geos.tamu.edu/erddap/" %>%
+  Sys.setenv(RERDDAP_DEFAULT_URL = .)
+```
+
+## Qery ERDDAP for CTD Data and Compare to Cruise IDs from Pigment Data
+
+Research vessel acronym:
+  - WS = R/V Walton Smith (majority)
+  - SAV = R/V Savannah
+  - WB = R/V Weatherbird II
+  - H = 
+  
+NOTE: some cruise IDs were modified because there is some slight difference in 
+      IDs during the same cruise. This is usually due to a delay in cruise start
+      date and was not changed prior to departure.
+      
+      
+```{r query-erddap-cruise-id}
+# # folder path to save downloaded and average CTD data
+# dir_data_dwnld_save <- here("data", "raw", "ctd")       # download path
+# dir_data_avg_save   <- here("data", "processed", "ctd") # averaged path
+# 
+# dir_create(dir_data_avg_save)
+
+# all cruises prior to 2016
+# this covers all possible cruises to download more than necessary
+all_cruise_info <-
+  ed_search_adv(
+    query     = "Walton Smith",
+    maxTime   = "2025-01-01T01:00:00Z",
+    page_size = 8000
+  )
+
+all_cruise_ids <-
+  str_extract(all_cruise_info$info$title, "(WS|SAV|WB|H|HG)\\d{3,5}") %>%
+  unique()
+
+
+
+# ---- print info about cruise IDs found
+cli::cli_alert_info(
+  c(
+    "{col_green(\"Number of files queried\")}: ",
+    "{nrow(all_cruise_info$info)} files\n",
+    "{col_blue(\"Cruise IDs\")}:\n{all_cruise_ids}\n\n"
+  )
+)
+
+```
+
+## Separate results info into tab delim results
+
+```{r}
+all_cruise_info$info %>%
+  separate_wider_delim(title, delim = ", ", names_sep = "_", too_many = "debug") %T>%
+  print() %>%
+  mutate(
+    .before = title_5,
+    # title_5 = str_replace(title_5, " 82W", " 82.0W"),
+    # lat_lon = parzer::parse_llstr(title_5),
+    rn = str_to_upper(title_3),
+    rn = str_remove(rn, " "),
+    rn = str_replace(rn, "WS20278", "WS20279"),
+    rn = str_replace(rn, "WS21277", "WS21278"),
+    rn = str_replace(rn, "WS23011", "WS23010"), # weird
+    rn = str_remove_all(rn, "_AUG_2011_|2022_08_WEATHERBIRD_SMITH_CTD_|KELBLE_|HEX|SFP_"),
+    # rn = str_remove(rn, "KELBLE_"),
+    rn = str_remove_all(rn, title_2),
+    rn2 = rn,
+    rn = str_remove(rn, "^_-|^_{1,2}"),
+    rn = str_remove(rn, "^\\."),
+    rn = str_remove(rn, "\\s?(^STA|^STN)\\.?_?"),
+    rn = str_remove(rn, "^0{1,2}"),
+    rn = str_replace(rn ,"(UK|EK|Z\\d{2})(_|-)(.*)", "\\1\\3"),
+    rn = if_else(str_detect(rn, "LK|^21"), "21LK", rn),
+  ) %>%
+  filter(str_detect(rn2, "LK|21"))
+  # unnest(lat_lon) %>%
+  arrange(rn) %>%
+  distinct(rn) %$% 
+  rn
+  
+```
+
+```{r}
+  ed_search_adv(
+    query     = "Hogarth",
+    maxTime   = "2025-01-01T01:00:00Z",
+    page_size = 8000
+  )
+```
 
