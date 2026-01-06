@@ -279,7 +279,7 @@ dat3 %>%
 # search through TAMU ERRDAP
 
 ```{r libs}
-shelf(rerddap, cli)
+shelf(rerddap, cli, parzer)
 ```
 
 ## Set database Website
@@ -328,7 +328,7 @@ all_cruise_info <-
   ed_search_adv(
     query     = "Walton Smith",
     maxTime   = "2025-01-01T01:00:00Z",
-    page_size = 8000
+    page_size = 10000
   )
 
 all_cruise_ids <-
@@ -351,42 +351,175 @@ cli::cli_alert_info(
 ## Separate results info into tab delim results
 
 ```{r}
-all_cruise_info$info %>%
-  separate_wider_delim(title, delim = ", ", names_sep = "_", too_many = "debug") %T>%
+cruis_id <- 
+  all_cruise_info$info %>%
+  separate_wider_delim(title, delim = ", ", names_sep = "_") %T>%
   print() %>%
   mutate(
     .before = title_5,
-    # title_5 = str_replace(title_5, " 82W", " 82.0W"),
-    # lat_lon = parzer::parse_llstr(title_5),
-    rn = str_to_upper(title_3),
-    rn = str_remove(rn, " "),
-    rn = str_replace(rn, "WS20278", "WS20279"),
-    rn = str_replace(rn, "WS21277", "WS21278"),
-    rn = str_replace(rn, "WS23011", "WS23010"), # weird
-    rn = str_remove_all(rn, "_AUG_2011_|2022_08_WEATHERBIRD_SMITH_CTD_|KELBLE_|HEX|SFP_"),
-    # rn = str_remove(rn, "KELBLE_"),
-    rn = str_remove_all(rn, title_2),
-    rn2 = rn,
-    rn = str_remove(rn, "^_-|^_{1,2}"),
-    rn = str_remove(rn, "^\\."),
-    rn = str_remove(rn, "\\s?(^STA|^STN)\\.?_?"),
-    rn = str_remove(rn, "^0{1,2}"),
-    rn = str_replace(rn ,"(UK|EK|Z\\d{2})(_|-)(.*)", "\\1\\3"),
-    rn = if_else(str_detect(rn, "LK|^21"), "21LK", rn),
+    title_5 = str_replace(title_5, " 82W", " 82.0W"),
+    lat_lon = parse_llstr(title_5),
+    station = str_to_upper(title_3),
+    station = str_remove(station, " "),
+    station = str_replace(station, "WS20278", "WS20279"),
+    station = str_replace(station, "WS21277", "WS21278"),
+    station = str_replace(station, "WS23011", "WS23010"), # weird
+    station = str_remove_all(station, "_AUG_2011_|2022_08_WEATHERBIRD_SMITH_CTD_|KELBLE_|HEX|SFP_"),
+    station = str_remove_all(station, title_2),
+    station = str_remove(station, "^_-|^_{1,2}"),
+    station = str_remove(station, "^\\."),
+    station = str_remove(station, "\\s?(^STA|^STN)\\.?_?"),
+    station = str_remove(station, "^0{1,2}"),
+    station = str_replace(station ,"(UK|EK|Z\\d{2})(_|-)(.*)", "\\1\\3"),
+    station = str_replace(station ,"_", "."),
+    station = str_replace(station, "(DT)0(\\d{1,2})", "\\1\\2"),
+    station = str_replace(station, "(^\\d{1,2})-(\\d{1,2})", "\\1.\\2"),
+    station = if_else(str_detect(station, "LK|^21$"), "21LK", station),
+    date    = as_date(title_4)
   ) %>%
-  filter(str_detect(rn2, "LK|21"))
-  # unnest(lat_lon) %>%
-  arrange(rn) %>%
-  distinct(rn) %$% 
-  rn
-  
+  unnest(lat_lon) %>%
+  arrange(date) %>%
+  rename("cruise_id" = title_2) %T>% 
+  print() %>%
+ select(
+   dataset_id, 
+   cruise_id,
+   date, 
+   lon, lat,
+   station,
+  ) %>% 
+  mutate(
+   cruise_id_og = cruise_id,
+   station_og  = station
+  ) %>%
+  relocate(cruise_id_og, .before = cruise_id) %>% 
+  relocate(station_og, .before = station) %T>% 
+  print()
 ```
 
 ```{r}
-  ed_search_adv(
-    query     = "Hogarth",
-    maxTime   = "2025-01-01T01:00:00Z",
-    page_size = 8000
+# shelf(camcorder)
+# camcorder::gg_record(
+#   dir    = here::here("data", "cam_test", "ctd_stn_check"),
+#   device         = "png",
+#   bg             = "white",
+#   dpi = 600
+# )
+
+# shell.exec(here::here("data", "cam_test", "ctd_stn_check"))
+# camcorder::gg_stop_recording()
+
+# avg_ctd <- rstudioapi::selectFile()
+avg_ctd <- here("~/Downloads/Station_Mean_Coords.csv")  %>%
+  read.csv() %T>% 
+  print()
+
+base_plt <-
+  ggplot() +
+  geom_sf(
+    data = rnaturalearth::ne_coastline(10, "sf"),
+    alpha = 0.5
+  ) +
+  geom_point(
+    data = avg_ctd,
+    aes(
+      y = lat_mean, x = lon_mean,
+      label = station,
+      color = rel_loc
+    ),
+    shape = 21
   )
+
+  
+
+
+
+for (i in distinct(cruis_id, cruise_id)$cruise_id) {
+  # filter for one cruise at a time
+  datas <- filter(cruis_id, cruise_id == i)
+
+  # extract cruise Id and start date
+  cruise <- datas$cruise_id[1]
+  date_lb <- min(datas$date)
+
+  # lat/lon limits
+  ylimt <- c(24, max(datas$lat) + 0.25)
+  xlimt <- c(min(datas$lon) - 0.25, -79.5)
+
+
+  # combine avg station locations with CTD station locations
+  ctd_labels <-
+    bind_rows(
+      mutate(avg_ctd, ctd = "labels"),
+      select(datas, "station" = station, "lat_mean" = lat, "lon_mean" = lon, ) %>%
+        mutate(ctd = "stations")
+    ) %>%
+    filter(
+      between(lat_mean, ylimt[1], ylimt[2]) &
+        between(lon_mean, xlimt[1], xlimt[2])
+    )
+
+  # plot stations
+  print(glue("{cruise}: {date_lb}"))
+  print(
+    base_plt +
+      geom_point(
+        data = datas,
+        aes(x = lon, y = lat, label = station),
+        size = 0.3
+      ) +
+
+      ggrepel::geom_text_repel(
+        data = ctd_labels,
+        aes(x = lon_mean, y = lat_mean, label = station, color = ctd),
+        max.overlaps       = 100,
+        size               = 1,
+        alpha              = 0.75,
+        min.segment.length = 0,
+        segment.size       = 0.2
+      ) +
+      labs(
+        title = glue("{cruise}: {date_lb}"),
+        x = NULL,
+        y = NULL,
+        color = NULL
+      ) +
+      scale_color_manual(
+        values = c(
+          "keys" = "lightblue", "south" = "green", "west" = "orange",
+          "stations" = "blue", "labels" = "black"
+        )
+      ) +
+      coord_sf(ylim = ylimt, , xlim = xlimt, expand = FALSE, clip = "on") +
+      theme_bw() +
+      theme(
+        legend.position = "inside",
+        legend.position.inside = c(0.7, 0.85)
+      )
+  )
+}
 ```
+
+
+```{r}
+# distinct(cruis_id, title_2) %>%
+#   writexl::write_xlsx(here("data", "cam_test", "ctd_stn_check", "ctd_check.xlsx"))
+
+cruis_id %>%
+ select(
+   dataset_id, 
+   "cruise_id_og" = cruise_id,
+   cruise_id,
+   date, 
+   lon, lat,
+   station,
+   "station_og" = station
+  )
+  writexl::write_xlsx(here("data", "cam_test", "ctd_stn_check", "ctd_datasetid2.xlsx"))
+  
+```
+
+
+
+
 
