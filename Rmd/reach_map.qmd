@@ -39,17 +39,25 @@ conflicts_prefer(
 
 ```
 
+
 ## 2.2 Load Dataset
 
 ```{r load-data}
 dir_path <- 
   here() %>%
   rstudioapi::selectDirectory()
+
+sheet_names <- 
+  dir_path %>%
+  dir_ls(regexp = "(?i)schedule") %>%
+  readxl::excel_sheets() %T>% 
+  print()
+
 loc_dat <- 
   dir_path %>%
   dir_ls(regexp = "(?i)schedule") %>%
   str_subset("~", negate = TRUE) %>% 
-  readxl::read_xlsx(.name_repair = janitor::make_clean_names, sheet = "Times_alt") %>%
+  readxl::read_xlsx(.name_repair = janitor::make_clean_names, sheet = sheet_names[2]) %>%
   janitor::remove_empty("cols") %>%
   drop_na(latitude_decimal_degree, longitude_decimal_degree) %T>%
   print() %>%
@@ -65,7 +73,6 @@ loc_dat <-
   print()
 
 # set location to save data and plots
-dir_data_save <- here("data", "processed", "reach_map")
 dir_plt_save  <- here("data", "plots", "reach_map")
 ```
 
@@ -177,18 +184,20 @@ osm_map <-
   openmap(
     bounds[c(4, 1)], # upperleft
     bounds[c(3, 2)], # loweright
-    zoom = 9,
+    zoom = 8,
     # type = "esri-topo", 
-    type = "esri-imagery", 
+    type = "esri-physical", 
     mergeTiles = TRUE
   ) %>%
   openproj()
 
 # OpenStreetMap::autoplot.OpenStreetMap(osm_map)
   
-loc_map <-
+(loc_map <-
   # plot openstreemap
   OpenStreetMap::autoplot.OpenStreetMap(osm_map) +
+    
+  # contour lines
   metR::geom_contour2(
     data = bathy,
     aes(
@@ -196,9 +205,11 @@ loc_map <-
       y = y,
       z = -z
     ),
-    col = "grey70",
+    col = "grey90",
     breaks = c(3000, 2000, 1000, 500, 100, 50, 25)
   ) +
+    
+  # whale habitat polygon
   geom_sf(
     data        = whale_shp,
     color       = "grey40",
@@ -207,28 +218,41 @@ loc_map <-
     alpha       = 0.5,
     linetype    = "dashed",
     inherit.aes = FALSE
-  )
+  ))
+```
+
+
+```{r plt-stations}
+shp_label_dict <- 
+  c(
+  "Arrive" = 21,
+  "Waypoint" = 21,
+  "CTD/Bongo and Tucker" = 22,
+  "CTD/Bongo and Tucker/Subsurface" = 22,
+  "CTD" = 24,
+  "Surface Buoy/CTD" = 25
+)
 
 loc_map_pts <-
   loc_map +
 
-  # add arrows for cruise track
-  ggarchery::geom_arrowsegment(
-    data = long_lat_lag,
-    aes(
-      x     = long,
-      xend  = lon_lag,
-      y     = lat,
-      yend  = lat_lag,
-      color = fct_reorder(format(date, "%B %d"), date)
-    ),
-    # color = "green",
-    arrow_positions = 0.5,
-    arrows = arrow(length = unit(0.1, "inches")),
-    na.rm = TRUE,
-    key_glyph = draw_key_point
-    # show.legend = FALSE
-  ) +
+  # # add arrows for cruise track
+  # ggarchery::geom_arrowsegment(
+  #   data = long_lat_lag,
+  #   aes(
+  #     x     = long,
+  #     xend  = lon_lag,
+  #     y     = lat,
+  #     yend  = lat_lag,
+  #     color = fct_reorder(format(date, "%B %d"), date)
+  #   ),
+  #   # color = "green",
+  #   arrow_positions = 0.5,
+  #   arrows = arrow(length = unit(0.1, "inches")),
+  #   na.rm = TRUE,
+  #   key_glyph = draw_key_point
+  #   # show.legend = FALSE
+  # ) +
 
   # add station points
   geom_point(
@@ -260,13 +284,14 @@ loc_map_pts <-
     # direction     = "x"
   ) +
   labs(
-    title = "REACH-002 (October 27 - November 5)",
+    title = "REACH-003 (November 19 - 25)",
     x     = NULL, # "Longitude (°)",
     y     = NULL, # "Latitude (°)",
     color = NULL,
     shape = NULL
   ) +
-  scale_shape_manual(values = c(21:25)) +
+  # scale_shape_manual(values = c(21, 21:25)) +
+  scale_shape_manual(values = shp_label_dict) +
   coord_sf(expand = FALSE, xlim = bounds[1:2], ylim = bounds[3:4]) +
   guides(
     color = guide_legend(
@@ -274,7 +299,7 @@ loc_map_pts <-
       keyheight    = 0.05,
       default.unit = "inch"
     ),
-    shape = guide_legend(position = "bottom"),
+    shape = guide_legend(position = "bottom", nrow = 1),
     fill = "none"
   ) +
   theme_bw() +
@@ -283,10 +308,18 @@ loc_map_pts <-
     legend.position.inside = c(0.91, 0.8),
     legend.text            = element_text(size = 7)
   )
+```
 
+
+```{r show-stations}
 loc_map_pts
 ```
 
+```{r}
+loc_dat$description %>%
+  unique()
+
+```
 
 
 # 5.0 Save Plots using `camcorder`
@@ -299,7 +332,9 @@ camcorder::gg_record(
   dir    = here::here("data", "cam_test", "reach_map"),
   device = "png",
   dpi    = 600,
-  units  = "mm",
+  width = 11,
+  height = 8.5,
+  units  = "in",
   bg     = "white"
 )
 
