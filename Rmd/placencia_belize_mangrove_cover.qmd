@@ -36,7 +36,8 @@ librarian::shelf(
 
 conflicts_prefer(
   dplyr::filter(), 
-  dplyr::select()
+  dplyr::select(),
+  magrittr::extract()
   )
   
 
@@ -199,19 +200,172 @@ ggplot() +
 
 
 
+
 ```{r}
-# shelf(maptiles, tidyterra)
-# nc_osm <- maptiles::get_tiles(mg_trans, zoom = 13)
-# 
-# ggplot() +
-# geom_spatraster_rgb(data = nc_osm) + # Add OSM tiles
-# theme_void() +
-#   geom_sf(data = placencia_mangrove, fill = "blue") +
-#   geom_sf(data = placencia_bbox, color = "red", fill = NA) +
-#     # crop to Placencia bounding box
-#   coord_sf(
-#     ylim = bbox[c(2,4)],
-#     xlim = bbox[c(1,3)],
-#     )
+maptiles::get_tiles(belize_mg_kml, zoom = 9)
+
+nc <- st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
+nc_osm <- get_tiles(nc, crop = TRUE, zoom = 6)
+plot_tiles(nc_osm)
+```
+
+
+# 6.0 Calculate Placencia Mangrove Area using GEE Model
+
+Layers trained and modeled by Claudia using GEE
+- image based ground truth points
+- community ground truth points
+
+```{r file-path}
+shelf(terra)
+mang_tiff <- 
+  here("data", "raw", "placencia") %>%
+  dir_ls(regexp = "tif") %T>% 
+  print()
+```
+
+
+```{r file-path}
+# load mangrove geotiff
+mg_load <- 
+  terra::rast(mang_tiff[1]) %T>% 
+  print()
+# names(mg_load) <- c("co", "ib")
+mg_load
+plot(mg_load)
+
+# calc area of each pixel
+mg_cell_size <- 
+  cellSize(mg_load, unit = "km", transform = F) 
+mg_area <- zonal(mg_cell_size, mg_load, "sum", na.rm = TRUE)
+
+mg_area
+
+# load mangrove geotiff
+mg_load <- 
+  terra::rast(mang_tiff[2]) %T>% 
+  print()
+# names(mg_load) <- c("co", "ib")
+mg_load
+plot(mg_load)
+
+# calc area of each pixel
+mg_cell_size <- 
+  cellSize(mg_load, unit = "km", transform = F) 
+mg_area <- zonal(mg_cell_size, mg_load, "sum", na.rm = TRUE)
+
+mg_area
+
+```
+
+
+```{r calc-area}
+mg_load <- 
+  terra::rast(mang_tiff) %>%
+  terra::crop(placencia_bbox) %T>% 
+  print()
+names(mg_load) <- c("co", "ib")
+NAflag(mg_load) <- 0
+
+# calc area of each pixel
+mg_cell_size <- 
+  cellSize(mg_load, unit = "km", transform = F) %>%
+  as.data.frame()
+
+as.data.frame(mg_load, na.rm = FALSE) %>%
+  bind_cols(mg_cell_size) %>%
+   pivot_longer(
+     data      = .,
+     cols      = c(co, ib),     # columns to pivot long,
+     names_to  = "type",  # desired name for category column
+     values_to = "class", # desired name for value column
+     ) %>%
+  summarise(
+    .by = c(type, class),
+    area = sum(area)
+  )
+
+```
+
+```{r}
+ggplot() +
+  tidyterra::geom_spatraster(
+    data = mutate(mg_load, co = as.factor(co), ib = as.factor(ib)) %>%
+  terra::crop(placencia_bbox)
+    ) +
+  geom_sf(data = placencia_bbox, fill = NA, color = "red") +
+  scale_fill_discrete(na.value = "transparent") +
+  guides(fill = "none") +
+  facet_wrap(~lyr) +
+  theme_bw()
+
+mutate(mg_load, co = as.factor(co), ib = as.factor(ib)) %>%
+  terra::crop(placencia_bbox)
+```
+
+
+# 7.0 Use of public Earth observation data for tracking progress in sustainable management of coastal forest ecosystems in Belize, Central America
+
+Cherrington et al., 2020
+
+
+Calculating area of mangroves change cropped to Placencia
+
+```{r}
+cherr_dat <- 
+  here("data", "raw", "bz_mangrove_servir_1900_2017") %>%
+  dir_ls(regexp = "shp$") %>%
+  read_sf() %T>% 
+  print()
+
+st_crop(cherr_dat, placencia_bbox) %>%
+  plot()
+
+
+ggplot() +
+  geom_sf(
+    data = rnaturalearth::ne_countries(returnclass = "sf", scale = "large") %>%
+    st_transform(crs = "epsg:32616") %>%
+    st_crop(placencia_bbox)
+  ) +
+  geom_sf(
+    data = st_crop(cherr_dat, placencia_bbox),
+    aes(fill = TYPE),
+    color = "red",
+    linewidth = 0.2
+  ) +
+  facet_wrap(~DESCR, ncol = 6)  +
+  theme_bw()
+
+st_crop(cherr_dat, placencia_bbox) %>%
+  mutate(
+    area_km2 = st_area(geometry),
+    area_km2 = set_units(area_km2, "km2"),
+    area_ha  = set_units(area_km2, "ha"),
+    area_km2 = drop_units(area_km2),
+    area_ha  = drop_units(area_ha)
+  ) %>%
+  arrange(DESCR) %T>% 
+  print()
+```
+18.8604
+
+
+```{r}
+
+ggplot() +
+  geom_sf(
+    data = rnaturalearth::ne_countries(returnclass = "sf", scale = "large") %>%
+    st_transform(crs = "epsg:32616") %>%
+    st_crop(placencia_bbox)
+  ) +
+  geom_sf(
+    data = st_crop(cherr_dat, placencia_bbox)  %>%
+    filter(DESCR == "Mangrove 1980-2017"),
+    aes(fill = TYPE),
+    linewidth = 0.2
+  ) +
+  facet_wrap(~TYPE, ncol = 6)  +
+  theme_bw()
 ```
 
