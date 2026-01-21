@@ -307,7 +307,10 @@ mutate(mg_load, co = as.factor(co), ib = as.factor(ib)) %>%
 # 7.0 Use of public Earth observation data for tracking progress in sustainable management of coastal forest ecosystems in Belize, Central America
 
 Cherrington et al., 2020
+<https://www.sciencedirect.com/science/article/pii/S0034425720301681#s0010>
 
+Data Link: 
+<https://data.mendeley.com/datasets/2fzbnpnsdp/1>
 
 Calculating area of mangroves change cropped to Placencia
 
