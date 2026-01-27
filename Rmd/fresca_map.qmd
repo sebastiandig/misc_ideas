@@ -65,7 +65,7 @@ map_file <-
 
 
 # path to add base map files
-  # map_loc <- here()
+  # map_loc <- here("data", "map_shp")
   map_loc <- rstudioapi::selectDirectory()
   map_topo <- here("data", "map_shp", "fresca")
 
@@ -182,7 +182,8 @@ if (exists("base_plt")) {
   base_plt <-
     base_map_plot(
       .topo     = map_obj$coast_topo, 
-      .bathy    = map_obj$bathy, 
+      # .bathy    = rename(map_obj$bathy, "altitude" = z), 
+      .bathy    = rename(map_obj$bathy, "altitude" := any_of("z")), 
       .extent   = exnt,
       .breaks_z = c(1000, 500, 100, 50, 25, 10)
       )
@@ -257,6 +258,7 @@ fresca_map <-
     family   = "serif",
     bg.color = "white",
     min.segment.length = 0,
+    oob = scales::oob_discard
   ) +
   scale_color_manual(
     name   = "Samples",
@@ -276,6 +278,22 @@ fresca_map <-
 
 fresca_map
 ```
+```{r, fig.width=8.5, fig.height=11}
+fresca_map + 
+  coord_sf(xlim = c(-82, -80), ylim = c(24.3, 25)) +
+  guides(fill = "none", color = "none", shape = "none")
+
+base_plt + 
+  coord_sf(xlim = c(-82, -80), ylim = c(24.3, 25))
+
+
+map_obj2$bathy %>%
+  ggplot(aes(x = x, y = y, fill = z)) +
+  geom_tile() +
+  scale_fill_viridis_b(breaks = -c(1, 25, 50, 100, 200, 500, 1000, 2000)) +
+  labs(title = "2022") + 
+  coord_cartesian(xlim = c(-82, -80), ylim = c(24.3, 25))
+```
 
 
 # Save Map
@@ -289,5 +307,229 @@ fresca_map
   base_width  = 8.5,
   base_height = 11
  )
+```
+
+
+# Plot CREMP Data with SFER/MBON
+
+```{r gdb-path}
+# fresca_map +
+#   ggnewscale::new_scale_fill() +
+#   geom_sf(data = layer_sf, aes(color = Habitat)) +
+#   coord_sf(ylim = c(NA, 25.5), clip = "on", xlim = c(-83, -80)) +
+#   guides(shape = "none", color = "none", fill = "none")
+
+
+cremp_gdb <- 
+  here("data", "raw") %>%
+  dir_ls(regexp = "CREMP") %>%
+  dir_ls()
+
+
+# see what layers are available
+cremp_lyrs <- st_layers(cremp_gdb)
+cremp_lyrs$name
+
+# read one layer (replace "LayerName" with a name from st_layers)
+layer_sf <- st_read(cremp_gdb, layer = "CREMP_Stations_pnt_Albers") %>%
+  st_transform(crs(map_obj$coast_topo))
+
+# plot(layer_sf["Site_Code"])
+
+# ggplot() +
+#   geom_sf(data = layer_sf, aes(color = Habitat, shape = Habitat)) 
+
+base_plt +
+  geom_sf(data = layer_sf, aes(color = Habitat), shape = 21, size = rel(5),
+          stroke = rel(1.2)) +
+  scale_color_viridis_d() +
+  new_scale_color() +
+  geom_point(
+    data = map_dat,
+    aes(
+      x     = dec_lon, 
+      y     = dec_lat, 
+      color = description,
+      shape = description),
+    size = rel(3)
+  ) + 
+  scale_color_manual(
+    name   = "Samples",
+    values = colors_sel
+    ) +
+   labs(shape = "Samples") +
+  coord_sf(ylim = c(24.35, 25.5), clip = "on", xlim = c(-82.2, -80)) +
+  theme(legend.position = "bottom")
+
+if (FALSE) {
+  # save map
+  cowplot::save_plot(
+    here("data", "plots", "sfer_cremp.png"),
+    plot        = last_plot(),
+    dpi         = 600,
+    base_width  = 11,
+    base_height = 8.5
+  )
+}
+```
+
+
+
+
+
+
+
+```{r}
+Sys.setenv(RERDDAP_DEFAULT_URL = "https://coastwatch.pfeg.noaa.gov/erddap/")
+  ## ---- download topography (.nc) and coastline (.shp)
+  world_download(
+    path_land  = map_loc,
+    path_topo  = here(map_topo, "..", "etopo2022"),
+    extent     = exnt,
+    use_suffix = NULL,
+    .timeout = 300,     # may need to increase if download of GSHHG fails
+    etopo_version = "ETOPO_2022_v1_15s"
+  )
+Sys.unsetenv("RERDDAP_DEFAULT_URL")
+```
+
+```{r}
+ map_obj <-
+    load_map_obj(
+      .map_coast = map_loc,
+      .map_state = NULL,
+      .map_bath  = here(map_topo, "..", "etopo2022"),
+      .map_file  = "ETOPO_2022_v1_15s.nc",
+      .extent    = exnt
+    )
+
+map_obj$bathy %>%
+  ggplot(aes(x = x, y = y, fill = z)) +
+  geom_tile() +
+  scale_fill_viridis_b(breaks = -c(1, 100, 200, 500, 1000, 2000)) +
+  labs(title = "2022")
+
+map_obj$bathy %>%
+  ggplot(aes(x = x, y = y, fill = altitude)) +
+  geom_tile() +
+  scale_fill_viridis_b(breaks = -c(1, 100, 200, 500, 1000, 2000)) 
+
+map_obj2$bathy
+map_obj$bathy
+
+ggplot(
+  map_obj$bathy,
+  aes(
+    x = x,
+    y = y,
+    z = -z
+  ),
+) +
+  metR::geom_contour2(
+    col    = "grey70",
+    breaks = c(1, 100, 200, 500, 1000, 2000)
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(family = "serif", size = 10),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  metR::geom_text_contour(breaks = c(1, 100, 200, 500, 1000, 2000)) +
+  coord_cartesian(xlim = c(-82, -81), ylim = c(24, 25)) 
+
+
+```
+
+```{r}
+rerddap::ed_search("etopo5", url = "https://pae-paha.pacioos.hawaii.edu/erddap/")
+rerddap::ed_search("etopo", url = "https://coastwatch.pfeg.noaa.gov/erddap/")
+rerddap::ed_search("etopo")
+```
+
+```{r}
+a <- -2
+b <- +2
+n <- 150
+x <- runif(n * n, a, b)
+y <- runif(n * n, a, b)
+df <- data.frame(x, y)
+df$z <- with(df, -x * y * exp(-x^2 - y^2))
+df.sub <- subset(df, x^2 + y^2 < 2)
+
+
+df.cnt <- getContourLines(df.sub, nlevels = 20)
+# df.cnt <- getContourLines(slice_sample(map_obj$bathy, prop = 0.8), nlevels = 5)
+ggplot(data = df.cnt, aes(x, y, group = Group, colour = z)) +
+  geom_path() +
+  theme_bw()
+
+
+Mag(10, -10)
+Angle(10, -10)
+
+
+
+```
+
+
+```{r}
+shelf(sf)
+
+topo_rast <- 
+  map_topo  %>%
+  dir_ls() %>%
+    terra::rast()
+
+pts_sf <-
+  map_dat %>%
+  filter(
+    str_detect(description, "CTD"),
+    (waypoint < 30 | str_detect(waypoint, "MR|LK|WS"))
+    ) %>%
+  filter(!str_detect(waypoint, "16|10")) %>%
+  arrange(dec_lon) %>%
+  st_as_sf(coords = c("dec_lon", "dec_lat"), crs = 4326) %T>% 
+  print()
+  
+line_sf <- 
+  pts_sf %>%
+  summarise(do_union = FALSE) %>%
+  st_cast("LINESTRING") %>%
+  st_transform(crs = crs(topo_rast)) %>%
+  vect()
+
+plot(line_sf)
+
+topo_along <- extractAlong(topo_rast, line_sf, xy = TRUE)
+
+topo_along %>%
+  mutate(
+    x2 = dplyr::lag(x),
+    y2 = dplyr::lag(y),
+    dist = geosphere::distHaversine(
+      cbind(x, y),
+      cbind(x2, y2)
+    ),
+    dist = if_else(is.na(dist), 0, dist) / 1000,
+    dist_cum = cumsum(dist)
+  ) %>%
+  ggplot(aes(x = dist_cum, y = altitude)) +
+  geom_line()
+
+plot(line_sf)
+
+
+(ggplot() +
+  tidyterra::geom_spatraster(data = topo_rast) +
+  geom_sf(data = line_sf, color = "red") +
+  coord_sf(xlim = c(-82, -80), ylim = c(NA, 25.5)) +
+  scale_fill_gradientn(
+    colors = oce::oce.colorsViridis(120),
+    limits = c(-100, 20),
+    oob = scales::oob_squish
+    )) %>%
+  plotly::ggplotly()
+
 ```
 
