@@ -1,0 +1,337 @@
+---
+title: "REACH CTD Processing"
+author: "Sebastian Di Geronimo"
+date: 2026-02-06
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  oce
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+## 2.2 Search for Dataset Path
+
+```{r path-data}
+# set location to save data and plots
+dir_data_save <- here("data", "processed", "reach_ctd_process")
+dir_plt_save  <- here("data", "plots", "reach_ctd_process")
+
+cruise_id <- "REACH003"
+
+ctd_path <- 
+  here("../ctd_data", cruise_id, "/datcnv/") %>%
+  dir_ls(regexp = "cnv$") %>%
+  print()
+
+# remove cast with only upcast from REACH003, stn 10 cast 10
+ctd_path <- ctd_path[which(!str_detect(ctd_path, "REACH003_S10_10"))] %T>% 
+  print()
+```
+
+```{r test-plot}
+test_ctd <- 
+  ctd_path[10] %>%
+  print() %>%
+  read.ctd()
+
+oce::summary(test_ctd)
+
+plot(test_ctd)
+
+test_trim <- ctdTrim(test_ctd, method = "sbe") 
+  
+plot(test_trim)
+# plot(test_trim2)
+
+test_dec2 <- ctdDecimate(test_trim, p = 0.25, e = 2)
+plot(test_dec)
+plot(test_dec2)
+
+oce::plot(test_dec, which = "fluorescence", type = "o")
+oce::plot(test_dec, which = "oxygen2", type = "o")
+oce::plot(test_dec, which = 3, type = "o")
+as.data.frame(test_ctd@data)
+as.data.frame(test_trim@data)
+as.data.frame(test_dec@data)
+
+
+
+```
+## 2.3 Load CTD Data
+```{r load-ctd-data}
+ctd_all <- 
+  map(
+  .x = ctd_path,
+  \(.x) {
+    
+    station <- basename(.x) %>%
+    str_remove_all("(_|\\.)cnv") %>%
+    str_remove("\\d+_") %>%
+    str_remove("dat") %>%
+    str_replace("_", "/")
+    
+    
+    if (str_detect(.x, "REACH003")) {
+     station <- .x %>%
+      str_extract("S\\d{2}")
+    }
+    
+    
+    print(station)
+    ctd_dat <- read.ctd(.x, station = station) %>%
+    ctdTrim(method = "sbe") %>%
+    ctdDecimate(p = 0.25, e = 0.5)
+  }
+)
+names(ctd_all)
+
+map(ctd_all, 
+    ~ oce::plot(.x, which = 5)
+)
+map(ctd_all, 
+    ~ oce::plot(.x)
+)
+```
+
+# 3.0 Map All Stations
+```{r all-map-sation}
+
+ctd_section <- as.section(ctd_all)
+
+ctd_section@metadata %>%
+  as.tibble() %>%
+  ggplot(aes(x = longitude, y = latitude)) +
+  geom_point() +
+  ggrepel::geom_text_repel(aes(label = stationId))
+
+leaflet::leaflet() %>%
+  leaflet::addTiles() %>%
+  leaflet::addMarkers(
+    lng = ctd_section@metadata$longitude, 
+    lat = ctd_section@metadata$latitude,
+    label = ctd_section@metadata$stationId,
+    labelOptions = leaflet::labelOptions(noHide = TRUE)
+    )
+```
+
+
+```{r}
+sel_stn1 <- c("S07|S06|S05",
+"S01|S02|S03|S04|S05",
+"S09|S10|S11|S12")
+for (sel_stn in sel_stn1) {
+
+sel_stn_num <- which(str_detect(names(ctd_all), sel_stn))
+
+ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), sel_stn)])
+plot(ctd_section)
+plot(
+  ctd_section, 
+  which = "temperature",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours)
+  )
+
+plot(
+  ctd_section, 
+  which = "salinity",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours)
+  )}
+```
+
+```{r}
+ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S15|C24|S17")][c(2,1,3)])
+plot(ctd_section)
+plot(
+  ctd_section, 
+  which = "temperature",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours)
+  )
+
+plot(
+  ctd_section, 
+  which = "salinity",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours)
+  )
+```
+
+
+
+```{r}
+ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S10|C23|S08")][c(2,1,3)])
+plot(ctd_section)
+plot(
+  ctd_section, 
+  which = "temperature",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours)
+  )
+
+plot(
+  ctd_section, 
+  which = "salinity",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours)
+  )
+```
+
+
+```{r}
+ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S17|S14|S10|S07")][c(1,2,3,4)])
+plot(ctd_section)
+plot(
+  ctd_section, 
+  which = "temperature",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours)
+  )
+plot(
+  ctd_section, 
+  which = "salinity",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours),
+  # ylim = c(50, 00)
+  )
+```
+
+```{r}
+ctd_tib <-
+  map(
+    ctd_all,
+    \(.x) {
+      station <- .x@metadata$station
+      dat <- as.tibble(.x@data) %>%
+        mutate(.before = 1, station = station) %>%
+        filter(!is.na(scan))
+    }
+  ) %>%
+  list_rbind() %>%
+  mutate(.before = 1, cruise = cruise_id) %T>% 
+  print()
+
+cruise_location <- here("data", "processed", "reach_ctd") 
+
+dir_create(cruise_location)
+
+write_csv(
+  ctd_tib,
+  here(cruise_location, glue(cruise_id, "_ctd.csv"))
+
+)
+
+```
+
+```{r}
+test <- 
+  list(
+    temp = c("temperature", "Temperature (°C)"),
+    sal = c("salinity", "Salinity"),
+    o2 = c("oxygen", "Dissolved Oxygen (mg/L)"),
+    turb = c("turbidity", "Turbidity")
+  )
+
+for (i in 1:length(test)) {
+  
+  column <- test[i]
+
+print(ggplot(ctd_tib, aes(y = depth, color = station)) +
+  scale_y_continuous(transform = "reverse") +
+  scale_x_continuous(position = "top") +
+  scale_color_manual(values = colorRampPalette(ODV_colours)(12)) +
+  # lemon::geom_pointline(aes(x = temperature), linewidth = rel(1), size = rel(0.1)) +
+  geom_path(aes(x = get(column[[1]][1])), size = rel(0.5)) +
+  theme_bw() +
+  labs(
+    x = column[[1]][2],
+    y = "Depth [db]",
+    color = "Station"
+    ))
+
+
+# ---- save plot ---- #
+# save_gg(
+#   plt            = last_plot(), # edit if want specific plot
+#   save_location  = ,
+#   save_name      = ,
+#   verbose        = TRUE,
+#   # overwrite      = FALSE,
+#   # overwrite      = TRUE,
+#   time_stamp_fmt = NULL,
+#   device         = "png",
+#   height         = 8,
+#   width          = 8,
+#   dpi            = 600,
+#   units          = "mm",
+#   bg             = "white"
+#   )
+names(test)
+ctd_img <- here(cruise_location, glue(cruise_id, "_{names(test)[i]}.png"))
+
+ggsave(
+  ctd_img,
+  device = "png",
+  width = 8,
+  height = 8,
+  units = "in",
+  dpi = 600
+)
+
+viewer <- getOption("viewer")
+viewer(ctd_img)
+}
+```
+
