@@ -28,7 +28,7 @@ if (!nzchar(system.file(package = "librarian")))
 
 librarian::shelf(
   quiet = TRUE,
-  librarian, conflicted, ggplot2, tibble, tidyr, dplyr, stringr,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr, 
   glue, fs, magrittr, here,
   
   # additional
@@ -65,8 +65,8 @@ map_file <-
 
 
 # path to add base map files
-  # map_loc <- here("data", "map_shp")
-  map_loc <- rstudioapi::selectDirectory()
+  map_loc <- here("data", "map_shp")
+  # map_loc <- rstudioapi::selectDirectory()
   map_topo <- here("data", "map_shp", "fresca")
 
 ```
@@ -312,19 +312,34 @@ map_obj2$bathy %>%
 
 # Plot CREMP Data with SFER/MBON
 
-```{r gdb-path}
+FWC CREMP: Coral Reef Evaluation Monitoring Project
+
+CREMP Info: <https://myfwc.com/research/habitat/coral/cremp/data/>
+GIS & Mapping Data Downloads Location: <https://geodata.myfwc.com/search?q=Coral%20Reef%20Evaluation%20Monitoring%20Project>
+
+
+## Version 1: Using a GeoDataBase
+```{r cremp-gdb-path}
 # fresca_map +
 #   ggnewscale::new_scale_fill() +
 #   geom_sf(data = layer_sf, aes(color = Habitat)) +
 #   coord_sf(ylim = c(NA, 25.5), clip = "on", xlim = c(-83, -80)) +
 #   guides(shape = "none", color = "none", fill = "none")
+colors_sel <- 
+  c("Flow Through"              = "#1f78b4", 
+    "CTD/Trace Metals"          = "orange", 
+    "CTD"                       = "forestgreen", 
+    "Net Tow (64um)/Incubation" = "#1f78b4",
+    "Net Tow (64 um + 500/200 um)/Incubation" = "#FF3030"
+    )
 
-
-cremp_gdb <- 
+cremp_path <- 
   here("data", "raw") %>%
   dir_ls(regexp = "CREMP") %>%
-  dir_ls()
+  dir_ls() %T>% 
+  print()
 
+cremp_gdb <- str_subset(cremp_path, "gdb") 
 
 # see what layers are available
 cremp_lyrs <- st_layers(cremp_gdb)
@@ -365,6 +380,66 @@ if (FALSE) {
   # save map
   cowplot::save_plot(
     here("data", "plots", "sfer_cremp.png"),
+    plot        = last_plot(),
+    dpi         = 600,
+    base_width  = 11,
+    base_height = 8.5
+  )
+}
+```
+
+
+## Version 2: Using a csv
+
+```{r cremp-csv-path}
+cremp_csv <- 
+  str_subset(cremp_path, "(?i)csv") %>%
+  dir_ls(regexp = "(?i)stations") %>%
+  str_subset("~|xml", negate = TRUE) %>%
+  read_csv(show_col_types = FALSE) %T>% 
+  print()
+
+    data  = filter(map_dat, dec_lat < 25.5),
+  geom_point(data = cremp_csv, aes(color = Habitat, y = latDD, x = lonDD), shape = 21, size = rel(5),
+          stroke = rel(1.2)) +
+  scale_color_viridis_d() +
+  new_scale_color() +
+  geom_point(
+    data = map_dat,
+    aes(
+      x     = dec_lon, 
+      y     = dec_lat, 
+      color = description,
+      shape = description),
+    size = rel(3)
+  ) + 
+    geom_text_repel(
+    data  = filter(map_dat, dec_lat < 25.5 & dec_lon > -82.2),
+    aes(
+      x             = dec_lon,
+      y             = dec_lat,
+      label         = waypoint,
+      segment.color = "gray"
+        ),
+    size     = rel(3),
+    hjust    = 0,
+    family   = "serif",
+    bg.color = "white",
+    min.segment.length = 0,
+    oob = scales::oob_discard
+  ) +
+  scale_color_manual(
+    name   = "Samples",
+    values = colors_sel
+    ) +
+   labs(shape = "Samples") +
+  coord_sf(ylim = c(24.35, 25.5), clip = "on", xlim = c(-82.2, -80)) +
+  theme(legend.position = "bottom")
+
+if (FALSE) {
+  # save map
+  cowplot::save_plot(
+    here("data", "plots", "sfer_cremp_csv.png"),
     plot        = last_plot(),
     dpi         = 600,
     base_width  = 11,
@@ -473,14 +548,28 @@ Angle(10, -10)
 ```
 
 
+# ============================================================================ #
+# extract along transect
+# ============================================================================ #
+
+Run up to section 3 then start here
+
 ```{r}
-shelf(sf)
+shelf(sf, tidyterra)
 
+# Manually extracted hexidecimal ODV colour palette
+ODV_colours <- c("#feb483", "#d31f2a", "#ffc000", "#27ab19", "#0db5e6", "#7139fe", "#d16cfa")
+
+
+# bathymetry raster (topography)
 topo_rast <- 
-  map_topo  %>%
+  here(map_topo, "..", "etopo2022") %>%
+  # map_topo  %>%
   dir_ls() %>%
-    terra::rast()
+  terra::rast() %>%
+  rename("altitude" := any_of("z"))
 
+# CTD locations filtered for outer shelf locations only
 pts_sf <-
   map_dat %>%
   filter(
@@ -491,19 +580,68 @@ pts_sf <-
   arrange(dec_lon) %>%
   st_as_sf(coords = c("dec_lon", "dec_lat"), crs = 4326) %T>% 
   print()
+
+if (exists("ctd_data")) {
+  pts_sf <- 
+    ctd_data %>%
+    st_as_sf(coords = c("lon", "lat"), crs = 4326) %T>% 
+    print()
+}
   
+  
+# convert  lat/lon into a line by connecting the dots 
 line_sf <- 
   pts_sf %>%
   summarise(do_union = FALSE) %>%
   st_cast("LINESTRING") %>%
-  st_transform(crs = crs(topo_rast)) %>%
-  vect()
+  # transform into meter using NAD83(2011) / Florida GDL Albers (EPSG:6439)
+  st_transform(crs = "EPSG:6439")
 
 plot(line_sf)
 
-topo_along <- extractAlong(topo_rast, line_sf, xy = TRUE)
+# subsample along line to reduce number of raster points extracted
+line_to_pts <- 
+  st_line_sample(line_sf, density = 1 / 1000) %>% 
+  st_cast("POINT") %>%
+  st_transform(crs = crs(topo_rast)) %>%
+  vect()
 
-topo_along %>%
+# leave as line and extract along line, leads to more raster cells touching line
+line_sf2 <-
+  line_sf %>%
+  st_transform(crs = crs(topo_rast)) %>%
+  vect()
+
+# see diff in line to points
+(ggplot() +
+  geom_sf(data = line_sf) +
+  geom_sf(data = line_to_pts, color = "green")) %>%
+  plotly::ggplotly()
+
+# extract raster cells using line or subsampled points
+topo_along2 <- extractAlong(topo_rast, line_sf2, xy = TRUE)
+topo_along  <- terra::extract(topo_rast, line_to_pts, xy = TRUE)
+
+# calc distance from points to points
+# using points along line
+topo_dist <- 
+  topo_along %>%
+  mutate(
+    x2 = dplyr::lag(x),
+    y2 = dplyr::lag(y),
+    dist = geosphere::distHaversine(
+      cbind(x, y),
+      cbind(x2, y2)
+    ),
+    # dist = if_else(is.na(dist), 0, dist) / 1000,
+    dist = if_else(is.na(dist), 0, dist),
+    dist_cum = cumsum(dist),
+    alt_smooth = zoo::rollmean(altitude, k = 5, fill = NA, align = "center")
+  ) 
+
+# using solid line
+topo_dist2 <- 
+  topo_along2 %>%
   mutate(
     x2 = dplyr::lag(x),
     y2 = dplyr::lag(y),
@@ -513,16 +651,29 @@ topo_along %>%
     ),
     dist = if_else(is.na(dist), 0, dist) / 1000,
     dist_cum = cumsum(dist)
-  ) %>%
-  ggplot(aes(x = dist_cum, y = altitude)) +
-  geom_line()
+  )
+```
 
-plot(line_sf)
+
+```{r}
+# plot
+# see difference in extraction process
+(ggplot() +
+  # solid line
+  # geom_line(data = topo_dist2, aes(x = dist_cum, y = altitude)) +
+  # points along line
+  geom_line(data = topo_dist, aes(x = dist_cum, y = altitude), color = "green") +
+  geom_point(data = topo_dist, aes(x = dist_cum, y = altitude), color = "red") +
+  theme()
+) %>%
+   plotly::ggplotly() 
+
 
 
 (ggplot() +
   tidyterra::geom_spatraster(data = topo_rast) +
-  geom_sf(data = line_sf, color = "red") +
+  geom_sf(data = line_sf2, color = "red") +
+  geom_sf(data = line_to_pts, color = "green") +
   coord_sf(xlim = c(-82, -80), ylim = c(NA, 25.5)) +
   scale_fill_gradientn(
     colors = oce::oce.colorsViridis(120),
@@ -531,5 +682,465 @@ plot(line_sf)
     )) %>%
   plotly::ggplotly()
 
+```
+
+
+```{r}
+stn_loc_dist <- 
+  map_dat %>%
+  filter(
+    str_detect(description, "CTD"),
+    (waypoint < 30 | str_detect(waypoint, "MR|LK|WS"))
+    ) %>%
+  filter(!str_detect(waypoint, "16|10")) %>%
+  arrange(dec_lon) %>%
+  rename("x" = dec_lon, "y" = dec_lat) %>%
+  mutate(
+    x2 = dplyr::lag(x),
+    y2 = dplyr::lag(y),
+    dist = geosphere::distHaversine(
+      cbind(x, y),
+      cbind(x2, y2)
+    ),
+    dist = if_else(is.na(dist), 1, dist) / 1000,
+    dist_cum = cumsum(dist)
+  ) 
+
+# diff between method of extracting cells along transect
+# solid transect = black
+# subsampled points along transect = green 
+ggplot(mapping = aes(x = dist_cum, y = altitude)) +
+  geom_line(data = topo_dist2) +
+  geom_line(data = topo_dist, color = "green") +
+  geom_point(data = stn_loc_dist,  y = 0, color = "red", size = rel(3))
+
+(ggplot() +
+  # geom_sf(data = line_sf, color = "red") +
+  geom_point(data = stn_loc_dist, aes(x = x, y = y), color = "red", size = rel(3)) +
+  geom_point(data = topo_along, aes(x = x, y = y, group = altitude), color = "green")
+) %>%
+  plotly::ggplotly()
+```
+
+--- Can ignore ---
+
+when using extractalong on a raster, the distance between the points is much longer than the actual distance because partial cells add more points, how can I have the closest cell snap to the line so the distance is the same for both
+Answer: 
+extractAlong() samples every raster cell the line passes through, so the spacing is at the raster resolution (plus partial cells), not at your original vertex spacing. That is why the “distance along transect” you compute from those output points is longer than the straight‑line distance between your original vertices.
+
+You cannot make extractAlong() “snap” values back to the original vertices automatically, but you can fix this by separating two concepts:
+
+A geometry that defines positions and distances along your transect.
+
+A sampling of the raster at those positions.
+
+Below is a pattern that keeps your distances correct and still uses the raster cells closest to the line.
+
+1. Use your original line to define distance
+First, keep your transect as a line and compute distance along that line independently of the raster sampling.
+
+Conceptually:
+
+Build an sf LINESTRING from your vertices (you already did this earlier).
+
+Densify that line yourself at whatever spacing you want (e.g., every 500 m), so you get points that lie exactly on the line.
+
+Compute cumulative distance along the line for those points.
+
+Then, for each of those points, extract the nearest raster cell value and ignore the internal extractAlong() distances.
+
+That way, the cell centers may be off the line, but your distance axis is still defined by the geometry of the true transect.
+```{r}
+### MADE BY AI
+if (FALSE) {
+  
+  library(sf)
+  library(terra)
+  library(dplyr)
+  
+  # 1. Your line (LINESTRING) in a projected CRS, say line_sf
+  # 2. Densify to regular spacing along the line
+  spacing_m <- 500  # choose your desired resolution
+  
+  line_dense <- st_line_sample(line_sf, density = 1 / spacing_m) %>%
+    st_cast("POINT")
+  
+  # 3. Compute cumulative distance along the line
+  # st_line_sample returns points in order, so you can do:
+  
+  coords <- st_coordinates(line_dense)
+  
+  dist_step <- sqrt(diff(coords[, "X"])^2 + diff(coords[, "Y"])^2)
+  dist_cum  <- c(0, cumsum(dist_step))
+  
+  # add distance to sf object
+  line_dense <- line_dense %>%
+    st_as_sf() %>%
+    mutate(dist_m = dist_cum)
+  
+  # 4. Extract raster values at those points (nearest cell)
+  r <- rast("depth.tif") # <--- doesnt exist
+  vals <- terra::extract(r, vect(line_dense))[, 2]  # drop ID column
+  
+  profile <- line_dense %>%
+    mutate(depth = vals)
+}
+
+```
+You then plot depth vs dist_m. Your distances are now exactly the distances along the line; raster cell geometry only affects the sampled value, not the distance.
+
+
+
+```{r}
+ctd_path <- 
+  rstudioapi::selectDirectory() %>%
+  dir_ls()
+
+ctd_key <- 
+  ctd_path[1] %>%
+  dirname() %>%
+  here("..", "..", "..") %>%
+  dir_ls(regexp = "datasetid") %>%
+  read_csv(show_col_types = FALSE) %>%
+  filter(cruise_id == unique(basename(dirname(ctd_path)))) %T>% 
+  print()
+
+
+ctd_key 
+  ctd_data <- 
+  ctd_path %>%
+  tibble(file = .) %>%
+  mutate(
+    id = basename(file),
+    id = tools::file_path_sans_ext(id)
+  ) %>%
+  left_join(
+    ctd_key, 
+    by = c("id" = "dataset_id")
+  ) %>%
+  filter(
+    # str_detect(description, "CTD"),
+    (station < 30 | str_detect(station, "MR|LK|WS"))
+    ) %>%
+  filter(!str_detect(station, "16|10")) %>%
+  arrange(lon) %>%
+  mutate(
+    x2 = dplyr::lag(lon),
+    y2 = dplyr::lag(lat),
+    dist = geosphere::distHaversine(
+      cbind(lon, lat),
+      cbind(x2, y2)
+    ),
+    # dist = if_else(is.na(dist), 0, dist) / 1000, # convert to km
+    dist = if_else(is.na(dist), 0, dist) ,
+    dist_cum = cumsum(dist)
+  ) %>%
+  select(-c(cruise_id_og, station_og)) %T>% 
+  print() 
+  
+# plot stations along transect
+(ggplot() +
+  # geom_sf(data = line_sf, color = "red") +
+  # geom_point(data = stn_loc_dist, aes(x = x, y = y), color = "red", size = rel(3)) +
+  geom_line(data = topo_dist, aes(x = x, y = y), color = "green") +
+  geom_point(data = ctd_data, aes(x = lon, y = lat), color = "red") +
+  theme()
+    )
+```
+
+```{r}
+# read CTD data
+ctd_unest <- 
+  ctd_data %>%
+  mutate(
+    data = map(file, ~read_csv(.x, show_col_types = FALSE))
+  ) %>%
+  unnest(data)
+
+# extract max depth for each station
+ctd_max <- 
+  ctd_unest %>%
+  filter(.by = station, sea_water_pressure == max(sea_water_pressure)) %>%
+  mutate(depth = -sea_water_pressure) %>%
+  print()
+ 
+
+ggplot() +
+  geom_line(data = topo_dist, color = "green", aes(x = dist_cum, y = altitude)) +
+  geom_line(data = topo_dist, color = "blue", aes(x = dist_cum, y = alt_smooth)) +
+  geom_point(data = ctd_data, aes(x = dist_cum), y = -1, color = "black") +
+  geom_point(data = ctd_max, aes(x = dist_cum, y = depth), color = "red") 
+
+ctd_unest
+
+bind_rows(
+  slice(topo_dist, 1) %>%
+    mutate(altitude = min(topo_dist$altitude) - 1),
+  topo_dist,
+  slice_tail(topo_dist, n = 1) %>%
+    mutate(altitude = min(topo_dist$altitude) - 1)
+) 
+
+topo_dist_poly <-
+  bind_rows(
+    slice(topo_dist, 1) %>%
+      mutate(alt_smooth = min(topo_dist$alt_smooth, na.rm = TRUE) - 1),
+    topo_dist,
+    slice_tail(topo_dist, n = 1) %>%
+      mutate(alt_smooth = min(topo_dist$alt_smooth, na.rm = TRUE) - 1)
+  ) %>%
+  filter(!is.na(alt_smooth))
+
+ggplot(topo_dist_poly) +
+  geom_polygon(fill = "gray80", aes(x = dist_cum, y = alt_smooth)) +
+  geom_line(
+    data = topo_dist, color = "green", aes(x = dist_cum, y = altitude),
+    linewidth = rel(1.5)
+  )
+  
+
+ggplot(data = ctd_unest, aes(x = lon, y = -depth)) +
+  geom_point(aes(colour = sea_water_temperature)) +
+  scale_colour_gradientn(colours = rev(ODV_colours)) +
+  labs(y = "depth (m)", x = "longitude (°E)", colour = "temp. (°C)")
+
+```
+
+from: <https://theoceancode.netlify.app/post/odv_bathy/>
+```{r}
+ggplot(data = ctd_unest, aes(x = lon, y = -depth)) +
+  geom_point(aes(colour = sea_water_temperature)) +
+  scale_colour_gradientn(colours = rev(ODV_colours)) +
+  labs(y = "depth (m)", x = "longitude (°E)", colour = "temp. (°C)") +
+  geom_polygon(
+    data = topo_dist_poly, 
+    fill = "gray80", aes(x = x, y = alt_smooth)
+    ) +
+  scale_x_continuous(expand = expansion(c(0.025))) +
+  scale_y_continuous(expand = expansion())
+
+ctd_mba <- MBA::mba.surf(
+  ctd_unest[c("lon", "depth", "sea_water_temperature")],
+  no.X = 600, no.Y = 600, extend = TRUE)
+
+dimnames(ctd_mba$xyz.est$z) <- list(ctd_mba$xyz.est$x, ctd_mba$xyz.est$y)
+
+ctd_mba <- reshape2::melt(ctd_mba$xyz.est$z, varnames = c('lon', 'depth'), value.name = 'temp') %>% 
+  filter(depth > 0) %>% 
+  mutate(temp = round(temp, 1), depth = -depth)
+
+
+# gridded result
+(ggplot(data = ctd_mba, aes(x = lon, y = depth)) +
+  geom_raster(aes(fill = temp)) +
+  geom_contour(aes(z = temp), binwidth = 0.05, colour = "black", alpha = 0.2) +
+  # geom_contour(aes(z = temp), breaks = 3, colour = "black") +
+  geom_line(data = ctd_unest, aes(x = lon, y = -depth, group = station)) +
+  scale_fill_gradientn(colours = rev(ODV_colours)) +
+  labs(y = "depth (m)", x = "longitude (°E)", fill = "temp. (°C)") +
+  coord_cartesian(expand = FALSE) +
+    geom_polygon(
+    data = topo_dist_poly, 
+    fill = "gray80", aes(x = x, y = alt_smooth)
+    ) +
+  scale_x_continuous(expand = expansion(c(0.025))) +
+  scale_y_continuous(expand = expansion())
+)
+```
+
+
+```{r}
+(
+ctd_unest %>%
+  mutate(station = forcats::fct_reorder(station, lon)) %>%
+  ggplot(aes(x = sea_water_temperature, y = depth)) +
+  geom_path(aes(color = station), show.legend = FALSE) +
+  scale_y_continuous(transform = "reverse") +
+  scale_x_continuous(position = "top", limits = c(24.5, NA), oob = scales::oob_keep,
+                     breaks = 0.5) +
+  theme_bw() +
+  facet_grid(~station, switch = "x") +
+  labs(x = NULL, y = NULL, color = NULL)
+  )
+```
+
+
+```{r}
+ctd_interp <- 
+  ctd_data %>%
+   mutate(
+     data = map(
+       file,
+       \(.x) {
+         # browser()
+         x2 <- read_csv(.x, show_col_types = FALSE) %>%
+         oce::as.ctd(
+           salinity    = .$sea_water_salinity,
+           temperature = .$sea_water_temperature,
+           pressure    = .$sea_water_pressure
+         ) %>%
+         oce::ctdTrim()
+         as.data.frame(oce::ctdDecimate(x2, p = 0.5)@data)
+       }
+     )
+   ) %>%
+  unnest(data) %>%
+  filter(if_any(c(salinity, temperature), ~!is.na(.x))) %T>% 
+  print()
+
+ctd_obj <- 
+ ctd_data %>%
+   mutate(
+     data = map(
+       file,
+       \(.x) {
+         # browser()
+         x2 <- read_csv(.x, show_col_types = FALSE) %>%
+         oce::as.ctd(
+           salinity    = .$sea_water_salinity,
+           temperature = .$sea_water_temperature,
+           pressure    = .$sea_water_pressure,
+           latitude    = .$latitude,
+           longitude   = .$longitude
+         ) %>%
+         oce::ctdTrim()
+         # oce::ctdDecimate(x2, p = 0.5)
+         return(x2)
+       }
+     )
+   ) %>%
+   pull(data) %>%
+   oce::as.section() 
+oce::plot(
+  ctd_obj, 
+  which = "temperature",
+  xtype = "distance", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  zcol = oce::oceColorsTemperature,
+  zbreaks = seq(25, 35, 1)
+  )
+
+oce::plot(
+  ctd_obj, 
+  which = "temperature",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours)
+  # zbreaks = seq(25, 35, 1)
+  )
+oce::plot(ctd_obj)
+
+sec_g <- oce::sectionGrid(ctd_obj, p = seq(1, 100, 1))
+# distances along section (vector)
+x <- sec_g[["distance"]]           # km by default
+
+# depth (or pressure) grid (vector)
+z <- sec_g[["depth"]]              # or sec_g[["pressure"]]
+
+# 2D matrix of temperature, rows = depth, columns = station/distance
+Tmat <- sec_g[["temperature"]]
+ctd_obj@data$station[[1]]@data$salinity
+sec_g 
+```
+
+```{r}
+shelf(fields)
+# extract min/max of data to set bounds
+  param_min_max <- range(ctd_unest$sea_water_temperature, na.rm = TRUE)
+
+
+adj <- 1
+resolution <- 10
+  # grid for prediction the surface on
+  lon_range <- range(ctd_unest$dist_cum, na.rm = TRUE)
+  lat_range <- range(ctd_unest$sea_water_pressure, na.rm = TRUE)
+  loc_grid <- list(
+        lon = seq(lon_range[1] - adj, lon_range[2] + adj, resolution),
+        lat = seq(lat_range[1] - adj, lat_range[2] + adj, 2)
+      )
+  
+  # # create kriging model
+  # my_krig <- fields::Tps(
+  #   select(ctd_unest, dist_cum, sea_water_pressure),
+  #   ctd_unest$sea_water_temperature
+  #   # cov.args = list(Covariance = "Matern"),
+  #   # Distance = "rdist.earth"
+  # )
+  # create kriging model
+  my_krig <- fields::Tps(
+    select(ctd_interp, dist_cum, pressure),
+    ctd_interp$temperature
+    # cov.args = list(Covariance = "Matern"),
+    # Distance = "rdist.earth"
+  )
+  
+  krig_surf <- predictSurface(my_krig, loc_grid, extrap = TRUE, fast = FALSE)
+  krig_se   <- predictSurfaceSE(my_krig, loc_grid, extrap = TRUE,  fast = FALSE)
+  
+fields::image.plot(
+  krig_surf,
+  xlab = "Distance from first site (km)",
+  ylab = "Depth (m)",
+  ylim = rev(range(loc_grid$lat))   # reverse y so depth increases downward
+)
+```
+
+
+```{r}
+with(
+      krig_surf,
+      as_tibble(z) %>%
+        bind_cols(lon = x, .) %>%
+        pivot_longer(
+          cols      = c(-lon), # columns to pivot long,
+          names_to  = "krig", # desired name for category column
+          values_to = "value", # desired name for value column
+        ) %>%
+        bind_cols(lat = rep(y, length(x)))
+    ) %>%
+
+    # set lower and upper bounds for value becuase can go higher/lower than 
+    # what's possible
+    mutate(
+      value = case_when(
+        value < param_min_max[1] ~ param_min_max[1],
+        value > param_min_max[2] ~ param_min_max[2],
+        .default = value
+      )
+    ) %>%
+    ggplot(aes(x = lon, y = lat, color = value)) +
+   geom_tile() +
+   scale_y_reverse() +
+   scale_color_gradientn(colors = oce::oceColorsTemperature(20))
+```
+
+```{r}
+library(akima)
+
+interp_res <- with(
+  ctd_interp,
+  interp(
+    x = dist_cum / 1000,
+    y = pressure,
+    z = temperature,
+    nx = 100,
+    ny = 100,
+    linear = TRUE  # or FALSE for bicubic
+  )
+)
+
+image(
+  interp_res$x,
+  interp_res$y,
+  interp_res$z,
+  xlab = "Distance from first site (km)",
+  ylab = "Depth (m)",
+  ylim = rev(range(interp_res$y)),
+  col  = hcl.colors(100, "Spectral")
+)
+contour(interp_res$x, interp_res$y, interp_res$z, add = TRUE, drawlabels = FALSE)
 ```
 
