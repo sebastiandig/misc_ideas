@@ -39,17 +39,112 @@ conflicts_prefer(
 
 ```
 
+## 2.2 Contour Label Function
 
-## 2.2 Load Dataset
+```{r func-contour-label}
+contour_labels <- function(
+    contour, 
+    z_name = "z",
+    n_per_level = 2, 
+    breaks      = c(3000, 2000, 1000, 500, 100, 50, 25), 
+    quantiles   = 0.2,
+    slice_type  = c("max", "random")
+    ) {
+  
+  library(isoband)
+  
+  z <- matrix(-contour[[z_name]], nrow = length(unique(contour$y)), byrow = TRUE)
+  
+  # list of contours breaks with id, x, y as sub-list
+  iso <- isolines(
+    x = sort(unique(contour$x)),
+    y = sort(unique(contour$y)),
+    z = z[length(unique(contour$y)):1, ],
+    levels = breaks
+  )
+  # combine iso list of for each contour break keeping contour level
+  contours_df <-
+    imap(
+      iso,
+      \(.x, .y) {
+        as_tibble(.x) %>%
+          mutate(.before = 1, level = .y)
+      }
+    ) %>%
+    list_c()
+  # calculate the distances between segments of same ID
+  contours_df <-
+    contours_df %>%
+    arrange(level, id, row_number()) %>%
+    mutate(
+      .by       = c(level, id),
+      dx        = dplyr::lag(x, default = first(x)),
+      dy        = dplyr::lag(y, default = first(y)),
+      seg_len   = geosphere::distHaversine(cbind(x, y), cbind(dx, dy)) / 1000,
+      seg_cum   = cumsum(seg_len),
+      seg_total = max(seg_cum)
+    )
+
+  label_pts <-
+    contours_df %>%
+    # drop segments less than x% by level
+    filter(seg_total >= quantile(seg_total, quantiles, na.rm = TRUE), .by = level) %>%
+    summarise(
+      .by = c(level, id),
+      # choose mid-point along this segment
+      target = max(seg_cum) / 2,
+      seg_total = max(seg_cum),
+      idx = which.min(abs(seg_cum - target)),
+      x = x[idx],
+      y = y[idx],
+    )
+  
+  # at most n_per_level
+  if (slice_type == "max") {
+    label_pts <- 
+      label_pts %>%
+      slice_max(order_by = seg_total, n = n_per_level, with_ties = FALSE, by = level)
+  } else if (slice_type == "min") {
+    label_pts <- 
+      label_pts %>%
+      slice_min(order_by = seg_total, n = n_per_level, with_ties = FALSE, by = level)
+  } else if (slice_type == "random") {
+    label_pts <- 
+      label_pts %>%
+        slice_sample(n = 1, by = level)
+  } else {
+    warning(
+      paste0(
+        "Pick slice_type:\n", 
+        "- max = select top lengths\n", 
+        "- random = select 2 random\n",
+        "Currently, not reducing labels by n_per_level"
+        )
+      )
+  }
+
+  return(label_pts)
+  # ---- end of function contour_labels ---- #
+}
+
+```
+
+
+## 2.3 Load Dataset
 
 ```{r load-data}
-dir_path <- 
-  here() %>%
-  rstudioapi::selectDirectory()
+reach_cruise_id <- "REACH-004 (March 3 - 9)"
+
+if (!exists("dir_path")) {
+  dir_path <-
+    here() %>%
+    rstudioapi::selectDirectory()
+}
 
 sheet_names <- 
   dir_path %>%
   dir_ls(regexp = "(?i)schedule") %>%
+  str_subset("~", negate = TRUE) %>% 
   readxl::excel_sheets() %T>% 
   print()
 
@@ -61,12 +156,13 @@ loc_dat <-
   janitor::remove_empty("cols") %>%
   drop_na(latitude_decimal_degree, longitude_decimal_degree) %T>%
   print() %>%
-  select(waypoint, description, 
-         "lat" = latitude_decimal_degree, "long" = longitude_decimal_degree, 
-         depth_m, departure_date_time_local
-         ) %>%
+  select(
+    waypoint, description, 
+    "lat"  = dec_lat, 
+    "long" = dec_lon,
+    depth_m, departure_date_time_local
+    ) %>%
   mutate(
-    long = -long,
     date = as_date(departure_date_time_local),
     description = if_else(str_detect(description, "0"), "CTD/Net Trawl", description)
     ) %T>% 
@@ -110,9 +206,16 @@ Overall points
 ```{r leaflet}
 leaflet::leaflet() %>%
   addTiles() %>%
-  addMarkers(loc_dat$long, loc_dat$lat)
+  addMarkers(
+    loc_dat$long, 
+    loc_dat$lat, 
+    label = loc_dat$waypoint, 
+    labelOptions = labelOptions(noHide = TRUE)
+    )
 
 ```
+
+## 3.1 Download Bathymetry
 
 ```{r}
 source(here("scripts", "map_files_dwnlod.R"))
@@ -142,6 +245,10 @@ bathy <-
   dir_ls()  %>%
   terra::rast() %>%
   as.data.frame(xy = TRUE)
+
+contour_breaks <- c(3000, 2000, 1000, 500, 100, 50, 25)
+
+bathy_contour_label <- contour_labels(bathy, n_per_level = 1, breaks = contour_breaks, slice_type = "max")
 
 ```
 
@@ -206,7 +313,16 @@ osm_map <-
       z = -z
     ),
     col = "grey90",
-    breaks = c(3000, 2000, 1000, 500, 100, 50, 25)
+    breaks = contour_breaks
+  ) +
+  # contour labels
+  shadowtext::geom_shadowtext(
+    data = bathy_contour_label,
+    aes(x, y, label = level),
+    size = rel(3),
+    colour = "gray30",
+    bg.colour = "white",
+    alpha = 0.7
   ) +
     
   # whale habitat polygon
@@ -218,19 +334,29 @@ osm_map <-
     alpha       = 0.5,
     linetype    = "dashed",
     inherit.aes = FALSE
-  ))
+  ) + 
+  labs(
+    title = reach_cruise_id,
+    title = NULL,
+    x     = NULL, # "Longitude (°)",
+    y     = NULL, # "Latitude (°)",
+    color = NULL,
+    shape = NULL
+  ) +
+  coord_sf(expand = FALSE, xlim = bounds[1:2], ylim = bounds[3:4])
+  )
 ```
 
 
 ```{r plt-stations}
 shp_label_dict <- 
   c(
-  "Arrive" = 21,
+  "CTD"      = 24,
+  "Arrive"   = 21,
   "Waypoint" = 21,
+  "Surface Buoy/CTD"     = 25,
   "CTD/Bongo and Tucker" = 22,
-  "CTD/Bongo and Tucker/Subsurface" = 22,
-  "CTD" = 24,
-  "Surface Buoy/CTD" = 25
+  "CTD/Bongo and Tucker/Subsurface" = 22
 )
 
 loc_map_pts <-
@@ -281,18 +407,9 @@ loc_map_pts <-
     bg.color      = "black",
     bg.r          = 0.15,
     segment.color = "black",
-    # direction     = "x"
   ) +
-  labs(
-    title = "REACH-003 (November 19 - 25)",
-    x     = NULL, # "Longitude (°)",
-    y     = NULL, # "Latitude (°)",
-    color = NULL,
-    shape = NULL
-  ) +
-  # scale_shape_manual(values = c(21, 21:25)) +
+
   scale_shape_manual(values = shp_label_dict) +
-  coord_sf(expand = FALSE, xlim = bounds[1:2], ylim = bounds[3:4]) +
   guides(
     color = guide_legend(
       keywidth     = 0.05,
@@ -312,15 +429,8 @@ loc_map_pts <-
 
 
 ```{r show-stations}
-loc_map_pts
+loc_map_pts 
 ```
-
-```{r}
-loc_dat$description %>%
-  unique()
-
-```
-
 
 # 5.0 Save Plots using `camcorder`
 
@@ -338,6 +448,10 @@ camcorder::gg_record(
   bg     = "white"
 )
 
+# currently needs this to save
+# will need to have plot in plot window before can save
+camcorder::record_polaroid() 
+
 shell.exec(here::here("data", "cam_test", "reach_map"))
 
 # uncomment if need to resize
@@ -352,64 +466,7 @@ camcorder::gg_stop_recording()
 ```
 
 
-```{r}
-bathy2 <- 
-  here("data", "map_shp", "reach") %>%
-  dir_ls()  %>%
-  terra::rast()
 
-# 1. Extract contours using base R
-clines <- contourLines(
-  x = sort(unique(bathy$x)),
-  y = sort(unique(bathy$y)),
-  z = rev(matrix(-bathy$z, nrow = length(unique(bathy$x)), byrow = FALSE)),
-  levels = c(25, 50, 100, 500, 1000, 2000, 3000)
-)
-  rev(matrix(-bathy$z, nrow = length(unique(bathy$x)), byrow = FALSE)[1:10, 1:10])
-clines %>%
-  str()
-# 2. Find the longest segment for each level
-contour_df <- do.call(rbind, lapply(clines, function(cl) {
-  data.frame(
-    level = cl$level, 
-    x = cl$x, 
-    y = cl$y, 
-    length = length(cl$x)
-  )
-}))
-unique(contour_df$level)
-longest <- 
-  contour_df %>%
-  # group_by(level) %>%
-  summarise(
-    .by = level,
-    # Use the segment with the most points (or your preferred metric)
-    idx = which.max(length)
-  )
-distinct(contour_df, length)
-# 3. Label only these segments
-# (Alternatively, you may need to join or filter your original 'bathy' or contour data for plotting)
-
-# 4. In your ggplot: use metR geom_label_contour/data for those only (omitting many details since
-# extra wrangling is needed).
-label_points <- contour_df %>%
-  group_by(level) %>%
-  summarise(
-    x_label = mean(x),  # or x[middle point]
-    y_label = mean(y)
-  )
-
-ggplot() +
-  geom_path(
-    data = contour_df,  # all your contour segments for all levels
-    aes(x = x, y = y, group = interaction(level, length), color = factor(level))
-  ) +
-  geom_text(
-    data = label_points,
-    aes(x = x_label, y = y_label, label = level),
-    color = "black", fontface = "bold", size = 4
-  )
-```
 
 
 
