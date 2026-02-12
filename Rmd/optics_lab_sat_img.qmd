@@ -1,0 +1,390 @@
+---
+title: "Optics Lab Satellite Image Overlay Sfer-MBON Stations"
+author: "Sebastian Di Geronimo"
+date: 2026-02-12
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+File comes from Optics Lab:
+
+OLCI3A NFLH L3D
+- Date: Feb 10, 2026
+<https://optics.marine.usf.edu/cgi-bin/optics_data?roi=GCOOS&Date=2/10/2026&Pass=I1541>
+
+Save both Google earth `kml` and `png`
+
+## 2.1 Load Libraries
+
+```{r, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  ggrepel, ggnewscale, sf, units, rstudioapi, archive, rnaturalearth
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+## 2.2. Locate Site Data
+
+The file needs to be in the same folder that this file is located.
+
+Site File name: `sfer_sta_list_Multistressor.xlsx`
+
+Select a location for the downloads of topography and coastline data:
+Use the form:
+here("<first folder>", "<second folder>", "<ect>")
+
+```{r path-to-data}
+# locate the data file
+map_file <- 
+  here() %>%
+  dir_ls(regexp = "sfer_sta_list_Multistressor", recurse = TRUE) %T>% 
+  print()
+```
+
+
+## 2.3 Load SFER-MBON Sites
+
+```{r load-sfer-mbon-data}
+# load file
+map_dat <- 
+  readxl::read_excel(map_file) %>%
+  janitor::clean_names() %>%
+  mutate(
+    description = if_else(is.na(description), "CTD", description)
+    ) %T>% 
+  print()
+
+```
+
+## 3.0 Load `kml` file containing whole vectors
+
+```{r load-kml-file}
+# path to kmz file
+sat_kml <- rstudioapi::selectFile() %T>% 
+  print()
+
+# kml layesr
+st_layers(sat_kml)
+
+# load kml file
+negom_kml <- st_read(sat_kml, layer = "Ocean Currents - 2/10/2026") 
+
+# WGS84 CRS
+st_crs(negom_kml) 
+
+ggplot() +
+  geom_sf(data = negom_kml, color = "blue") +
+  labs(title = paste("CRS:", st_crs(negom_kml)$input)) +
+  theme_bw()
+```
+
+## 3.1 Select `png` File
+
+```{r png-file}
+png2 <-
+  rstudioapi::selectFile() %>%
+  png::readPNG()
+```
+
+## 3.2 Set Bounds to `png` Image
+
+Need to open `kml` file in googleEarth, then find 4 corners of image
+The format is:
+deg min sec N/W
+ 
+```{r png-bounds}
+bounds2 <-
+  tribble(
+    ~lat, ~lon,
+    "30 55 2.83 N", "97 53 42.17 W",
+    "18 0 40.61 N", "97 59 9.21 W",
+    "18 0 25.89 N", "79 0 38.71 W",
+    "30 59 7.38 N", "78 59 47.78 W"
+  ) %>%
+  mutate(
+    lat2 = parzer::parse_lat(lat),
+    lon2 = parzer::parse_lon(lon)
+  ) %T>%
+  print()
+
+```
+
+
+# 4.0 Plot Data
+
+```{r base-plot}
+# change colors 
+colors_sel <- 
+  c("Flow Through"              = "yellow", 
+    "CTD/Trace Metals"          = "#FF3030", 
+    "CTD"                       = "red", 
+   "CTD/Net Tow (64um)/Incubation"  = "#1f78b4",
+    "CTD/Net Tow (64 um + 500/200 um)/Incubation" = "#FF3030"
+    )
+
+
+map_bounds <- c(
+  range(map_dat$dec_lon, na.rm = TRUE), 
+  range(map_dat$dec_lat, na.rm = TRUE)
+  )
+
+(base_sat_plt <- 
+  ggplot() +
+  annotation_raster(
+    png2,
+    xmin = min(bounds2$lon2),
+    xmax = max(bounds2$lon2),
+    ymin = min(bounds2$lat2),
+    ymax = max(bounds2$lat2)
+  ) +
+  geom_sf(data = negom_kml, color = "blue", alpha = 0)
+)
+```
+## 4.2 Plot with Stations
+
+```{r}
+sat_optics_plt <- 
+  map_bounds +
+  # ---- Site Locations ---- #
+  new_scale_color() +
+  geom_point(
+    data = filter(
+      map_dat, 
+      # remove stations not typically sampled
+      !(waypoint %in% paste0("BG", 8:20) |
+        str_detect(waypoint, "^HB|^AC"))
+      ),
+    aes(
+      x     = dec_lon, 
+      y     = dec_lat, 
+      color = description,
+      shape = description),
+    size = rel(2)
+  ) +
+
+  # ---- Site Names ---- #
+  ggrepel::geom_text_repel(
+    data  = filter(
+     map_dat, 
+     # remove stations not typically sampled
+     !(waypoint %in% paste0("BG", 8:20) |
+       str_detect(waypoint, "^HB|^AC"))
+     ),
+    aes(
+      x             = dec_lon,
+      y             = dec_lat,
+      label         = waypoint,
+      segment.color = "gray"
+        ),
+    color = "white",
+    size     = rel(2.5),
+    hjust    = 0,
+    min.segment.length = 0,
+    max.overlaps = 15
+  ) +
+  scale_color_manual(
+    name   = "Samples",
+    values = colors_sel
+    ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    shape = "Samples"
+    ) +
+  
+  
+  coord_sf(
+    expand = c(top = FALSE), 
+    xlim = c(-85.5, map_bounds[2]),
+    ylim = c(map_bounds[3], 30),
+    ) +
+
+  # ---- theme --- #
+  theme(
+    legend.position        = "inside",
+    legend.position.inside = c(0.2, 0.14),
+    legend.background      = element_rect(color = "black")
+  )
+
+sat_optics_plt
+```
+
+
+```{r}
+shelf(camcorder)
+camcorder::gg_record(
+  dir    = here::here("data", "cam_test", "sat_optics"),
+  device         = "png",
+  height         = 6,
+  width          = 8,
+  dpi            = 600,
+  units          = "in",
+  bg             = "white"
+)
+
+sat_optics_plt
+camcorder::record_polaroid()
+# shell.exec(here::here("data", "cam_test", "sat_optics"))
+# camcorder::gg_stop_recording()
+
+# camcorder::gg_resize_film(width = 90, height = 90 * 0.5625,  dpi = 600, units = "mm")
+
+```
+
+
+
+
+# 5.0 REACH Stations
+
+```{r reach}
+if (!exists("dir_path")) {
+  dir_path <-
+    here() %>%
+    rstudioapi::selectDirectory() %>%
+    dir_ls(regexp = "(?i)schedule") %>%
+    str_subset("~", negate = TRUE)
+}
+
+if (length(dir_path) > 1) {
+  dir_path <-
+    dir_path[
+      str_detect(
+        dir_path, 
+        select.list(basename(dir_path), title = "Select correct spreadsheet:")
+        )
+      ]
+}
+
+sheet_names <- 
+  dir_path  %>% 
+  readxl::excel_sheets() %T>% 
+  print()
+
+loc_dat <- 
+  dir_path %>% 
+  readxl::read_xlsx(.name_repair = janitor::make_clean_names, sheet = sheet_names[2]) %>%
+  janitor::remove_empty("cols") %>%
+  drop_na(latitude_decimal_degree, longitude_decimal_degree) %T>%
+  print() %>%
+  select(
+    waypoint, description, 
+    "lat"  = dec_lat, 
+    "long" = dec_lon,
+    depth_m, departure_date_time_local
+    ) %>%
+  mutate(
+    date = as_date(departure_date_time_local),
+    description = if_else(str_detect(description, "0"), "CTD/Net Trawl", description)
+    ) %>%
+  distinct(waypoint, description, lat, long) %T>% 
+  print()
+```
+
+
+
+```{r}
+# change colors 
+colors_sel <- 
+  c("Flow Through"              = "yellow", 
+    "CTD/Trace Metals"          = "#FF3030", 
+    "CTD"                       = "red", 
+   "CTD/Net Tow (64um)/Incubation"  = "#1f78b4",
+    "CTD/Net Tow (64 um + 500/200 um)/Incubation" = "#FF3030"
+    )
+
+shp_label_dict <- 
+  c(
+  "CTD"      = 24,
+  "Arrive"   = 21,
+  "Waypoint" = 21,
+  "Surface Buoy/CTD"     = 25,
+  "CTD/Bongo and Tucker" = 22,
+  "CTD/Bongo and Tucker/Subsurface" = 22,
+  "Subsurface Mooring Test Deployment" = 22
+)
+
+map_bounds <- c(
+  range(loc_dat$long, na.rm = TRUE), 
+  range(loc_dat$lat, na.rm = TRUE)
+  )
+
+reach_sat_optics_plt <- 
+  base_sat_plt +
+  # ---- Site Locations ---- #
+  # new_scale_color() +
+  geom_point(
+    data = loc_dat,
+    aes(
+      x     = long, 
+      y     = lat, 
+      fill = description,
+      shape = description),
+    size = rel(4)
+  ) +
+
+  # ---- Site Names ---- #
+  ggrepel::geom_text_repel(
+    data  = loc_dat,
+    aes(
+      x             = long, 
+      y             = lat, 
+      label         = waypoint,
+      segment.color = "gray"
+        ),
+    color = "white",
+    size     = rel(4),
+    hjust    = 0,
+    min.segment.length = 0,
+    max.overlaps = 15,
+    bg.color = "black"
+  ) +
+  # scale_color_manual(
+  #   name   = "Samples",
+  #   values = colors_sel
+  #   ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    shape = "Samples",
+    fill = "Samples"
+    ) +
+  
+  scale_shape_manual(values = shp_label_dict) +
+  coord_sf(
+    expand = c(top = FALSE),
+    xlim = c(map_bounds[1:2]),
+    ylim = c(map_bounds[3], 30.5),
+    ) +
+
+  # ---- theme --- #
+  theme(
+    legend.position        = "inside",
+    legend.position.inside = c(0.85, 0.75),
+    legend.background      = element_rect(color = "black"),
+    legend.text = element_text(size = rel(0.5)),
+    legend.key.size = unit(rel(0.5), units = "cm")
+  )
+
+reach_sat_optics_plt
+camcorder::record_polaroid()
+```
+
