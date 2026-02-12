@@ -41,8 +41,8 @@ conflicts_prefer(
 ## 2.2 Load Dataset
 
 ```{r load-data}
-loc_dat <- 
-  here("data", "raw") %>%
+loc_dat <-
+  here("data", "raw", "placencia") %>%
   dir_ls(regexp = "Placencia") %>%
   str_subset("~", negate = TRUE) %>%
   readxl::read_xlsx(.name_repair = janitor::make_clean_names) %>%
