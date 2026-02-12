@@ -308,6 +308,18 @@ mutate(mg_load, co = as.factor(co), ib = as.factor(ib)) %>%
   terra::crop(placencia_bbox)
 ```
 
+## 6.2 Confusion Matrix
+
+Attempt to recalculate area based on error of model
+
+From: Olofsson et al., 2013, Making better use of accuracy data in land change studies: Estimating accuracy and area and quantifying uncertainty using stratified estimation
+
+<https://www.sciencedirect.com/science/article/pii/S0034425712004191>
+
+Section 3. Estimating land change area: methods and examples
+- Subsection 3.1. Estimating accuracy and area of change
+
+
 ```{r confusion-matrix}
 mg_prop <- 
   mg_area %>%
