@@ -122,13 +122,13 @@ st_crs(mg_trans)      # new: projected UTM zone 16N
 # old CRS 
 ggplot() +
   geom_sf(data = belize_mg_kml, color = "blue") +
-  labs(title = paste("CRS:",st_crs(belize_mg_kml)$input)) +
+  labs(title = paste("CRS:", st_crs(belize_mg_kml)$input)) +
   theme_bw()
 
 # new CRS
 ggplot() +
   geom_sf(data = mg_trans, color = "blue") +
-  labs(title = paste("CRS:",st_crs(mg_trans)$input)) +
+  labs(title = paste("CRS:", st_crs(mg_trans)$input)) +
   theme_bw()
 ```
 
@@ -236,10 +236,15 @@ plot(mg_load)
 
 # calc area of each pixel
 mg_cell_size <- 
-  cellSize(mg_load, unit = "km", transform = F) 
+  cellSize(mg_load, unit = "km", transform = TRUE) 
 mg_area <- zonal(mg_cell_size, mg_load, "sum", na.rm = TRUE)
 
-mg_area
+mg_area %>%
+  mutate(
+    tot_area = sum(area),
+    prop = area / tot_area
+    )
+  
 
 # load mangrove geotiff
 mg_load <- 
@@ -302,6 +307,54 @@ ggplot() +
 mutate(mg_load, co = as.factor(co), ib = as.factor(ib)) %>%
   terra::crop(placencia_bbox)
 ```
+
+```{r confusion-matrix}
+mg_prop <- 
+  mg_area %>%
+  mutate(
+    tot_area = sum(area),
+    prop = area / tot_area
+    ) %T>% 
+  print()
+```
+
+
+```{r confusion-matrix}
+test <- 
+  tribble(
+  ~ class, ~mang, ~nonmang,
+        1,    18,        3,
+        2,     2,       34,
+) %>%
+  mutate(
+    nonmang_p = nonmang / sum(nonmang) * mg_prop[1, 4],
+    mang_p    = mang / sum(mang) * mg_prop[2, 4],
+  ) %T>% 
+  print()
+
+sum(test$mang_p) * mg_prop$tot_area[1]
+sum(test$nonmang_p) * mg_prop$tot_area[1]
+```
+
+
+```{r confusion-matrix}
+test <- 
+  tribble(
+  ~ class, ~mang, ~nonmang,
+        1,    100,        200,
+        2,     300,       34,
+) %>%
+  mutate(
+    nonmang_p = nonmang / sum(nonmang) * mg_prop[1, 4],
+    mang_p    = mang / sum(mang) * mg_prop[2, 4],
+  ) %T>% 
+  print()
+
+sum(test$mang_p) * mg_prop$tot_area[1]
+sum(test$nonmang_p) * mg_prop$tot_area[1]
+
+```
+
 
 
 # 7.0 Use of public Earth observation data for tracking progress in sustainable management of coastal forest ecosystems in Belize, Central America
