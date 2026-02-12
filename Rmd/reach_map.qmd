@@ -328,10 +328,10 @@ osm_map <-
   shadowtext::geom_shadowtext(
     data = bathy_contour_label,
     aes(x, y, label = level),
-    size = rel(3),
-    colour = "gray30",
-    bg.colour = "white",
-    alpha = 0.7
+    size      = rel(3),
+    bg.colour = "gray30",
+    colour    = "white",
+    alpha     = 0.7
   ) +
     
   # whale habitat polygon
