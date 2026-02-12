@@ -133,25 +133,33 @@ contour_labels <- function(
 ## 2.3 Load Dataset
 
 ```{r load-data}
-reach_cruise_id <- "REACH-004 (March 3 - 9)"
+reach_cruise_id <- "REACH-004 (March 1 - 9)"
 
 if (!exists("dir_path")) {
   dir_path <-
     here() %>%
-    rstudioapi::selectDirectory()
+    rstudioapi::selectDirectory() %>%
+    dir_ls(regexp = "(?i)schedule") %>%
+    str_subset("~", negate = TRUE)
+}
+
+if (length(dir_path) > 1) {
+  dir_path <-
+    dir_path[
+      str_detect(
+        dir_path, 
+        select.list(basename(dir_path), title = "Select correct spreadsheet:")
+        )
+      ]
 }
 
 sheet_names <- 
-  dir_path %>%
-  dir_ls(regexp = "(?i)schedule") %>%
-  str_subset("~", negate = TRUE) %>% 
+  dir_path  %>% 
   readxl::excel_sheets() %T>% 
   print()
 
 loc_dat <- 
-  dir_path %>%
-  dir_ls(regexp = "(?i)schedule") %>%
-  str_subset("~", negate = TRUE) %>% 
+  dir_path %>% 
   readxl::read_xlsx(.name_repair = janitor::make_clean_names, sheet = sheet_names[2]) %>%
   janitor::remove_empty("cols") %>%
   drop_na(latitude_decimal_degree, longitude_decimal_degree) %T>%
@@ -256,8 +264,8 @@ bathy_contour_label <- contour_labels(bathy, n_per_level = 1, breaks = contour_b
 long_lat_lag <- 
   loc_dat %>%
   mutate(
-    lon_lag = dplyr::lead(long, default = -82.58745),
-    lat_lag = dplyr::lead(lat, default = 27.67623),
+    lon_lag = dplyr::lead(long, default = first(long)),
+    lat_lag = dplyr::lead(lat, default = first(lat)),
     ) %>%
   mutate(
     .by = waypoint,
@@ -267,6 +275,7 @@ long_lat_lag <-
   ) %T>% 
   print()
 ```
+
 
 # 4.0 Plt using `OpenStreeMap`
 
@@ -337,7 +346,7 @@ osm_map <-
   ) + 
   labs(
     title = reach_cruise_id,
-    title = NULL,
+    # title = NULL,
     x     = NULL, # "Longitude (°)",
     y     = NULL, # "Latitude (°)",
     color = NULL,
@@ -356,8 +365,20 @@ shp_label_dict <-
   "Waypoint" = 21,
   "Surface Buoy/CTD"     = 25,
   "CTD/Bongo and Tucker" = 22,
-  "CTD/Bongo and Tucker/Subsurface" = 22
+  "CTD/Bongo and Tucker/Subsurface" = 22,
+  "Subsurface Mooring Test Deployment" = 22
 )
+
+# catch if new description exist in schedule
+if (any(!loc_dat$description %in% names(shp_label_dict))) {
+  missing_lbl <- 
+  unique(loc_dat$description[which(!loc_dat$description %in% names(shp_label_dict))])
+  stop(
+    paste(
+      "Missing shape label! Please add missing description and shape number.\n",
+      "Missing label:", missing_lbl
+          ))
+}
 
 loc_map_pts <-
   loc_map +
