@@ -334,7 +334,12 @@ grid_sf <-
 # convert dataframe of stations to sf object and project
 pts_utm <- 
   st_as_sf(df_st, coords = c("longitude","latitude"), crs = 4326, remove = FALSE)  %>%
-  st_transform(utm_epsg)
+  st_transform(utm_epsg) %>%
+  mutate(
+    longitude = st_coordinates(.)[,1],
+    latitude = st_coordinates(.)[,2]
+    ) 
+
 
 # create a smaller, irregular bounding box based on convex hull or buffer (<3)
 if (nrow(df_st) >= 3) {
@@ -362,10 +367,27 @@ support_boundary_utm <- st_boundary(support_poly_utm)
 ggplot() +
   geom_sf(data = grid_sf, color = "#500", alpha = 0.5) + # base grid for interpolation
   geom_sf(data = florida_sf) + # florida map
-  geom_sf(data = support_poly_utm, 
-          color = "blue", fill = "lightblue", alpha = 0.5) + # convex hull
+  geom_sf(
+    data = support_poly_utm,
+    color = "blue", fill = "lightblue", alpha = 0.5
+  ) + # convex hull
   geom_sf(data = pts_utm) + # data points used
-  coord_sf(expand = FALSE)
+  coord_sf(expand = FALSE) +
+  ggrepel::geom_text_repel(
+    data = pts_utm,
+    aes(x = longitude, y = latitude, label = station),
+    seed = 1,
+    size = 2.0,
+    color = "black",
+    box.padding = 0.18,
+    point.padding = 0.10,
+    min.segment.length = 0,
+    segment.color = "grey35",
+    segment.size = 0.30,
+    segment.curvature = 0.0,
+    arrow = grid::arrow(length = unit(0.006, "npc"), type = "closed"),
+    max.overlaps = Inf
+  )
 ```
 
 # 5) DISPLAY SMOOTHING SETTINGS
@@ -540,6 +562,8 @@ ggplot() +
   ) + 
   theme(legend.title = element_blank())
 
+
+pts_utm$geometry
 ```
 
 
@@ -567,6 +591,7 @@ make_panel <- function(
   .utm_epsg         = utm_epsg,
   .support_poly_utm = support_poly_utm,
   .florida_sf       = florida_sf,
+  .bb_utm = bb_utm,
   idw_opts          = idw_options
   ) {
 
@@ -626,20 +651,6 @@ make_panel <- function(
       nmax      = idw_opts$nmax_nb
     )
   
-  # # ==== WIP
-  # # crop to convex hull
-  # r_pred_utm_sm <- 
-  #   st_intersection(idw_sf_utm, .support_poly_utm) %>%
-  #   rast(idw_sf_utm) %>%
-  #   terra::focal(
-  #     
-  #     w         = .smooth_kernel,
-  #     fun       = mean,
-  #     na.policy = "omit",
-  #     na.rm     = TRUE,
-  #     fillvalue = NA
-  #   )
-  # # ==== WIP
 
   # idw_sf_utm <- st_as_sf(idw_res)
   # st_crs(idw_sf_utm) <- .utm_epsg
@@ -809,7 +820,8 @@ make_panel <- function(
       text_cex   = 0.55,
       line_width = 0.6
     ) +
-    coord_sf(xlim = xlim, ylim = ylim, expand = FALSE) +
+    # coord_sf(xlim = xlim, ylim = ylim, expand = FALSE) +
+    coord_sf(xlim = .bb_utm[c(1,3)], ylim = .bb_utm[c(2,4)], expand = FALSE) +
     labs(title = var_title, x = NULL, y = NULL) +
     theme_bw() +
     theme(
@@ -817,7 +829,7 @@ make_panel <- function(
       panel.grid.major = element_line(color = "grey85", linewidth = 0.3),
       panel.grid.minor = element_blank(),
       legend.position  = "right",
-      legend.title     = element_text(face = "bold"),
+      # legend.title     = element_text(face = "bold"),
       plot.title       = element_text(face = "bold", size = 12)
     )
 
