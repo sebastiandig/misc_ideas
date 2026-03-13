@@ -5,21 +5,31 @@ date: "2026-03-06"
 output: html_document
 ---
 
-```{r}
-# =========================================================================== #
-# ONE cruise: 4-panel Surface Maps (0–5 m mean)
-# Variables: Salinity, Temperature, Oxygen, Chlorophyll (CHL_0_5m + chl_source)
-# Method: IDW (UTM grid) + LIGHT DISPLAY SMOOTHING
 
-# Edge: TIGHT HARD SUPPORT MASK + SOFT FEATHERED DISPLAY EDGE
-# Style: subtle contour lines + north arrow + scale bar
+ONE cruise: 4-panel Surface Maps (0–5 m mean)
+Variables: Salinity, Temperature, Oxygen, Chlorophyll (CHL_0_5m + chl_source)
+Method: IDW (UTM grid) + LIGHT DISPLAY SMOOTHING
 
-# Title:  "WS0603 — Surface (0–5 m mean)"
-# Subtitle: "YYYY-MM-DD to YYYY-MM-DD
-# CHL panel title: "Chlorophyll fluorescence" OR "Chlorophyll concentration"
-# Units ONLY on colorbar title
+Edge: TIGHT HARD SUPPORT MASK + SOFT FEATHERED DISPLAY EDGE
+Style: subtle contour lines + north arrow + scale bar
 
-# =========================================================================== #
+Title:  "WS0603 — Surface (0–5 m mean)"
+Subtitle: "YYYY-MM-DD to YYYY-MM-DD
+CHL panel title: "Chlorophyll fluorescence" OR "Chlorophyll concentration"
+Units ONLY on colorbar title
+
+
+ALL cruises: 4-panel Surface Maps (0–5 m mean) — LOOP VERSION
+Variables: Salinity, Temperature, Oxygen, Chlorophyll (CHL_0_5m + chl_source)
+Method: IDW (UTM grid) + LIGHT DISPLAY SMOOTHING
+
+Style: subtle contour lines + north arrow + scale bar
+Labels: station names on ALL panels with SHORT STRAIGHT ARROW leader lines
+FOCUS RANGES (pattern emphasis):
+  Salinity 28–35 PSU | Oxygen 1–5 mL/L | Temp 18–30 °C | Chl 0–5 mg m^-3
+Output: PNG
+
+```{r setup}
 
 if (!nzchar(system.file(package = "librarian"))) 
   install.packages("librarian")
@@ -38,26 +48,11 @@ conflicts_prefer(
   dplyr::filter,
   dplyr::select
   )
-
-# library(dplyr)
-# library(readr)
-# library(sf)
-# library(ggplot2)
-# library(ggspatial)
-# library(stringr)
-# library(terra)
-# library(geodata)
-# library(gstat)
-# library(viridis)
-# library(ggrepel)
-# library(grid)      
-# library(patchwork) # combine panels
-# library(lubridate)
 ```
 
 # 0) PATHS + CRUISE PICK
 
-```{r}
+```{r paths}
 base_dir <- here("data", "ctd_maps")
 dir_create(base_dir)
 
@@ -74,28 +69,69 @@ stopifnot(length(in_file) != 0)
 map_dir <- here(ts_dir, "Figures_freshening", "SurfaceMaps_0_5m_4vars_NOHALO")
 dir_create(map_dir)
 
-# base_dir <- "C:/Users/mostafaawada/OneDrive - University of South Florida/Desktop/CTD_data_codes/data/cleaned_ctd_data_v02/cleaned_ctd_data_v02/merged_by_cruise"
-# ts_dir   <- file.path(base_dir, "Time_series_new")
-
-# in_file  <- file.path(ts_dir, "CTD_surface_0_5m_ALL_casts_withRegionShelf_ALLPARAMS.csv")
-# stopifnot(file.exists(in_file))
-
-
-# map_dir <- file.path(ts_dir, "Figures_freshening", "SurfaceMaps_0_5m_4vars_NOHALO")
-# dir.create(map_dir, showWarnings = FALSE, recursive = TRUE)
-
-# name of cruise in cruise file column
-cruise_pick <- "WS0603.csv"   # <--- CHANGE THIS (must match EXACT cruise_file values)
-cruise_id <-
-  str_remove(cruise_pick, "\\.csv$") %>%
-  str_replace_all("[^A-Za-z0-9_\\-]+", "_")
-
-cruise_id   <- "SV18067"   # <--- CHANGE THIS (must match EXACT cruise_file values)
 ```
 
-# 1) READ + COLUMN DETECTION
+# 1) BASEMAP: FLORIDA (SAME EXTENT)
 
-```{r}
+```{r base-map}
+# projection
+utm_epsg <- 32617 # between 84W and 78W
+# utm_epsg <- 2237 # for Florida zone 17N
+
+# florida map object from geodata then projected
+florida_sf <- 
+  geodata::gadm(country = "USA", level = 1, path = tempdir()) %>%
+  st_as_sf() %>%
+  filter(NAME_1 == "Florida") %>%
+  st_transform(4326) %>% 
+  st_crop(xmin = -85, xmax = -79, ymin = 24, ymax = 29) %>%
+  st_transform(utm_epsg) 
+
+# set overall bounding box for plotting
+bb_utm <-
+  c(
+    xmin = -84.5,
+    xmax = -79.5,
+    ymin = 24.2,
+    ymax = 28.6
+  ) %>%
+  st_bbox(crs = 4326) %>%
+  st_as_sfc() %>%
+  # converts dd to meters
+  st_transform(utm_epsg) %>%
+  st_bbox()
+```
+
+# 2) DISPLAY SMOOTHING SETTINGS
+
+This does NOT change source data, only the plotted raster
+
+```{r smoother-options}
+# local IDW = tighter, less spread, more visually refined
+idw_options <-
+  list(
+    "idp_pow"   = 2.0,
+    "maxdist_m" = 120000,
+    "nmin_nb"   = 3,
+    "nmax_nb"   = 10
+  )
+
+# Light 3x3 weighted kernel (gentle smoothing only)
+smooth_kernel <-
+  matrix(
+    c(
+      1, 2, 1,
+      2, 4, 2,
+      1, 2, 1
+    ),
+    nrow = 3, byrow = TRUE
+  )
+smooth_kernel <- smooth_kernel / sum(smooth_kernel)
+```
+
+# 3) READ + COLUMN DETECTION
+
+```{r read-all-data}
 df0 <- read_csv(in_file, show_col_types = FALSE) %T>% 
   print()
 
@@ -113,33 +149,30 @@ pick_first_existing <- function(candidates, col_names) {
 }
 
 var_names <- list(
-  "sal"  = c("S_0_5m","sal_0_5m","mean_sal_psu","salinity"),
-  "temp" = c("T_0_5m","temp_0_5m","mean_temp_C","temperature","temp_C"),
-  "o2"   = c("O2_0_5m","oxy_0_5m","mean_oxy","oxygen","DO"),
-  "date" = c("date","Date","cast_date","datetime","time","timestamp")
-)
+  col_sal     = c("S_0_5m", "sal_0_5m", "mean_sal_psu", "salinity"),
+  col_temp    = c("T_0_5m", "temp_0_5m", "mean_temp_C", "temperature", "temp_C"),
+  col_o2      = c("O2_0_5m", "oxy_0_5m", "mean_oxy", "oxygen", "DO"),
+  col_date    = c("date", "Date", "cast_date", "datetime", "time", "timestamp"),
+  # confirmed by you:
+  col_chl     = c("CHL_0_5m"),
+  col_chl_src = c("chl_source")
+) %>%
+  map(
+    y = names(df0),
+    ~ pick_first_existing(.x, .y)
+  ) %>%
+  unlist()
 
-col_sal  <- pick_first_existing(var_names$sal, names(df0))
-col_tmp  <- pick_first_existing(var_names$temp, names(df0))
-col_o2   <- pick_first_existing(var_names$o2, names(df0))
-col_date <- pick_first_existing(var_names$date, names(df0))
+if (any(is.na(var_names))) {
+  stop(
+    paste0("Could not find column(s):\n- ", 
+           paste(names(var_names[is.na(var_names)]), collapse = "\n- "))
+       )
+}
 
-# col_sal <- pick_first_existing(, names(df0))
-# col_tmp <- pick_first_existing(c("T_0_5m","temp_0_5m","mean_temp_C","temperature","temp_C"), names(df0))
-# col_o2  <- pick_first_existing(c("O2_0_5m","oxy_0_5m","mean_oxy","oxygen","DO"), names(df0))
+for (i in seq(var_names)) do.call("<-", list(names(var_names)[i], var_names[i]))
 
-# confirmed by you:
-col_chl     <- "CHL_0_5m"
-col_chl_src <- "chl_source"
-
-if (is.na(col_sal)) stop("Could not find salinity column.")
-if (is.na(col_tmp)) stop("Could not find temperature column.")
-if (is.na(col_o2))  stop("Could not find oxygen column.")
-stopifnot(col_chl %in% names(df0))
-stopifnot(col_chl_src %in% names(df0))
-
-# col_date <- pick_first_existing(c("date","Date","cast_date","datetime","time","timestamp"), names(df0))
-
+# rename columns
 df0 <- 
   df0 %>%
   mutate(
@@ -148,7 +181,7 @@ df0 <-
     latitude    = suppressWarnings(as.numeric(latitude)),
     longitude   = suppressWarnings(as.numeric(longitude)),
     sal         = suppressWarnings(as.numeric(.data[[col_sal]])),
-    temp        = suppressWarnings(as.numeric(.data[[col_tmp]])),
+    temp        = suppressWarnings(as.numeric(.data[[col_temp]])),
     oxy         = suppressWarnings(as.numeric(.data[[col_o2]])),
     chl         = suppressWarnings(as.numeric(.data[[col_chl]])),
     chl_source  = as.character(.data[[col_chl_src]]),
@@ -156,257 +189,162 @@ df0 <-
     date_raw    = mdy(date_raw)
   ) %T>% 
   print()
-```
 
-
-```{r}
-df <-
+# extract all crusie IDs
+cruise_ids <- 
   df0 %>%
-  filter(
-    # str_detect(cruise_file, cruise_pick), # select cruise
-    str_detect(cruise_file, cruise_id), # select cruise
-    !is.na(station), 
-    station != "",
-    !is.na(latitude), 
-    !is.na(longitude)
-  ) %T>% 
+  pull(cruise_file) %>%
+  unique() %>%
+  tools::file_path_sans_ext() %T>% 
   print()
 
-if (nrow(df) == 0) stop("No rows matched cruise_pick = ", cruise_pick)
+cat("Total cruises found: ", length(cruise_ids), "\n")
+```
 
-# ---- date range text ---- #
-date_vec <- df$date_raw
-# date_vec <- NULL
-# if (!is.na(col_date)) {
-#   
-#   date_vec <- suppressWarnings(as.Date(df$date_raw))
-#   if (all(is.na(date_vec))) {
-#     date_vec <- suppressWarnings(as.Date(parse_date_time(
-#       df$date_raw,
-#       orders = c("ymd","mdy","dmy","ymd HMS","mdy HMS","dmy HMS","Ymd HMS","mdY HMS","dmY HMS")
-#     )))
-#   }
-# }
-# date_min <- if (!is.null(date_vec) && any(!is.na(date_vec))) min(date_vec, na.rm = TRUE) else NA
-# date_max <- if (!is.null(date_vec) && any(!is.na(date_vec))) max(date_vec, na.rm = TRUE) else NA
-date_min <- min(date_vec, na.rm = TRUE)
-date_max <- max(date_vec, na.rm = TRUE)
-date_txt <-
-  # if (!is.na(date_min) && !is.na(date_max)) {
-  if (all(!is.na(c(date_min, date_max)))) {
-    paste(format(date_min, "%Y-%m-%d"), "to", format(date_max, "%Y-%m-%d"))
+# ============================================================================ #
+# 4) Functions:
+
+```{r cruise-data}
+cruise_extract <- function(cruise_id, dat) {
+  
+  # ---- main title text ---- #
+  main_title <- paste0(cruise_id, " — Surface (0–5 m mean)")
+
+  df <-
+    dat %>%
+    filter(
+      str_detect(cruise_file, cruise_id), # select cruise
+      !is.na(station),
+      station != "",
+      !is.na(latitude),
+      !is.na(longitude)
+    )
+
+  if (nrow(df) == 0) stop("No rows matched cruise_id: ", cruise_id)
+
+  # ---- subtitle text ---- #
+  date_vec <- df$date_raw
+  date_min <- min(date_vec, na.rm = TRUE)
+  date_max <- max(date_vec, na.rm = TRUE)
+  sub_title <-
+    if (all(!is.na(c(date_min, date_max)))) {
+      paste(format(date_min, "%Y-%m-%d"), "to", format(date_max, "%Y-%m-%d"))
+    } else {
+      "Date range: NA"
+    }
+
+  sub_title <- paste0(sub_title, " | IDW + (UTM grid)")
+
+  # ---- chlorophyll source MODE for THIS cruise (panel title only) ---- #
+  chl_src_tbl <- df %>%
+    filter(!is.na(chl_source), chl_source != "") %>%
+    count(chl_source, name = "n") %>%
+    arrange(desc(n))
+
+  chl_src_mode <- if (nrow(chl_src_tbl) == 0) {
+    "unknown"
   } else {
-    "Date range: NA"
+    chl_src_tbl$chl_source[1]
+  }
+  
+  chl_panel_title <- 
+    if (identical(chl_src_mode, "chlorophyll_concentration")) {
+      "Chlorophyll concentration"
+      } else if (identical(chl_src_mode, "chlorophyll_fluorescence")) {
+        "Chlorophyll fluorescence"
+        } else {
+          "Chlorophyll"
+          }
+  
+
+  ## ---- station means (ONLY aggregation; no smoothing of source data)
+  df_st <-
+    df %>%
+    summarise(
+      .by = station,
+      across(
+        c(latitude, longitude, sal, temp, oxy, chl),
+        \(.x) mean(.x, na.rm = TRUE)
+      )
+    ) %>%
+    filter(!is.na(latitude), !is.na(longitude))
+  
+  # convert dataframe of stations to sf object and project
+  pts_utm <- 
+    st_as_sf(df_st, coords = c("longitude","latitude"), crs = 4326, remove = FALSE)  %>%
+    st_transform(utm_epsg) %>%
+    mutate(
+      longitude = st_coordinates(.)[,1],
+      latitude = st_coordinates(.)[,2]
+      ) 
+  
+  # ---- TIGHT HARD SUPPORT MASK — computed once ---- #  
+  # create a smaller, irregular bounding box based on convex hull or buffer (<3)
+  if (nrow(pts_utm) >= 3) {
+    # convex hull, needs at least 3 points
+    support_poly_utm <- 
+      pts_utm %>%
+      st_union() %>%
+      st_convex_hull() %>%
+      st_buffer(8000)   # 8 km buffer
+  } else {
+    # buffer around each point
+    support_poly_utm <- 
+      pts_utm %>%
+      st_buffer(30000) %>%
+      st_union()
   }
 
-# ---- chlorophyll source MODE for THIS cruise (panel title only) ---- #
-chl_src_tbl <- df %>%
-  filter(!is.na(chl_source), chl_source != "") %>%
-  count(chl_source, name = "n") %>%
-  arrange(desc(n))
-
-chl_src_mode <- if (nrow(chl_src_tbl) == 0) {
-  "unknown"
-} else {
-  chl_src_tbl$chl_source[1]
+  return(
+    list(
+      "pts_utm"          = pts_utm,
+      "support_poly_utm" = support_poly_utm,
+      "main_title"       = main_title,
+      "sub_title"        = sub_title,
+      "chl_panel_title"  = chl_panel_title
+      )
+  )
+  # ---- end of function cruise_extract ---- #
 }
+```
 
-## ---- station means (ONLY aggregation; no smoothing of source data)
-# df_st1 <- df %>%
-#   # group_by(station) %>%
-#   summarise(
-#     latitude  = mean(latitude,  na.rm = TRUE),
-#     longitude = mean(longitude, na.rm = TRUE),
-#     sal  = mean(sal,  na.rm = TRUE),
-#     temp = mean(temp, na.rm = TRUE),
-#     oxy  = mean(oxy,  na.rm = TRUE),
-#     chl  = mean(chl,  na.rm = TRUE),
-#     # .groups = "drop"
-#   ) %>%
-#   filter(!is.na(latitude), !is.na(longitude))
+# 5) FIXED TEMPLATE GRID (UTM) + IDW SETTINGS
 
-df_st <- 
-  df %>%
-  summarise(
-    .by = station,
-    across(
-      c(latitude, longitude, sal, temp, oxy, chl),
-      \(.x) mean(.x, na.rm = TRUE)
+```{r blank-grid}
+grid_blank <- function(.support_poly, utm_epsg, grid_res_m = 1000) {
+  # create blank raster grid with equal grid numbers
+  grid_rast <- 
+    # add 10 km boundary around convex hull
+    st_buffer(.support_poly, dist = 10000) %>%
+    st_bbox() %>%
+    {
+      terra::rast(
+        xmin       = .[["xmin"]],
+        xmax       = .[["xmax"]],
+        ymin       = .[["ymin"]],
+        ymax       = .[["ymax"]],
+        resolution = grid_res_m,
+        crs        = paste0("EPSG:", utm_epsg)
+      )
+    } 
+  
+  # convert projected raster to sf object with selected resolution
+  # this will be the sf object to map predicted values from interpolation (IDW)  
+  grid_sf <- 
+    as.data.frame(grid_rast, xy = TRUE, cells = TRUE, na.rm = FALSE) %>%
+    st_as_sf(coords = c("x","y"), crs = utm_epsg)
+  
+  return(
+    list(
+      "grid_rast" = grid_rast,
+      "grid_sf"   = grid_sf
     )
-  ) %>%
-  filter(!is.na(latitude), !is.na(longitude)) %T>% 
-  print()
-
-# pts_ll <- st_as_sf(df_st, coords = c("longitude","latitude"), crs = 4326)
-```
-
-
-## 2) BASEMAP: FLORIDA (SAME EXTENT)
-
-```{r}
-# bound
-xlim <- c(-84.5, -79.5)
-ylim <- c(24.2, 28.6)
-
-# projection
-utm_epsg <- 32617 # between 84W and 78W
-# utm_epsg <- 2237 # for Florida zone 17N
-
-# usa_states_v <- geodata::gadm(country = "USA", level = 1, path = tempdir())
-# florida_sf <- 
-#   st_as_sf(usa_states_v) %>%
-#   filter(NAME_1 == "Florida") %>%
-#   st_transform(4326) %>%
-#   st_crop(xmin = -85, xmax = -79, ymin = 24, ymax = 29)
-
-# florida map object from geodata then projected
-florida_sf <- 
-  geodata::gadm(country = "USA", level = 1, path = tempdir()) %>%
-  st_as_sf() %>%
-  filter(NAME_1 == "Florida") %>%
-  st_transform(4326) %>% 
-  st_crop(xmin = -85, xmax = -79, ymin = 24, ymax = 29) %>%
-  st_transform(utm_epsg) 
-
-
-```
-
-# 3) FIXED TEMPLATE GRID (UTM) + IDW SETTINGS
-
-```{r}
-# corners_ll <- st_as_sf(
-#   data.frame(
-#     lon = c(xlim[1], xlim[2], xlim[2], xlim[1]),
-#     lat = c(ylim[1], ylim[1], ylim[2], ylim[2])
-#   ),
-#   coords = c("lon","lat"),
-#   crs = 4326
-# )
-
-# create sf object bounds bounding box and projected
-# bb_utm <- st_bbox(st_transform(corners_ll, utm_epsg))
-bb_utm <-
-  data.frame(
-    lon = c(xlim[1], xlim[2], xlim[2], xlim[1]),
-    lat = c(ylim[1], ylim[1], ylim[2], ylim[2])
-  ) %>%
-  st_as_sf(
-    coords = c("lon", "lat"),
-    crs = 4326
-  ) %>%
-  # converts dd to meters
-  st_transform(utm_epsg) %>%
-  st_bbox()
-
-
-# finer grid = smoother-looking surface without changing source data
-grid_res_m <- 1000
-
-# create raster grid with equal grid numbers in x and y
-r_tmpl_utm <- terra::rast(
-  xmin       = bb_utm["xmin"], 
-  xmax       = bb_utm["xmax"],
-  ymin       = bb_utm["ymin"], 
-  ymax       = bb_utm["ymax"],
-  resolution = grid_res_m,
-  crs        = paste0("EPSG:", utm_epsg)
-)
-
-# convert projected raster to sf object with selected resolution
-# this will be the sf object to map predicted values from interpolation (IDW)  
-grid_sf <- 
-  as.data.frame(r_tmpl_utm, xy = TRUE, cells = TRUE, na.rm = FALSE) %>%
-  st_as_sf(coords = c("x","y"), crs = utm_epsg)
-
-# pts_utm <- st_transform(pts_ll, utm_epsg)
-
-# local IDW = tighter, less spread, more visually refined
-# idp_pow   <- 2.0
-# maxdist_m <- 120000
-# nmin_nb   <- 3
-# nmax_nb   <- 10
-```
-
-
-# 4) TIGHT HARD SUPPORT MASK — computed once
-
-```{r}
-# convert dataframe of stations to sf object and project
-pts_utm <- 
-  st_as_sf(df_st, coords = c("longitude","latitude"), crs = 4326, remove = FALSE)  %>%
-  st_transform(utm_epsg) %>%
-  mutate(
-    longitude = st_coordinates(.)[,1],
-    latitude = st_coordinates(.)[,2]
-    ) 
-
-
-# create a smaller, irregular bounding box based on convex hull or buffer (<3)
-if (nrow(df_st) >= 3) {
-  # convex hull, needs at least 3 points
-  support_poly_utm <- 
-    pts_utm %>%
-    st_union() %>%
-    st_convex_hull() %>%
-    st_buffer(8000)   # 8 km buffer
-} else {
-  # buffer around each point
-  support_poly_utm <- 
-    pts_utm %>%
-    st_buffer(30000) %>%
-    st_union()
+  )
+  # ---- end of function grid_blank ---- #
 }
-
-# transfomrm to geographic (decimal degrees)
-# support_poly_ll <- st_transform(support_poly_utm, 4326) # <-- not used
-
-# convert convex hull to linestring
-support_boundary_utm <- st_boundary(support_poly_utm)
-
-# show locations, convex hull in relation to Florida
-ggplot() +
-  geom_sf(data = grid_sf, color = "#500", alpha = 0.5) + # base grid for interpolation
-  geom_sf(data = florida_sf) + # florida map
-  geom_sf(
-    data = support_poly_utm,
-    color = "blue", fill = "lightblue", alpha = 0.5
-  ) + # convex hull
-  geom_sf(data = pts_utm) + # data points used
-  coord_sf(expand = FALSE) +
-  ggrepel::geom_text_repel(
-    data = pts_utm,
-    aes(x = longitude, y = latitude, label = station),
-    seed = 1,
-    size = 2.0,
-    color = "black",
-    box.padding = 0.18,
-    point.padding = 0.10,
-    min.segment.length = 0,
-    segment.color = "grey35",
-    segment.size = 0.30,
-    segment.curvature = 0.0,
-    arrow = grid::arrow(length = unit(0.006, "npc"), type = "closed"),
-    max.overlaps = Inf
-  )
 ```
 
-# 5) DISPLAY SMOOTHING SETTINGS
 
-This does NOT change source data, only the plotted raster
-
-```{r}
-# Light 3x3 weighted kernel (gentle smoothing only)
-smooth_kernel <-
-  matrix(
-    c(
-      1, 2, 1,
-      2, 4, 2,
-      1, 2, 1
-    ),
-    nrow = 3, byrow = TRUE
-  )
-smooth_kernel <- smooth_kernel / sum(smooth_kernel)
-```
 
 
 # 6) SOFT EDGE SETTINGS (opacity of points)
@@ -414,203 +352,57 @@ This only softens the DISPLAY edge near the mask boundary
 
 alpha refers to alpha of ggplot meaning opacity
 
-```{r}
-edge_feather_m <- 5000  # try 4000–7000 depending on taste
+```{r edge}
+edge_opacity <- function(
+    .grid_rast,
+    .support_poly_utm,
+    .edge_feather_m = 5000 # try 4000–7000 depending on taste
+    ) {
+  
+  # convert convex hull to linestring
+  support_boundary_line <- st_boundary(support_poly_utm) %>%
+    terra::vect()
+  
+  # calculate distance from convex hull (as linestring) then mask to within convex hull
+  dist_to_edge_utm <-
+    terra::distance(.grid_rast, support_boundary_line, names = "alpha") %>%
+    terra::mask(terra::vect(.support_poly_utm))
 
-# support_boundary_utm <- st_boundary(support_poly_utm)
+  # divides distances by edge buffer then sets upper bounds to 1 by converting all values
+  # above 1 to 1 and leaves all values below as is
+  alpha_utm <-
+    terra::clamp(dist_to_edge_utm / .edge_feather_m, lower = 0, upper = 1, values = TRUE)
 
-# calculate distance from convex hull (as linestring) then mask to within convex hull
-# dist_to_edge_utm <- terra::distance(r_tmpl_utm, terra::vect(support_boundary_utm))
-# dist_to_edge_utm <- terra::mask(dist_to_edge_utm, terra::vect(support_poly_utm))
-dist_to_edge_utm <- 
-  terra::distance(r_tmpl_utm, terra::vect(support_boundary_utm), names = "alpha") %>%
-  terra::mask(terra::vect(support_poly_utm))
-
-# divides distances by edge buffer then sets upper bounds to 1 by converting all values
-# above 1 to 1 and leaves all values below as is
-# alpha_utm <- dist_to_edge_utm / edge_feather_m
-# alpha_utm <- terra::clamp(alpha_utm, lower = 0, upper = 1, values = TRUE)
-alpha_utm <- 
-  terra::clamp(dist_to_edge_utm / edge_feather_m, lower = 0, upper = 1, values = TRUE) 
-
-
-ggplot() +
-  tidyterra::geom_spatraster(data = alpha_utm) +
-  scale_fill_viridis()
+  # ---- end of function edge_opacity ---- #
+}
 ```
 
 
 # 7) PANEL MAKER
 
-```{r}
-val_vec = df_st$sal
-col_name = "sal"
-var_title = "Salinity"
-legend_units = "PSU"
-.df_st            = df_st
-.alpha_utm        = alpha_utm
-.smooth_kernel    = smooth_kernel
-.grid_sf          = grid_sf
-.r_tmpl_utm       = r_tmpl_utm
-.utm_epsg         = utm_epsg
-.support_poly_utm = support_poly_utm
-.florida_sf       = florida_sf
-idw_opts          = idw_options
 
-col_name <- "sal"
-
-tet <- 
- pts_utm %>%
-    # transmute(
-    mutate(
-      .keep = "none",
-      station,
-      y = latitude,
-      x = longitude,
-      # val = suppressWarnings(as.numeric(val_vec))
-      val = .data[[col_name]],
-      geometry
-    ) %>%
-    filter(!is.na(val)) %T>% 
-  print()
- 
-pts_ll2
-
- # terra::values(.r_tmpl_utm)[.grid_sf$cell] <- as.numeric(idw_sf_utm$var1.pred)
-ggplot() +
- tidyterra::geom_spatraster(
-   data = r_pred_utm_sm,
-   # aes(lyr = 1)
- )
-ggplot() +
- tidyterra::geom_spatraster(
-   data = r_tmpl_utm
- ) +
-  scale_fill_viridis(na.value = NA)
-ggplot() +
- tidyterra::geom_spatraster(
-   data = r_pred_utm
- ) +
-  scale_fill_viridis(na.value = NA)
-
-ggplot() +
- # tidyterra::geom_spatvector(data = terra::vect(.florida_sf))
- tidyterra::geom_spatraster(
-   data = r_pred_water 
-   # data = terra::mask(r_pred_utm_sm,  terra::vect(.florida_sf), inverse = TRUE)
-# data = terra::mask(r_pred_ll, terra::vect(.florida_sf), inverse = TRUE)
- ) +
-  scale_fill_viridis(na.value = NA)
-ggplot() +
-geom_sf(data = .florida_sf)
-terra::vect(.florida_sf)
-
-
-
-
-r_pred_utm_sm <- 
-    # st_intersection(idw_sf_utm, .support_poly_utm) %>%
-    
-    terra::focal(
-      
-      w         = .smooth_kernel,
-      fun       = mean,
-      na.policy = "omit",
-      na.rm     = TRUE,
-      fillvalue = NA
-    )
-    
-ggplot() +
- tidyterra::geom_spatraster(
-   data =  r_pred_water
- ) 
-  # scale_fill_viridis(na.value = NA)
-ggplot() +
- tidyterra::geom_spatraster(
-   data =  c(r_pred_water, alpha_utm),
-   aes(fill = focal_mean)
- ) +
-  scale_fill_viridis(na.value = NA) 
-ggplot() +
- tidyterra::geom_spatraster(
-   data =  r_pred_water1,
-   aes(fill = dist)
- ) +
-  scale_fill_viridis(na.value = NA) 
-ggplot() +
- tidyterra::geom_spatvector(
-   data =  contour_sf
- ) +
-  scale_fill_viridis(na.value = NA) 
-
-ggplot() +
-  geom_sf(data = sf::st_as_sf(contour_sf)) +
- tidyterra::geom_spatvector(
-   data =  contour_sf,
-   color = "green",
-   linetype = "dashed"
- ) 
-
-
-ggplot() +
-  geom_raster(data = plot_df, aes(x = x, y = y, fill = pred, alpha = alpha)) + 
-  theme(legend.title = element_blank())
-
-ggplot() +
-  geom_raster(
-    data = as.data.frame(r_pred_water, xy = TRUE), aes(x = x, y = y, fill = focal_mean, alpha = alpha)
-  ) + 
-  theme(legend.title = element_blank())
-
-
-pts_utm$geometry
-```
-
-
-```{r}
-# local IDW = tighter, less spread, more visually refined
-idw_options <-
-  list(
-    "idp_pow"   = 2.0,
-    "maxdist_m" = 120000,
-    "nmin_nb"   = 3,
-    "nmax_nb"   = 10
-  )
-
+```{r idw-panel}
 make_panel <- function(
-  # val_vec, 
   col_name, 
   var_title, 
   legend_units, 
-  # .df_st            = df_st,  
+  .legend_limits    = NULL,
   .df_st            = pts_utm,  
   .alpha_utm        = alpha_utm,
   .smooth_kernel    = smooth_kernel,
   .grid_sf          = grid_sf,
-  .r_tmpl_utm       = r_tmpl_utm,
+  .grid_rast        = grid_rast,
   .utm_epsg         = utm_epsg,
   .support_poly_utm = support_poly_utm,
   .florida_sf       = florida_sf,
-  .bb_utm = bb_utm,
+  .bb_utm           = bb_utm,
   idw_opts          = idw_options
   ) {
-
-  # dd <- .df_st %>%
-  #   # transmute(
-  #   mutate(
-  #     .keep = "none",
-  #     station,
-  #     latitude,
-  #     longitude,
-  #     # val = suppressWarnings(as.numeric(val_vec))
-  #     val = .data[[col_name]]
-  #   ) %>%
-  #   filter(!is.na(latitude), !is.na(longitude), !is.na(val))
 
   # keep columns needed for IDW interpolation and plotting, converts selected
   # parameter name to val, removes NA 
   dd <- 
-    pts_utm %>%
+    .df_st %>%
     mutate(
       .keep = "none",
       station,
@@ -621,7 +413,7 @@ make_panel <- function(
     ) %>%
     filter(!is.na(val))
   
-  # skips if less than 5 points
+  # ---- skip plotting if less than 5 points ---- #
   if (nrow(dd) < 5) {
     return(
       ggplot() +
@@ -631,18 +423,11 @@ make_panel <- function(
     )
   }
 
-  # adds geometry, probably not needed
-  # pts_ll2  <- st_as_sf(dd, coords = c("longitude","latitude"), crs = 4326)
-  # pts_utm2 <- st_transform(pts_ll2, .utm_epsg)
-
-  # IDW interpolation as sf object
+  # ---- IDW interpolation as sf object ---- #
   # uses options set before
-  # idw_res <- 
   idw_sf_utm <- 
     gstat::idw(
       formula   = val ~ 1,
-      # locations = pts_utm2,
-      # locations = pts_ll2,
       locations = dd,
       newdata   = .grid_sf,
       idp       = idw_opts$idp_pow,
@@ -650,29 +435,18 @@ make_panel <- function(
       nmin      = idw_opts$nmin_nb,
       nmax      = idw_opts$nmax_nb
     )
-  
-
-  # idw_sf_utm <- st_as_sf(idw_res)
-  # st_crs(idw_sf_utm) <- .utm_epsg
 
   # replace empty grid with IDW values
-  # r_pred_utm <- .r_tmpl_utm
-  # terra::values(r_pred_utm)[.grid_sf$cell] <- as.numeric(idw_sf_utm$var1.pred)
-  # terra::values(.r_tmpl_utm)[.grid_sf$cell] <- as.numeric(idw_sf_utm$var1.pred)
-  terra::values(.r_tmpl_utm) <- as.numeric(idw_sf_utm$var1.pred)
+  terra::values(.grid_rast) <- as.numeric(idw_sf_utm$var1.pred)
 
-  # hard mask first
-  # from convex hull of data points
-  # r_pred_utm <- terra::mask(r_pred_utm, terra::vect(.support_poly_utm))
-  r_pred_utm <- terra::mask(.r_tmpl_utm, terra::vect(.support_poly_utm))
 
-  # LIGHT DISPLAY SMOOTHING ONLY
-  # smooths over values with weighting of 3x3 kernel
-  # r_pred_utm_sm <- 
+  # ---- LIGHT DISPLAY SMOOTHING ONLY ---- #
   r_pred_water <-
-     terra::mask(.r_tmpl_utm, terra::vect(.support_poly_utm)) %>%
+    # mask data outside convex hull
+    terra::mask(.grid_rast, terra::vect(.support_poly_utm)) %>%
+    
+    # smooths over values with weighting of 3x3 kernel
     terra::focal(
-      # r_pred_utm,
       w         = .smooth_kernel,
       fun       = mean,
       na.policy = "omit",
@@ -680,7 +454,7 @@ make_panel <- function(
       fillvalue = NA
     ) %>%
     
-    # combine IDW and alpha
+    # combine IDW and alpha (opacity)
     c(., alpha_utm) %>%
     
     # mask again so smoothing does not bleed outside supported footprint
@@ -690,70 +464,31 @@ make_panel <- function(
     # mask land mass
     terra::mask(terra::vect(.florida_sf), inverse = TRUE) 
     
+  # convert into data frame
   plot_df <- 
     r_pred_water %>%
-    # convert predicted values and alpha into data frames and combine
     as.data.frame(xy = TRUE, na.rm = FALSE) %>%
     rename("pred" = focal_mean)  %>%
     mutate(alpha = ifelse(is.na(alpha), 0, alpha)) %>%
     filter(!is.na(pred), alpha > 0)
   
   
-  
-  # mask again so smoothing does not bleed outside supported footprint
-  # r_pred_utm_sm <- terra::mask(r_pred_utm_sm, terra::vect(.support_poly_utm))
-
-  # alpha for soft display edge
-  # within set distance from edge, should already be clipped
-  # alpha_pred_utm <- terra::mask(.alpha_utm, terra::vect(.support_poly_utm))
-  # alpha_pred_utm <- .alpha_utm
-
-  # project for plotting
-  # r_pred_ll <- terra::project(r_pred_utm_sm, "EPSG:4326", method = "bilinear")
-  # alpha_ll  <- terra::project(alpha_pred_utm, "EPSG:4326", method = "bilinear")
-
-  # remove/mask land mass
-  # r_pred_water <- terra::mask(r_pred_ll, terra::vect(.florida_sf), inverse = TRUE)
-  # alpha_water  <- terra::mask(alpha_ll,  terra::vect(.florida_sf), inverse = TRUE)
-  # r_pred_water <- terra::mask(r_pred_utm_sm, terra::vect(.florida_sf), inverse = TRUE)
-  # alpha_water  <- terra::mask(.alpha_utm, terra::vect(.florida_sf), inverse = TRUE)
-
-  # # convert predicted values and alpha into data frames and combine
-  # pred_df <- 
-  #   as.data.frame(r_pred_water, xy = TRUE, na.rm = FALSE) %>%
-  #   select("x" = 1, "y" = 2, "pred" = 3)
-  # # names(pred_df) <- c("x","y","pred")
-  # 
-  # alpha_df <- as.data.frame(alpha_water, xy = TRUE, na.rm = FALSE) %>%
-  #   select("x" = 1, "y" = 2, "alpha" = 3)
-  # # names(alpha_df) <- c("x","y","alpha")
-
-  # plot_df <- 
-  #   pred_df %>%
-  #   # left_join(alpha_df, by = c("x","y")) %>%
-  #   mutate(alpha = ifelse(is.na(alpha), 0, alpha)) %>%
-  #   filter(!is.na(pred), alpha > 0)
-
-  
-  # subtle contours for a polished look
-  rng <- range(plot_df$pred, na.rm = TRUE)
+  # ---- contours ---- #
   contour_sf <- NULL
+
+  rng <- range(plot_df$pred, na.rm = TRUE)
 
   if (all(is.finite(rng)) && diff(rng) > 0) {
     brks <- pretty(rng, n = 6)
-    # brks <- brks[brks > rng[1] & brks < rng[2]]
-    brks <- brks[between(brks, rng[1], rng[2])]
-
+    brks <- brks[brks > rng[1] & brks < rng[2]]
+    
     if (length(brks) > 0) {
-      # contour_obj <- try(
       contour_sf <- try(
         terra::as.contour(r_pred_water, levels = brks),
         silent = TRUE
       )
       # if error, convert to sf
-      # if (!inherits(contour_obj, "try-error")) {
       if (!inherits(contour_sf, "try-error")) {
-        # contour_sf <- try(sf::st_as_sf(contour_obj), silent = TRUE)
         contour_sf <- try(sf::st_as_sf(contour_sf), silent = TRUE)
       }
       
@@ -762,27 +497,30 @@ make_panel <- function(
     }
   }
 
+  if (is.null(.legend_limits)) .legend_limits <- c(NA, NA)
+  
+  # ---- plot ---- #
   p <- 
     ggplot() +
     annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = "#cfe8f3") +
     geom_raster(data = plot_df, aes(x = x, y = y, fill = pred, alpha = alpha)) +
-    scale_fill_viridis_c(name = legend_units, option = "C", direction = 1, na.value = NA) +
+    scale_fill_viridis_c(
+      name = legend_units, option = "C", direction = 1, na.value = NA, 
+      limits = .legend_limits, oob = scales::squish) +
     scale_alpha_identity() +
-    geom_sf(data = .florida_sf, fill = "#e8e6df", color = "grey35", linewidth = 0.55)
+    geom_sf(data = .florida_sf, fill = "#e8e6df", color = "grey35", linewidth = 0.55) +
 
   # add contours if possible
-  if (!is.null(contour_sf) && nrow(contour_sf) > 0) {
-    p <- p + 
+  {
+    if (!is.null(contour_sf) && nrow(contour_sf) > 0) {
       geom_sf(
         data      = contour_sf,
         color     = "white",
         linewidth = 0.22,
         alpha     = 0.45
-    )
-  }
-
-  p <- p +
-    # geom_sf(data = pts_ll2, color = "black", size = 0.55, alpha = 0.95) +
+      )
+      }
+    } +
     geom_sf(data = dd, color = "black", size = 0.55, alpha = 0.95) +
     ggrepel::geom_text_repel(
       data = dd,
@@ -820,7 +558,6 @@ make_panel <- function(
       text_cex   = 0.55,
       line_width = 0.6
     ) +
-    # coord_sf(xlim = xlim, ylim = ylim, expand = FALSE) +
     coord_sf(xlim = .bb_utm[c(1,3)], ylim = .bb_utm[c(2,4)], expand = FALSE) +
     labs(title = var_title, x = NULL, y = NULL) +
     theme_bw() +
@@ -829,7 +566,6 @@ make_panel <- function(
       panel.grid.major = element_line(color = "grey85", linewidth = 0.3),
       panel.grid.minor = element_blank(),
       legend.position  = "right",
-      # legend.title     = element_text(face = "bold"),
       plot.title       = element_text(face = "bold", size = 12)
     )
 
@@ -837,157 +573,127 @@ make_panel <- function(
 }
 ```
 
+# 8) SAVE (SHORT FILENAMES to avoid OneDrive truncation)
+```{r save-func}
+save_maps <- function(plt, .map_dir, .cruise_id, verbose = TRUE) {
+  
+  png_out <- here(.map_dir, "png")
+  svg_out <- here(.map_dir, "svg")
+  
+  dir_create(png_out)
+  dir_create(svg_out)
+  
+  # file names
+  png_out  <- here(png_out, paste0(.cruise_id, "_0_5m_4vars_softedge_nav.png"))
+  tiff_out <- here(svg_out, paste0(.cruise_id, "_0_5m_4vars_softedge_nav.tiff"))
 
-# 8) CHL PANEL TITLE (no parentheses) + UNITS ON COLORBAR ONLY
-```{r}
-chl_panel_title <- if (identical(chl_src_mode, "chlorophyll_concentration")) {
-  "Chlorophyll concentration"
-} else if (identical(chl_src_mode, "chlorophyll_fluorescence")) {
-  "Chlorophyll fluorescence"
-} else {
-  "Chlorophyll"
+  # save
+  ggsave(png_out, plot = plt, width = 12.5, height = 9.5, dpi = 600)
+  ggsave(tiff_out, plot = plt, width = 12.5, height = 9.5, dpi = 600, compression = "lzw")
+
+  if (!verbose) return(invisible())
+  cat("\nOutput folder:\n", .map_dir, "\n\n")
+  cat("\nSaved PNG:\n", basename(png_out), "\nexists =", file_exists(png_out), "\n")
+  cat("Saved TIFF:\n", basename(tiff_out), "\nexists =", file_exists(tiff_out), "\n")
+  print(list.files(.map_dir))
+  print(basename(dir_ls(.map_dir)))
+  # ---- end of function save_maps ---- #
 }
 
-chl_units <- expression(paste("mg ", m^{-3}))
+
 ```
 
 
-# 9) BUILD 4 PANELS
-```{r}
-# p_sal <- make_panel(df_st$sal,  "Salinity", "PSU")
-# p_tmp <- make_panel(df_st$temp, "Temperature", expression(paste(degree, "C")))
-# p_o2  <- make_panel(df_st$oxy,  "Oxygen", "mL/L")
-# p_chl <- make_panel(df_st$chl,  chl_panel_title, chl_units)
-p_sal <- make_panel("sal",  "Salinity", "PSU")
-p_tmp <- make_panel("temp", "Temperature", expression(paste(degree, "C")))
-p_o2  <- make_panel("oxy",  "Oxygen", "mL/L")
-p_chl <- make_panel("chl",  chl_panel_title, chl_units)
-```
+# 9) Cruise Processing
 
-
-# 10) COMBINE + TITLE/SUBTITLE (NO caption)
-
-```{r}
-main_title <- paste0(cruise_id, " — Surface (0–5 m mean)")
-sub_title  <- paste0(date_txt, " | IDW + (UTM grid)")
-
-final_plot <- (p_sal + p_tmp) / (p_o2 + p_chl) +
-  plot_annotation(
-    title = main_title,
-    subtitle = sub_title
-  )
-
-final_plot <- final_plot + plot_annotation(
-  theme = theme(
-    plot.title = element_text(face = "bold", size = 16),
-    plot.subtitle = element_text(size = 11)
-  )
+```{r process}
+legends_lim <- list(
+  sal_limits  = c(29, 37),
+  temp_limits = c(18, 32),
+  oxy_limits  = c(1, 5),
+  chl_limits  = c(0, 5)
 )
 
-print(final_plot)
-```
+for (cruise_id in cruise_ids) {
+  cat(paste("Cruise ID:", cruise_id))
 
+  # extract cruise data
+  cruise_temp      <- cruise_extract(cruise_id, dat = df0)
+  pts_utm          <- cruise_temp$pts_utm
+  support_poly_utm <- cruise_temp$support_poly_utm
+  main_title       <- cruise_temp$main_title
+  sub_title        <- cruise_temp$sub_title
+  chl_panel_title  <- cruise_temp$chl_panel_title
 
-# 11) SAVE (SHORT FILENAMES to avoid OneDrive truncation)
-```{r}
-png_out  <- here(map_dir, paste0(cruise_id, "_0_5m_4vars_softedge_nav.png"))
-tiff_out <- here(map_dir, paste0(cruise_id, "_0_5m_4vars_softedge_nav.tiff"))
+  # create blank grid
+  grid_temp <- grid_blank(support_poly_utm, utm_epsg)
+  grid_rast <- grid_temp$grid_rast
+  grid_sf   <- grid_temp$grid_sf
 
-ggsave(png_out,  plot = final_plot, width = 12.5, height = 9.5, dpi = 600)
-ggsave(tiff_out, plot = final_plot, width = 12.5, height = 9.5, dpi = 600, compression = "lzw")
+  # # show locations, convex hull in relation to Florida
+  # print(ggplot() +
+  #   geom_sf(data = grid_sf, color = "#500", alpha = 0.5) + # base grid for interpolation
+  #   geom_sf(data = florida_sf) + # florida map
+  #   geom_sf(
+  #     data = support_poly_utm,
+  #     color = "blue", fill = "lightblue", alpha = 0.5
+  #   ) + # convex hull
+  #   geom_sf(data = pts_utm) + # data points used
+  #   coord_sf(expand = FALSE) +
+  #   labs(x = NULL, y = NULL) +
+  #   ggrepel::geom_text_repel(
+  #     data = pts_utm,
+  #     aes(x = longitude, y = latitude, label = station),
+  #     seed               = 1,
+  #     size               = 2.0,
+  #     color              = "black",
+  #     box.padding        = 0.18,
+  #     point.padding      = 0.10,
+  #     min.segment.length = 0,
+  #     segment.color      = "grey35",
+  #     segment.size       = 0.30,
+  #     segment.curvature  = 0.0,
+  #     arrow              = grid::arrow(length = unit(0.006, "npc"), type = "closed"),
+  #     max.overlaps       = Inf
+  #   ))
 
-cat("\nOutput folder:\n", map_dir, "\n\n")
-cat("\nSaved PNG:\n", basename(png_out),  "\nexists =", file_exists(png_out),  "\n")
-cat("Saved TIFF:\n", basename(tiff_out), "\nexists =", file_exists(tiff_out), "\n")
-print(list.files(map_dir))
-print(basename(dir_ls(map_dir)))
-```
+  # create edge opacity
+  alpha_utm <- edge_opacity(grid_rast, support_poly_utm)
 
+ # print(ggplot() +
+ #    tidyterra::geom_spatraster(data = alpha_utm1) +
+ #    scale_fill_viridis())
+  
+  # make panels
+  p_sal <- make_panel("sal", "Salinity", "PSU", legends_lim[[1]])
+  p_tmp <- make_panel("temp", "Temperature", expression(paste(degree, "C")), legends_lim[[2]])
+  p_o2  <- make_panel("oxy", "Oxygen", expression(paste("mL ", L^{-1})), legends_lim[[3]])
+  p_chl <- make_panel("chl", chl_panel_title, expression(paste("mg ", m^{-3})), legends_lim[[4]])
 
+  # combine panels
+  final_plot <-
+    (p_sal + p_tmp) / (p_o2 + p_chl) +
+    plot_annotation(
+      title = main_title,
+      subtitle = sub_title
+    ) +
+    plot_annotation(
+      theme = theme(
+        plot.title    = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 11)
+      )
+    )
 
-# =========================================================================== #
+  print(final_plot)
 
-```{r}
-# =========================================================================== #
-# ALL cruises: 4-panel Surface Maps (0–5 m mean) — LOOP VERSION
-# Variables: Salinity, Temperature, Oxygen, Chlorophyll (CHL_0_5m + chl_source)
-# Method: IDW (UTM grid) + LIGHT DISPLAY SMOOTHING
-
-# Style: subtle contour lines + north arrow + scale bar
-# Labels: station names on ALL panels with SHORT STRAIGHT ARROW leader lines
-# FOCUS RANGES (pattern emphasis):
-#   Salinity 28–35 PSU | Oxygen 1–5 mL/L | Temp 18–30 °C | Chl 0–5 mg m^-3
-# Output: PNG
-
-# =========================================================================== #
-
-library(dplyr)
-library(readr)
-library(sf)
-library(ggplot2)
-library(ggspatial)
-library(stringr)
-library(terra)
-library(geodata)
-library(gstat)
-library(viridis)
-library(ggrepel)
-library(grid)     
-library(patchwork) # combine panels
-library(lubridate)
-library(scales)
-```
-
-
-# 0) PATHS
-
-```{r}
-base_dir <- "C:/Users/mostafaawada/OneDrive - University of South Florida/Desktop/CTD_data_codes/data/cleaned_ctd_data_v02/cleaned_ctd_data_v02/merged_by_cruise"
-ts_dir   <- file.path(base_dir, "Time_series_new")
-
-in_file  <- file.path(ts_dir, "CTD_surface_0_5m_ALL_casts_withRegionShelf_ALLPARAMS.csv")
-stopifnot(file.exists(in_file))
-
-# NEW folder for focus-range maps
-map_dir <- file.path(ts_dir, "Figures_freshening", "Surf4_focusRanges_png")
-dir.create(map_dir, showWarnings = FALSE, recursive = TRUE)
-```
-
-
-# 1) READ + COLUMN DETECTION
-
-```{r}
-df0 <- read_csv(in_file, show_col_types = FALSE)
-
-need_base <- c("cruise_file","station","latitude","longitude")
-miss_base <- setdiff(need_base, names(df0))
-if (length(miss_base) > 0) stop("Missing base columns: ", paste(miss_base, collapse = ", "))
-
-pick_first_existing <- function(candidates, col_names) {
-  hit <- candidates[candidates %in% col_names]
-  if (length(hit) == 0) return(NA_character_)
-  hit[1]
+  save_maps(final_plot, map_dir, cruise_id)
 }
-
-col_sal <- pick_first_existing(c("S_0_5m","sal_0_5m","mean_sal_psu","salinity"), names(df0))
-col_tmp <- pick_first_existing(c("T_0_5m","temp_0_5m","mean_temp_C","temperature","temp_C"), names(df0))
-col_o2  <- pick_first_existing(c("O2_0_5m","oxy_0_5m","mean_oxy","oxygen","DO"), names(df0))
-
-# confirmed by you:
-col_chl     <- "CHL_0_5m"
-col_chl_src <- "chl_source"
-
-if (is.na(col_sal)) stop("Could not find salinity column.")
-if (is.na(col_tmp)) stop("Could not find temperature column.")
-if (is.na(col_o2))  stop("Could not find oxygen column.")
-stopifnot(col_chl %in% names(df0))
-stopifnot(col_chl_src %in% names(df0))
-
-col_date <- pick_first_existing(c("date","Date","cast_date","datetime","time","timestamp"), names(df0))
 ```
 
 
-# 2) FOCUS RANGES (pattern emphasis)
+
+
+# FOCUS RANGES (pattern emphasis)
 ```{r}
 sal_limits  <- c(28, 35)
 oxy_limits  <- c(1,  5)
@@ -1000,429 +706,4 @@ cat("Oxygen:      ", oxy_limits[1],  " to ", oxy_limits[2],  "\n", sep = "")
 cat("Temperature: ", temp_limits[1], " to ", temp_limits[2], "\n", sep = "")
 cat("Chlorophyll: ", chl_limits[1],  " to ", chl_limits[2],  "\n\n", sep = "")
 ```
-
-
-# 3) CLEAN ALL DATA ONCE
-```{r}
-df_all <- df0 %>%
-  mutate(
-    cruise_file = as.character(cruise_file),
-    station     = str_squish(as.character(station)),
-    latitude    = suppressWarnings(as.numeric(latitude)),
-    longitude   = suppressWarnings(as.numeric(longitude)),
-    sal         = suppressWarnings(as.numeric(.data[[col_sal]])),
-    temp        = suppressWarnings(as.numeric(.data[[col_tmp]])),
-    oxy         = suppressWarnings(as.numeric(.data[[col_o2]])),
-    chl         = suppressWarnings(as.numeric(.data[[col_chl]])),
-    chl_source  = as.character(.data[[col_chl_src]]),
-    date_raw    = if (!is.na(col_date)) .data[[col_date]] else NA
-  ) %>%
-  filter(
-    !is.na(cruise_file), cruise_file != "",
-    !is.na(station), station != "",
-    !is.na(latitude), !is.na(longitude)
-  )
-
-if (nrow(df_all) == 0) stop("No valid rows found after filtering.")
-```
-
-
-# 4) BASEMAP: FLORIDA (SAME EXTENT) — load once
-```{r}
-xlim <- c(-84.5, -79.5)
-ylim <- c(24.2, 28.6)
-
-usa_states_v <- geodata::gadm(country = "USA", level = 1, path = tempdir())
-florida_sf <- st_as_sf(usa_states_v) %>%
-  filter(NAME_1 == "Florida") %>%
-  st_transform(4326) %>%
-  st_crop(xmin = -85, xmax = -79, ymin = 24, ymax = 29)
-```
-
-
-# 5) FIXED TEMPLATE GRID (UTM) + IDW SETTINGS — build once
-```{r}
-
-utm_epsg <- 32617
-
-corners_ll <- st_as_sf(
-  data.frame(
-    lon = c(xlim[1], xlim[2], xlim[2], xlim[1]),
-    lat = c(ylim[1], ylim[1], ylim[2], ylim[2])
-  ),
-  coords = c("lon","lat"),
-  crs = 4326
-)
-bb_utm <- st_bbox(st_transform(corners_ll, utm_epsg))
-
-grid_res_m <- 1000
-
-r_tmpl_utm <- terra::rast(
-  xmin = bb_utm["xmin"], xmax = bb_utm["xmax"],
-  ymin = bb_utm["ymin"], ymax = bb_utm["ymax"],
-  resolution = grid_res_m,
-  crs = paste0("EPSG:", utm_epsg)
-)
-
-grid_df <- as.data.frame(r_tmpl_utm, xy = TRUE, cells = TRUE, na.rm = FALSE)
-grid_sf <- st_as_sf(grid_df, coords = c("x","y"), crs = utm_epsg)
-
-# local IDW = tighter, less spread
-idp_pow   <- 2.0
-maxdist_m <- 120000
-nmin_nb   <- 3
-nmax_nb   <- 10
-```
-
-
-# 6) DISPLAY SMOOTHING KERNEL — fixed
-```{r}
-smooth_kernel <- matrix(
-  c(1, 2, 1,
-    2, 4, 2,
-    1, 2, 1),
-  nrow = 3, byrow = TRUE
-)
-smooth_kernel <- smooth_kernel / sum(smooth_kernel)
-```
-
-
-# 7) SOFT EDGE SETTINGS — fixed
-```{r}
-edge_feather_m <- 5000
-```
-
-
-# 8) PANEL MAKER
-```{r}
-
-make_panel <- function(df_st, support_poly_utm, alpha_utm,
-                       val_vec, var_title, legend_units, legend_limits) {
-
-  dd <- df_st %>%
-    transmute(
-      station,
-      latitude,
-      longitude,
-      val = suppressWarnings(as.numeric(val_vec))
-    ) %>%
-    filter(!is.na(latitude), !is.na(longitude), !is.na(val))
-
-  if (nrow(dd) < 5) {
-    return(
-      ggplot() +
-        theme_void() +
-        labs(title = paste0(var_title, " (too few stations)")) +
-        theme(plot.title = element_text(face = "bold", size = 12))
-    )
-  }
-
-  pts_ll2  <- st_as_sf(dd, coords = c("longitude","latitude"), crs = 4326)
-  pts_utm2 <- st_transform(pts_ll2, utm_epsg)
-
-  idw_res <- gstat::idw(
-    formula   = val ~ 1,
-    locations = pts_utm2,
-    newdata   = grid_sf,
-    idp       = idp_pow,
-    maxdist   = maxdist_m,
-    nmin      = nmin_nb,
-    nmax      = nmax_nb
-  )
-
-  idw_sf_utm <- st_as_sf(idw_res)
-  st_crs(idw_sf_utm) <- utm_epsg
-
-  r_pred_utm <- r_tmpl_utm
-  terra::values(r_pred_utm)[grid_df$cell] <- as.numeric(idw_sf_utm$var1.pred)
-
-  # hard mask first
-  r_pred_utm <- terra::mask(r_pred_utm, terra::vect(support_poly_utm))
-
-  # LIGHT DISPLAY SMOOTHING ONLY
-  r_pred_utm_sm <- terra::focal(
-    r_pred_utm,
-    w = smooth_kernel,
-    fun = mean,
-    na.policy = "omit",
-    na.rm = TRUE,
-    fillvalue = NA
-  )
-
-  # mask again so smoothing does not bleed outside supported footprint
-  r_pred_utm_sm <- terra::mask(r_pred_utm_sm, terra::vect(support_poly_utm))
-
-  # alpha for soft display edge
-  alpha_pred_utm <- terra::mask(alpha_utm, terra::vect(support_poly_utm))
-
-  # project for plotting
-  r_pred_ll <- terra::project(r_pred_utm_sm, "EPSG:4326", method = "bilinear")
-  alpha_ll  <- terra::project(alpha_pred_utm, "EPSG:4326", method = "bilinear")
-
-  # remove land
-  r_pred_water <- terra::mask(r_pred_ll, terra::vect(florida_sf), inverse = TRUE)
-  alpha_water  <- terra::mask(alpha_ll,  terra::vect(florida_sf), inverse = TRUE)
-
-  pred_df <- as.data.frame(r_pred_water, xy = TRUE, na.rm = FALSE)
-  names(pred_df) <- c("x","y","pred")
-
-  alpha_df <- as.data.frame(alpha_water, xy = TRUE, na.rm = FALSE)
-  names(alpha_df) <- c("x","y","alpha")
-
-  plot_df <- pred_df %>%
-    left_join(alpha_df, by = c("x","y")) %>%
-    mutate(alpha = ifelse(is.na(alpha), 0, alpha)) %>%
-    filter(!is.na(pred), alpha > 0) %>%
-    select(x, y, pred, alpha)
-
-  # subtle contours for a polished look
-  rng <- range(plot_df$pred, na.rm = TRUE)
-  contour_sf <- NULL
-
-  if (is.finite(rng[1]) && is.finite(rng[2]) && diff(rng) > 0) {
-    brks <- pretty(rng, n = 6)
-    brks <- brks[brks > rng[1] & brks < rng[2]]
-
-    if (length(brks) > 0) {
-      contour_obj <- try(
-        terra::as.contour(r_pred_water, levels = brks),
-        silent = TRUE
-      )
-
-      if (!inherits(contour_obj, "try-error")) {
-        contour_sf <- try(sf::st_as_sf(contour_obj), silent = TRUE)
-        if (inherits(contour_sf, "try-error")) contour_sf <- NULL
-      }
-    }
-  }
-
-  p <- ggplot() +
-    annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = "#cfe8f3") +
-    geom_raster(data = plot_df, aes(x = x, y = y, fill = pred, alpha = alpha)) +
-    scale_fill_viridis_c(
-      name = legend_units,
-      option = "C",
-      direction = 1,
-      limits = legend_limits,
-      oob = scales::squish,
-      na.value = NA
-    ) +
-    scale_alpha_identity() +
-    geom_sf(data = florida_sf, fill = "#e8e6df", color = "grey35", linewidth = 0.55)
-
-  if (!is.null(contour_sf) && nrow(contour_sf) > 0) {
-    p <- p + geom_sf(
-      data = contour_sf,
-      color = "white",
-      linewidth = 0.22,
-      alpha = 0.45
-    )
-  }
-
-  p <- p +
-    geom_sf(data = pts_ll2, color = "black", size = 0.55, alpha = 0.95) +
-    ggrepel::geom_text_repel(
-      data = dd,
-      aes(x = longitude, y = latitude, label = station),
-      seed = 1,
-      size = 2.0,
-      color = "black",
-      box.padding = 0.18,
-      point.padding = 0.10,
-      min.segment.length = 0,
-      segment.color = "grey35",
-      segment.size = 0.30,
-      segment.curvature = 0.0,
-      arrow = grid::arrow(length = unit(0.006, "npc"), type = "closed"),
-      max.overlaps = Inf
-    ) +
-    annotation_north_arrow(
-      location = "tr",
-      which_north = "true",
-      pad_x = unit(0.10, "cm"),
-      pad_y = unit(0.10, "cm"),
-      height = unit(0.85, "cm"),
-      width = unit(0.85, "cm"),
-      style = north_arrow_orienteering(
-        line_col = "grey20",
-        fill = c("grey20", "white"),
-        text_col = "grey20"
-      )
-    ) +
-    annotation_scale(
-      location = "bl",
-      width_hint = 0.22,
-      pad_x = unit(0.12, "cm"),
-      pad_y = unit(0.12, "cm"),
-      text_cex = 0.55,
-      line_width = 0.6
-    ) +
-    coord_sf(xlim = xlim, ylim = ylim, expand = FALSE) +
-    labs(title = var_title, x = NULL, y = NULL) +
-    theme_bw() +
-    theme(
-      panel.background = element_rect(fill = "#cfe8f3"),
-      panel.grid.major = element_line(color = "grey85", linewidth = 0.3),
-      panel.grid.minor = element_blank(),
-      legend.position  = "right",
-      legend.title     = element_text(face = "bold"),
-      plot.title       = element_text(face = "bold", size = 12)
-    )
-
-  p
-}
-```
-
-
-# 9) CRUISE LIST
-
-```{r}
-cruise_list <- df_all %>%
-  distinct(cruise_file) %>%
-  arrange(cruise_file) %>%
-  pull(cruise_file)
-
-cat("Total cruises found: ", length(cruise_list), "\n")
-```
-
-
-# 10) LOOP OVER ALL CRUISES
-```{r}
-for (cruise_pick in cruise_list) {
-
-  cat("\n----------------------------------\n")
-  cat("Processing: ", cruise_pick, "\n", sep = "")
-
-  cruise_id <- str_replace(cruise_pick, "\\.csv$", "")
-  cruise_id <- str_replace_all(cruise_id, "[^A-Za-z0-9_\\-]+", "_")
-
-  df <- df_all %>%
-    filter(cruise_file == cruise_pick)
-
-  if (nrow(df) == 0) {
-    cat("Skipped: no rows.\n")
-    next
-  }
-
-  ## ---- date range text
-  date_vec <- NULL
-  if (!is.na(col_date)) {
-    date_vec <- suppressWarnings(as.Date(df$date_raw))
-    if (all(is.na(date_vec))) {
-      date_vec <- suppressWarnings(as.Date(parse_date_time(
-        df$date_raw,
-        orders = c("ymd","mdy","dmy","ymd HMS","mdy HMS","dmy HMS","Ymd HMS","mdY HMS","dmY HMS")
-      )))
-    }
-  }
-
-  date_min <- if (!is.null(date_vec) && any(!is.na(date_vec))) min(date_vec, na.rm = TRUE) else NA
-  date_max <- if (!is.null(date_vec) && any(!is.na(date_vec))) max(date_vec, na.rm = TRUE) else NA
-  date_txt <- if (!is.na(date_min) && !is.na(date_max)) {
-    paste0(format(date_min, "%Y-%m-%d"), " to ", format(date_max, "%Y-%m-%d"))
-  } else {
-    "Date range: NA"
-  }
-
-  ## ---- chlorophyll source MODE
-  chl_src_tbl <- df %>%
-    filter(!is.na(chl_source), chl_source != "") %>%
-    count(chl_source, name = "n") %>%
-    arrange(desc(n))
-
-  chl_src_mode <- if (nrow(chl_src_tbl) == 0) "unknown" else chl_src_tbl$chl_source[1]
-
-  ## ---- station means
-  df_st <- df %>%
-    group_by(station) %>%
-    summarise(
-      latitude  = mean(latitude,  na.rm = TRUE),
-      longitude = mean(longitude, na.rm = TRUE),
-      sal  = mean(sal,  na.rm = TRUE),
-      temp = mean(temp, na.rm = TRUE),
-      oxy  = mean(oxy,  na.rm = TRUE),
-      chl  = mean(chl,  na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    filter(!is.na(latitude), !is.na(longitude))
-
-  if (nrow(df_st) < 2) {
-    cat("Skipped: too few stations.\n")
-    next
-  }
-
-  pts_ll  <- st_as_sf(df_st, coords = c("longitude","latitude"), crs = 4326)
-  pts_utm <- st_transform(pts_ll, utm_epsg)
-
-  ## ---- support mask
-  if (nrow(df_st) >= 3) {
-    support_poly_utm <- pts_utm %>%
-      st_union() %>%
-      st_convex_hull() %>%
-      st_buffer(8000)
-  } else {
-    support_poly_utm <- pts_utm %>%
-      st_buffer(30000) %>%
-      st_union()
-  }
-
-  ## ---- soft edge alpha
-  support_boundary_utm <- st_boundary(support_poly_utm)
-
-  dist_to_edge_utm <- terra::distance(r_tmpl_utm, terra::vect(support_boundary_utm))
-  dist_to_edge_utm <- terra::mask(dist_to_edge_utm, terra::vect(support_poly_utm))
-
-  alpha_utm <- dist_to_edge_utm / edge_feather_m
-  alpha_utm <- terra::clamp(alpha_utm, lower = 0, upper = 1, values = TRUE)
-
-  ## ---- chl title
-  chl_panel_title <- if (identical(chl_src_mode, "chlorophyll_concentration")) {
-    "Chlorophyll concentration"
-  } else if (identical(chl_src_mode, "chlorophyll_fluorescence")) {
-    "Chlorophyll fluorescence"
-  } else {
-    "Chlorophyll"
-  }
-
-  chl_units <- expression(paste("mg ", m^{-3}))
-
-  ## ---- build panels with focus limits
-  p_sal <- make_panel(df_st, support_poly_utm, alpha_utm,
-                      df_st$sal,  "Salinity",    "PSU",                    sal_limits)
-
-  p_tmp <- make_panel(df_st, support_poly_utm, alpha_utm,
-                      df_st$temp, "Temperature", expression(paste(degree, "C")), temp_limits)
-
-  p_o2  <- make_panel(df_st, support_poly_utm, alpha_utm,
-                      df_st$oxy,  "Oxygen",      "mL/L",                  oxy_limits)
-
-  p_chl <- make_panel(df_st, support_poly_utm, alpha_utm,
-                      df_st$chl,  chl_panel_title, chl_units,             chl_limits)
-
-  ## ---- combine
-  main_title <- paste0(cruise_id, " — Surface (0–5 m mean)")
-  sub_title  <- paste0(date_txt, " | IDW + (UTM grid)")
-
-  final_plot <- (p_sal + p_tmp) / (p_o2 + p_chl) +
-    plot_annotation(title = main_title, subtitle = sub_title) +
-    plot_annotation(
-      theme = theme(
-        plot.title = element_text(face = "bold", size = 16),
-        plot.subtitle = element_text(size = 11)
-      )
-    )
-
-  ## ---- save PNG only (short name)
-  png_out <- file.path(map_dir, paste0(cruise_id, "_s4_focus.png"))
-  ggsave(png_out, plot = final_plot, width = 12.5, height = 9.5, dpi = 300)
-
-  cat("Saved: ", png_out, "\n", sep = "")
-}
-
-cat("\nFinished all cruises.\n")
-cat("Output folder:\n", map_dir, "\n\n")
-print(list.files(map_dir))
-```
-
-
 
