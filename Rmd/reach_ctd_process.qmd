@@ -33,7 +33,8 @@ conflicts_prefer(
   dplyr::select()
   )
   
-
+# Manually extracted hexidecimal ODV colour palette
+ODV_colours <- c("#feb483", "#d31f2a", "#ffc000", "#27ab19", "#0db5e6", "#7139fe", "#d16cfa")
 ```
 
 ## 2.2 Search for Dataset Path
@@ -43,21 +44,23 @@ conflicts_prefer(
 dir_data_save <- here("data", "processed", "reach_ctd_process")
 dir_plt_save  <- here("data", "plots", "reach_ctd_process")
 
-cruise_id <- "REACH003"
+cruise_id <- "REACH004"
 
 ctd_path <- 
   here("../ctd_data", cruise_id, "/datcnv/") %>%
   dir_ls(regexp = "cnv$") %>%
   print()
 
+ctd_rm <- "REACH003_S10_10|REACH004_S15_7|REACH004_S21_2"
+
 # remove cast with only upcast from REACH003, stn 10 cast 10
-ctd_path <- ctd_path[which(!str_detect(ctd_path, "REACH003_S10_10"))] %T>% 
+ctd_path <- ctd_path[which(!str_detect(ctd_path, ctd_rm))] %T>% 
   print()
 ```
 
 ```{r test-plot}
 test_ctd <- 
-  ctd_path[10] %>%
+  ctd_path[16] %>%
   print() %>%
   read.ctd()
 
@@ -70,9 +73,9 @@ test_trim <- ctdTrim(test_ctd, method = "sbe")
 plot(test_trim)
 # plot(test_trim2)
 
-test_dec2 <- ctdDecimate(test_trim, p = 0.25, e = 2)
+test_dec <- ctdDecimate(test_trim, p = 0.25, e = 2)
 plot(test_dec)
-plot(test_dec2)
+# plot(test_dec2)
 
 oce::plot(test_dec, which = "fluorescence", type = "o")
 oce::plot(test_dec, which = "oxygen2", type = "o")
@@ -98,9 +101,9 @@ ctd_all <-
     str_replace("_", "/")
     
     
-    if (str_detect(.x, "REACH003")) {
+    if (str_detect(.x, "REACH003|REACH004")) {
      station <- .x %>%
-      str_extract("S\\d{2}")
+      str_extract("S\\d{2}|GR")
     }
     
     
@@ -147,60 +150,40 @@ sel_stn1 <- c("S07|S06|S05",
 "S01|S02|S03|S04|S05",
 "S09|S10|S11|S12")
 for (sel_stn in sel_stn1) {
+  sel_stn_num <- which(str_detect(names(ctd_all), sel_stn))
 
-sel_stn_num <- which(str_detect(names(ctd_all), sel_stn))
+  if (length(sel_stn_num) < 2) {
+    message("Not enough stations to plot, skipping.")
+    next
+  }
 
-ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), sel_stn)])
-plot(ctd_section)
-plot(
-  ctd_section, 
-  which = "temperature",
-  xtype = "track", ztype = "image",
-  showBottom = TRUE,
-  showStations = TRUE,
-  # zcol = oce::oceColorsTemperature
-  zcol = rev(ODV_colours)
+  ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), sel_stn)])
+  plot(ctd_section)
+  plot(
+    ctd_section,
+    which = "temperature",
+    xtype = "track", ztype = "image",
+    showBottom = TRUE,
+    showStations = TRUE,
+    # zcol = oce::oceColorsTemperature
+    zcol = rev(ODV_colours)
   )
 
-plot(
-  ctd_section, 
-  which = "salinity",
-  xtype = "track", ztype = "image",
-  showBottom = TRUE,
-  showStations = TRUE,
-  # zcol = oce::oceColorsTemperature
-  zcol = rev(ODV_colours)
-  )}
+  plot(
+    ctd_section,
+    which = "salinity",
+    xtype = "track", ztype = "image",
+    showBottom = TRUE,
+    showStations = TRUE,
+    # zcol = oce::oceColorsTemperature
+    zcol = rev(ODV_colours)
+  )
+}
 ```
 
 ```{r}
-ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S15|C24|S17")][c(2,1,3)])
-plot(ctd_section)
-plot(
-  ctd_section, 
-  which = "temperature",
-  xtype = "track", ztype = "image",
-  showBottom = TRUE,
-  showStations = TRUE,
-  # zcol = oce::oceColorsTemperature
-  zcol = rev(ODV_colours)
-  )
-
-plot(
-  ctd_section, 
-  which = "salinity",
-  xtype = "track", ztype = "image",
-  showBottom = TRUE,
-  showStations = TRUE,
-  # zcol = oce::oceColorsTemperature
-  zcol = rev(ODV_colours)
-  )
-```
-
-
-
-```{r}
-ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S10|C23|S08")][c(2,1,3)])
+# ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S15|C24|S17")][c(2,1,3)])
+ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S15|S16|S17")][c(1,2,3)])
 plot(ctd_section)
 plot(
   ctd_section, 
@@ -224,8 +207,10 @@ plot(
 ```
 
 
+
 ```{r}
-ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S17|S14|S10|S07")][c(1,2,3,4)])
+# ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S10|C23|S08")][c(2,1,3)])
+ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S08|GR|S09|S10|S11")][c(2,1,3,4,5)])
 plot(ctd_section)
 plot(
   ctd_section, 
@@ -235,6 +220,33 @@ plot(
   showStations = TRUE,
   # zcol = oce::oceColorsTemperature
   zcol = rev(ODV_colours)
+  )
+
+plot(
+  ctd_section, 
+  which = "salinity",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  zcol = rev(ODV_colours)
+  )
+```
+
+
+```{r}
+# ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S17|S14|S10|S07")][c(1,2,3,4)])
+ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), "S17|S14|S10|S07|S22|S01")][c(1,2,3,4,5,6)])
+plot(ctd_section)
+plot(
+  ctd_section, 
+  which = "temperature",
+  xtype = "track", ztype = "image",
+  showBottom = TRUE,
+  showStations = TRUE,
+  # zcol = oce::oceColorsTemperature
+  # zcol = rev(ODV_colours)
+  zcol = rev(colorRampPalette(ODV_colours)(100))
   )
 plot(
   ctd_section, 
@@ -275,6 +287,11 @@ write_csv(
 
 ```
 
+
+# Save Envrionmental Plots
+
+Box: "~Box/IMaRS_Projects/FLRACEP V (REACH) project/data/dataProcessing_phase1/reach_ctd"
+
 ```{r}
 test <- 
   list(
@@ -291,9 +308,11 @@ for (i in 1:length(test)) {
 print(ggplot(ctd_tib, aes(y = depth, color = station)) +
   scale_y_continuous(transform = "reverse") +
   scale_x_continuous(position = "top") +
-  scale_color_manual(values = colorRampPalette(ODV_colours)(12)) +
+  # scale_color_manual(values = colorRampPalette(ODV_colours)(12)) +
+  scale_color_manual(values = colorRampPalette(ODV_colours)(18)) +
   # lemon::geom_pointline(aes(x = temperature), linewidth = rel(1), size = rel(0.1)) +
-  geom_path(aes(x = get(column[[1]][1])), size = rel(0.5)) +
+  # geom_path(aes(x = get(column[[1]][1])), size = rel(0.5)) +
+  geom_path(aes(x = get(column[[1]][1])), linewidth = rel(0.5)) +
   theme_bw() +
   labs(
     x = column[[1]][2],
