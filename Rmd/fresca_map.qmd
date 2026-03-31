@@ -33,7 +33,7 @@ librarian::shelf(
   
   # additional
   ggrepel, ggnewscale, janitor, readxl, rerddap, rlang, terra, metR,
-  cowplot
+  cowplot, plotly
   
 )
 
@@ -806,8 +806,7 @@ ctd_key <-
   print()
 
 
-ctd_key 
-  ctd_data <- 
+ctd_data <- 
   ctd_path %>%
   tibble(file = .) %>%
   mutate(
@@ -822,7 +821,7 @@ ctd_key
     # str_detect(description, "CTD"),
     (station < 30 | str_detect(station, "MR|LK|WS"))
     ) %>%
-  filter(!str_detect(station, "16|10")) %>%
+  filter(!str_detect(station, "16|10|15\\.5")) %>%
   arrange(lon) %>%
   mutate(
     x2 = dplyr::lag(lon),
@@ -884,18 +883,21 @@ bind_rows(
 topo_dist_poly <-
   bind_rows(
     slice(topo_dist, 1) %>%
-      mutate(alt_smooth = min(topo_dist$alt_smooth, na.rm = TRUE) - 1),
+      # mutate(alt_smooth = min(topo_dist$alt_smooth, na.rm = TRUE) - 1),
+      mutate(alt_smooth = min(topo_dist$altitude, na.rm = TRUE) - 1),
     topo_dist,
     slice_tail(topo_dist, n = 1) %>%
-      mutate(alt_smooth = min(topo_dist$alt_smooth, na.rm = TRUE) - 1)
+      # mutate(alt_smooth = min(topo_dist$alt_smooth, na.rm = TRUE) - 1)
+      mutate(alt_smooth = min(topo_dist$altitude, na.rm = TRUE) - 1)
   ) %>%
   filter(!is.na(alt_smooth))
 
 ggplot(topo_dist_poly) +
-  geom_polygon(fill = "gray80", aes(x = dist_cum, y = alt_smooth)) +
+  geom_polygon(fill = "gray80", aes(x = dist_cum, y = alt_smooth), color = "blue") +
   geom_line(
     data = topo_dist, color = "green", aes(x = dist_cum, y = altitude),
-    linewidth = rel(1.5)
+    linewidth = rel(1.5),
+    alpha = 0.5
   )
   
 
@@ -991,9 +993,10 @@ ctd_interp <-
 ctd_obj <- 
  ctd_data %>%
    mutate(
-     data = map(
+     data = map2(
        file,
-       \(.x) {
+       station, 
+       \(.x, .y) {
          # browser()
          x2 <- read_csv(.x, show_col_types = FALSE) %>%
          oce::as.ctd(
@@ -1001,7 +1004,8 @@ ctd_obj <-
            temperature = .$sea_water_temperature,
            pressure    = .$sea_water_pressure,
            latitude    = .$latitude,
-           longitude   = .$longitude
+           longitude   = .$longitude,
+           station     = .y
          ) %>%
          oce::ctdTrim()
          # oce::ctdDecimate(x2, p = 0.5)
@@ -1011,14 +1015,18 @@ ctd_obj <-
    ) %>%
    pull(data) %>%
    oce::as.section() 
+
+
 oce::plot(
   ctd_obj, 
   which = "temperature",
   xtype = "distance", ztype = "image",
   showBottom = TRUE,
   showStations = TRUE,
-  zcol = oce::oceColorsTemperature,
-  zbreaks = seq(25, 35, 1)
+  # zcol = oce::oceColorsTemperature,
+  # zcol = rev(ODV_colours),
+  zcol = rev(colorRampPalette(ODV_colours)(120))
+  # zbreaks = seq(25, 35, 1)
   )
 
 oce::plot(
@@ -1028,9 +1036,11 @@ oce::plot(
   showBottom = TRUE,
   showStations = TRUE,
   # zcol = oce::oceColorsTemperature
-  zcol = rev(ODV_colours)
+  # zcol = rev(ODV_colours)
+  zcol = rev(colorRampPalette(ODV_colours)(120))
   # zbreaks = seq(25, 35, 1)
   )
+
 oce::plot(ctd_obj)
 
 sec_g <- oce::sectionGrid(ctd_obj, p = seq(1, 100, 1))
