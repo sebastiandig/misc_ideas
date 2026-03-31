@@ -50,7 +50,7 @@ conflicts_prefer(
   )
 ```
 
-# 0) PATHS + CRUISE PICK
+# 0) PATHS
 
 ```{r paths}
 base_dir <- here("data", "ctd_maps")
@@ -614,7 +614,8 @@ legends_lim <- list(
   chl_limits  = c(0, 5)
 )
 
-for (cruise_id in cruise_ids) {
+# for (cruise_id in cruise_ids) {
+for (cruise_id in cruise_ids[-c(1:48)]) {
   cat(paste("Cruise ID:", cruise_id))
 
   # extract cruise data
@@ -661,7 +662,7 @@ for (cruise_id in cruise_ids) {
   alpha_utm <- edge_opacity(grid_rast, support_poly_utm)
 
  # print(ggplot() +
- #    tidyterra::geom_spatraster(data = alpha_utm1) +
+ #    tidyterra::geom_spatraster(data = alpha_utm) +
  #    scale_fill_viridis())
   
   # make panels
