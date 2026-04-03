@@ -29,6 +29,9 @@ FOCUS RANGES (pattern emphasis):
   Salinity 28–35 PSU | Oxygen 1–5 mL/L | Temp 18–30 °C | Chl 0–5 mg m^-3
 Output: PNG
 
+
+# Load Libraries
+
 ```{r setup}
 
 if (!nzchar(system.file(package = "librarian"))) 
@@ -50,7 +53,7 @@ conflicts_prefer(
   )
 ```
 
-# 0) PATHS
+# File Paths
 
 ```{r paths}
 base_dir <- here("data", "ctd_maps")
@@ -71,7 +74,11 @@ dir_create(map_dir)
 
 ```
 
-# 1) BASEMAP: FLORIDA (SAME EXTENT)
+# Base Map of Florida
+
+Obtained from `geodata` package
+
+Map is projected into EPSG:32617 or EPSG:2237
 
 ```{r base-map}
 # projection
@@ -97,12 +104,13 @@ bb_utm <-
   ) %>%
   st_bbox(crs = 4326) %>%
   st_as_sfc() %>%
+  
   # converts dd to meters
   st_transform(utm_epsg) %>%
   st_bbox()
 ```
 
-# 2) DISPLAY SMOOTHING SETTINGS
+# Smoothing Parameters
 
 This does NOT change source data, only the plotted raster
 
@@ -129,7 +137,7 @@ smooth_kernel <-
 smooth_kernel <- smooth_kernel / sum(smooth_kernel)
 ```
 
-# 3) READ + COLUMN DETECTION
+# Read Data 
 
 ```{r read-all-data}
 df0 <- read_csv(in_file, show_col_types = FALSE) %T>% 
@@ -142,7 +150,7 @@ if (length(miss_base) > 0) stop("Missing base columns: ", paste(miss_base, colla
 
 
 # of the list of columns, pick the first one
-pick_first_existing <- function(candidates, col_names) {
+pick_first_col <- function(candidates, col_names) {
   hit <- candidates[candidates %in% col_names]
   if (length(hit) == 0) return(NA_character_)
   hit[1]
@@ -159,7 +167,7 @@ var_names <- list(
 ) %>%
   map(
     y = names(df0),
-    ~ pick_first_existing(.x, .y)
+    ~ pick_first_col(.x, .y)
   ) %>%
   unlist()
 
@@ -202,7 +210,24 @@ cat("Total cruises found: ", length(cruise_ids), "\n")
 ```
 
 # ============================================================================ #
-# 4) Functions:
+# Functions:
+
+
+## Extract Cruise and Convex Hull Information
+
+Outputs:
+  pts_utm          - points of data as sf object
+  support_poly_utm - convex hull around the data points
+  main_title       - title of plot in format: 
+                       `<cruise id> - Surface (0-5 m mean)`
+                       or `No rows matched cruise_id`
+  sub_title        - subtitle of plot in format: 
+                      `<date start> to <date end> | IDW + (UTM grid)`
+  chl_panel_title  - One of three:
+                       `Chlorophyll concentration`
+                       `Chlorophyll fluorescence`
+                       `Chlorophyll`
+
 
 ```{r cruise-data}
 cruise_extract <- function(cruise_id, dat) {
@@ -308,7 +333,11 @@ cruise_extract <- function(cruise_id, dat) {
 }
 ```
 
-# 5) FIXED TEMPLATE GRID (UTM) + IDW SETTINGS
+## Create Blank Raster Grid to Add IDW values
+
+Output:
+  grid_rast - raster version
+  grid_sf   - sf object version
 
 ```{r blank-grid}
 grid_blank <- function(.support_poly, utm_epsg, grid_res_m = 1000) {
@@ -347,10 +376,14 @@ grid_blank <- function(.support_poly, utm_epsg, grid_res_m = 1000) {
 
 
 
-# 6) SOFT EDGE SETTINGS (opacity of points)
-This only softens the DISPLAY edge near the mask boundary
+## Edge of Convex Hull Settings (Opacity of Points)
+
+This only softens the IDW convex hull near the edge of the mask (boundary). The
+edge of the boundary is set with a default of 5000 m from the edge to taper off
 
 alpha refers to alpha of ggplot meaning opacity
+
+alpha_utm - raster image with alpha levels (0 - 1) to show opacity
 
 ```{r edge}
 edge_opacity <- function(
@@ -378,7 +411,7 @@ edge_opacity <- function(
 ```
 
 
-# 7) PANEL MAKER
+## IDW Calculation and Figure Template
 
 
 ```{r idw-panel}
@@ -570,10 +603,13 @@ make_panel <- function(
     )
 
   p
+  
+  # ---- end of function make_panel ---- #
 }
 ```
 
-# 8) SAVE (SHORT FILENAMES to avoid OneDrive truncation)
+## Save Plots
+
 ```{r save-func}
 save_maps <- function(plt, .map_dir, .cruise_id, verbose = TRUE) {
   
@@ -603,10 +639,11 @@ save_maps <- function(plt, .map_dir, .cruise_id, verbose = TRUE) {
 
 ```
 
-
-# 9) Cruise Processing
+# ============================================================================ #
+# Cruise Processing
 
 ```{r process}
+# legend limits set for each variable
 legends_lim <- list(
   sal_limits  = c(29, 37),
   temp_limits = c(18, 32),
