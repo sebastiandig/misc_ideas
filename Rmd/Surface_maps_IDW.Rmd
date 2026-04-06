@@ -71,7 +71,6 @@ stopifnot(length(in_file) != 0)
 
 map_dir <- here(ts_dir, "Figures_freshening", "SurfaceMaps_0_5m_4vars_NOHALO")
 dir_create(map_dir)
-
 ```
 
 # Base Map of Florida
@@ -206,7 +205,10 @@ cruise_ids <-
   tools::file_path_sans_ext() %T>% 
   print()
 
-cat("Total cruises found: ", length(cruise_ids), "\n")
+cat("Total cruises found:", length(cruise_ids), "\n")
+
+# remove variables
+rm(list = names(var_names), var_names)
 ```
 
 # ============================================================================ #
@@ -415,20 +417,221 @@ edge_opacity <- function(
 
 
 ```{r idw-panel}
-make_panel <- function(
-  col_name, 
-  var_title, 
-  legend_units, 
-  .legend_limits    = NULL,
+# make_panel <- function(
+#   col_name, 
+#   var_title, 
+#   legend_units, 
+#   .legend_limits    = NULL,
+#   .df_st            = pts_utm,  
+#   .alpha_utm        = alpha_utm,
+#   .smooth_kernel    = smooth_kernel,
+#   .grid_sf          = grid_sf,
+#   .grid_rast        = grid_rast,
+#   .utm_epsg         = utm_epsg,
+#   .support_poly_utm = support_poly_utm,
+#   .florida_sf       = florida_sf,
+#   .bb_utm           = bb_utm,
+#   idw_opts          = idw_options
+#   ) {
+# 
+#   # keep columns needed for IDW interpolation and plotting, converts selected
+#   # parameter name to val, removes NA 
+#   dd <- 
+#     .df_st %>%
+#     mutate(
+#       .keep = "none",
+#       station,
+#       latitude,
+#       longitude,
+#       val = .data[[col_name]],
+#       geometry
+#     ) %>%
+#     filter(!is.na(val))
+#   
+#   # ---- skip plotting if less than 5 points ---- #
+#   if (nrow(dd) < 5) {
+#     return(
+#       ggplot() +
+#         theme_void() +
+#         labs(title = paste0(var_title, " (too few stations)")) +
+#         theme(plot.title = element_text(face = "bold", size = 12))
+#     )
+#   }
+# 
+#   # ---- IDW interpolation as sf object ---- #
+#   # uses options set before
+#   idw_sf_utm <- 
+#     gstat::idw(
+#       formula   = val ~ 1,
+#       locations = dd,
+#       newdata   = .grid_sf,
+#       idp       = idw_opts$idp_pow,
+#       maxdist   = idw_opts$maxdist_m,
+#       nmin      = idw_opts$nmin_nb,
+#       nmax      = idw_opts$nmax_nb
+#     )
+# 
+#   # replace empty grid with IDW values
+#   terra::values(.grid_rast) <- as.numeric(idw_sf_utm$var1.pred)
+# 
+# 
+#   # ---- LIGHT DISPLAY SMOOTHING ONLY ---- #
+#   r_pred_water <-
+#     # mask data outside convex hull
+#     terra::mask(.grid_rast, terra::vect(.support_poly_utm)) %>%
+#     
+#     # smooths over values with weighting of 3x3 kernel
+#     terra::focal(
+#       w         = .smooth_kernel,
+#       fun       = mean,
+#       na.policy = "omit",
+#       na.rm     = TRUE,
+#       fillvalue = NA
+#     ) %>%
+#     
+#     # combine IDW and alpha (opacity)
+#     c(., alpha_utm) %>%
+#     
+#     # mask again so smoothing does not bleed outside supported footprint
+#     # of convex hull
+#     terra::mask(terra::vect(.support_poly_utm)) %>% # <-- may not be necessary
+#     
+#     # mask land mass
+#     terra::mask(terra::vect(.florida_sf), inverse = TRUE) 
+#     
+#   # convert into data frame
+#   plot_df <- 
+#     r_pred_water %>%
+#     as.data.frame(xy = TRUE, na.rm = FALSE) %>%
+#     rename("pred" = focal_mean)  %>%
+#     mutate(alpha = ifelse(is.na(alpha), 0, alpha)) %>%
+#     filter(!is.na(pred), alpha > 0)
+#   
+#   
+#   # ---- contours ---- #
+#   contour_sf <- NULL
+# 
+#   rng <- range(plot_df$pred, na.rm = TRUE)
+# 
+#   if (all(is.finite(rng)) && diff(rng) > 0) {
+#     brks <- pretty(rng, n = 6)
+#     brks <- brks[brks > rng[1] & brks < rng[2]]
+#     
+#     if (length(brks) > 0) {
+#       contour_sf <- try(
+#         terra::as.contour(r_pred_water, levels = brks),
+#         silent = TRUE
+#       )
+#       # if error, convert to sf
+#       if (!inherits(contour_sf, "try-error")) {
+#         contour_sf <- try(sf::st_as_sf(contour_sf), silent = TRUE)
+#       }
+#       
+#       # if error on conversion, set to NULL
+#       if (inherits(contour_sf, "try-error")) contour_sf <- NULL
+#     }
+#   }
+# 
+#   if (is.null(.legend_limits)) .legend_limits <- c(NA, NA)
+#   
+#   # ---- plot ---- #
+#   p <- 
+#     ggplot() +
+#     annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = "#cfe8f3") +
+#     geom_raster(data = plot_df, aes(x = x, y = y, fill = pred, alpha = alpha)) +
+#     scale_fill_viridis_c(
+#       name = legend_units, option = "C", direction = 1, na.value = NA, 
+#       limits = .legend_limits, oob = scales::squish) +
+#     scale_alpha_identity() +
+#     geom_sf(data = .florida_sf, fill = "#e8e6df", color = "grey35", linewidth = 0.55) +
+# 
+#   # add contours if possible
+#   {
+#     if (!is.null(contour_sf) && nrow(contour_sf) > 0) {
+#       geom_sf(
+#         data      = contour_sf,
+#         color     = "white",
+#         linewidth = 0.22,
+#         alpha     = 0.45
+#       )
+#       }
+#     } +
+#     geom_sf(data = dd, color = "black", size = 0.55, alpha = 0.95) +
+#     ggrepel::geom_text_repel(
+#       data = dd,
+#       aes(x = longitude, y = latitude, label = station),
+#       seed               = 1,
+#       size               = 2.0,
+#       color              = "black",
+#       box.padding        = 0.18,
+#       point.padding      = 0.10,
+#       min.segment.length = 0,
+#       segment.color      = "grey35",
+#       segment.size       = 0.30,
+#       segment.curvature  = 0.0,
+#       arrow              = grid::arrow(length = unit(0.006, "npc"), type = "closed"),
+#       max.overlaps       = Inf
+#     ) +
+#     annotation_north_arrow(
+#       location    = "tr",
+#       which_north = "true",
+#       pad_x       = unit(0.10, "cm"),
+#       pad_y       = unit(0.10, "cm"),
+#       height      = unit(0.85, "cm"),
+#       width       = unit(0.85, "cm"),
+#       style       = north_arrow_orienteering(
+#         line_col = "grey20",
+#         fill     = c("grey20", "white"),
+#         text_col = "grey20"
+#       )
+#     ) +
+#     annotation_scale(
+#       location   = "bl",
+#       width_hint = 0.22,
+#       pad_x      = unit(0.12, "cm"),
+#       pad_y      = unit(0.12, "cm"),
+#       text_cex   = 0.55,
+#       line_width = 0.6
+#     ) +
+#     coord_sf(xlim = .bb_utm[c(1,3)], ylim = .bb_utm[c(2,4)], expand = FALSE) +
+#     labs(title = var_title, x = NULL, y = NULL) +
+#     theme_bw() +
+#     theme(
+#       panel.background = element_rect(fill = "#cfe8f3"),
+#       panel.grid.major = element_line(color = "grey85", linewidth = 0.3),
+#       panel.grid.minor = element_blank(),
+#       legend.position  = "right",
+#       plot.title       = element_text(face = "bold", size = 12)
+#     )
+# 
+#   p
+#   
+#   # ---- end of function make_panel ---- #
+# }
+# 
+# old way of idw and plots
+# now separates into two distinct functions
+# make panels
+# p_sal <- make_panel("sal", "Salinity", "PSU", legends_lim[[1]])
+# p_tmp <- make_panel("temp", "Temperature", expression(paste(degree, "C")), legends_lim[[2]])
+# p_o2  <- make_panel("oxy", "Oxygen", expression(paste("mL ", L^{-1})), legends_lim[[3]])
+# p_chl <- make_panel("chl", chl_panel_title, expression(paste("mg ", m^{-3})), legends_lim[[4]])
+```
+
+
+### IDW Calculation
+
+```{r idw-func}
+# ---- inverse distance weighting function ---- #
+idw_func <- function(
+  col_name,
   .df_st            = pts_utm,  
   .alpha_utm        = alpha_utm,
   .smooth_kernel    = smooth_kernel,
   .grid_sf          = grid_sf,
   .grid_rast        = grid_rast,
-  .utm_epsg         = utm_epsg,
   .support_poly_utm = support_poly_utm,
   .florida_sf       = florida_sf,
-  .bb_utm           = bb_utm,
   idw_opts          = idw_options
   ) {
 
@@ -449,10 +652,11 @@ make_panel <- function(
   # ---- skip plotting if less than 5 points ---- #
   if (nrow(dd) < 5) {
     return(
-      ggplot() +
-        theme_void() +
-        labs(title = paste0(var_title, " (too few stations)")) +
-        theme(plot.title = element_text(face = "bold", size = 12))
+      list(
+        "dd"           = dd,
+        "r_pred_water" = NULL,
+        "plot_df"      = NULL
+      )
     )
   }
 
@@ -472,7 +676,6 @@ make_panel <- function(
   # replace empty grid with IDW values
   terra::values(.grid_rast) <- as.numeric(idw_sf_utm$var1.pred)
 
-
   # ---- LIGHT DISPLAY SMOOTHING ONLY ---- #
   r_pred_water <-
     # mask data outside convex hull
@@ -488,7 +691,7 @@ make_panel <- function(
     ) %>%
     
     # combine IDW and alpha (opacity)
-    c(., alpha_utm) %>%
+    c(., .alpha_utm) %>%
     
     # mask again so smoothing does not bleed outside supported footprint
     # of convex hull
@@ -496,7 +699,7 @@ make_panel <- function(
     
     # mask land mass
     terra::mask(terra::vect(.florida_sf), inverse = TRUE) 
-    
+  
   # convert into data frame
   plot_df <- 
     r_pred_water %>%
@@ -506,10 +709,46 @@ make_panel <- function(
     filter(!is.na(pred), alpha > 0)
   
   
+  return(
+    list(
+      "dd"           = dd,
+      "r_pred_water" = r_pred_water,
+      "plot_df"      = plot_df
+    )
+  )
+  # ---- end of function idw_func ---- #
+}
+```
+
+
+### Figure Template
+
+```{r plot-func}
+# ---- plot function ---- #
+make_panel <- function(
+    var_title, 
+    .dd,
+    .r_pred_water  = r_pred_water,
+    .plot_df       = plot_df,
+    legend_units, 
+    .legend_limits = NULL, 
+    .florida_sf, 
+    .bb_utm
+    ) {
+  # ---- skip plotting if less than 5 points ---- #
+  if (nrow(.dd) < 5) {
+    return(
+      ggplot() +
+        theme_void() +
+        labs(title = paste0(var_title, " (too few stations)")) +
+        theme(plot.title = element_text(face = "bold", size = 12))
+    )
+  }
+
   # ---- contours ---- #
   contour_sf <- NULL
 
-  rng <- range(plot_df$pred, na.rm = TRUE)
+  rng <- range(.plot_df$pred, na.rm = TRUE)
 
   if (all(is.finite(rng)) && diff(rng) > 0) {
     brks <- pretty(rng, n = 6)
@@ -517,7 +756,7 @@ make_panel <- function(
     
     if (length(brks) > 0) {
       contour_sf <- try(
-        terra::as.contour(r_pred_water, levels = brks),
+        terra::as.contour(.r_pred_water, levels = brks),
         silent = TRUE
       )
       # if error, convert to sf
@@ -536,12 +775,12 @@ make_panel <- function(
   p <- 
     ggplot() +
     annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = "#cfe8f3") +
-    geom_raster(data = plot_df, aes(x = x, y = y, fill = pred, alpha = alpha)) +
+    geom_raster(data = .plot_df, aes(x = x, y = y, fill = pred, alpha = alpha)) +
+    geom_sf(data = .florida_sf, fill = "#e8e6df", color = "grey35", linewidth = 0.55) +
     scale_fill_viridis_c(
       name = legend_units, option = "C", direction = 1, na.value = NA, 
       limits = .legend_limits, oob = scales::squish) +
     scale_alpha_identity() +
-    geom_sf(data = .florida_sf, fill = "#e8e6df", color = "grey35", linewidth = 0.55) +
 
   # add contours if possible
   {
@@ -554,9 +793,11 @@ make_panel <- function(
       )
       }
     } +
-    geom_sf(data = dd, color = "black", size = 0.55, alpha = 0.95) +
+    
+    # plot data points and labels
+    geom_sf(data = .dd, color = "black", size = 0.55, alpha = 0.95) +
     ggrepel::geom_text_repel(
-      data = dd,
+      data = .dd,
       aes(x = longitude, y = latitude, label = station),
       seed               = 1,
       size               = 2.0,
@@ -570,6 +811,8 @@ make_panel <- function(
       arrow              = grid::arrow(length = unit(0.006, "npc"), type = "closed"),
       max.overlaps       = Inf
     ) +
+    
+    # add aroow and scale bar
     annotation_north_arrow(
       location    = "tr",
       which_north = "true",
@@ -591,7 +834,11 @@ make_panel <- function(
       text_cex   = 0.55,
       line_width = 0.6
     ) +
+    
+    # limits
     coord_sf(xlim = .bb_utm[c(1,3)], ylim = .bb_utm[c(2,4)], expand = FALSE) +
+    
+    # labels
     labs(title = var_title, x = NULL, y = NULL) +
     theme_bw() +
     theme(
@@ -607,6 +854,8 @@ make_panel <- function(
   # ---- end of function make_panel ---- #
 }
 ```
+
+
 
 ## Save Plots
 
@@ -701,14 +950,113 @@ for (cruise_id in cruise_ids[-c(1:48)]) {
  # print(ggplot() +
  #    tidyterra::geom_spatraster(data = alpha_utm) +
  #    scale_fill_viridis())
-  
-  # make panels
-  p_sal <- make_panel("sal", "Salinity", "PSU", legends_lim[[1]])
-  p_tmp <- make_panel("temp", "Temperature", expression(paste(degree, "C")), legends_lim[[2]])
-  p_o2  <- make_panel("oxy", "Oxygen", expression(paste("mL ", L^{-1})), legends_lim[[3]])
-  p_chl <- make_panel("chl", chl_panel_title, expression(paste("mg ", m^{-3})), legends_lim[[4]])
 
-  # combine panels
+  # ---- salinity ---- #
+  idw_sal <- 
+    idw_func(
+      col_name          = "sal",
+      .df_st            = pts_utm,  
+      .alpha_utm        = alpha_utm,
+      .smooth_kernel    = smooth_kernel,
+      .grid_sf          = grid_sf,
+      .grid_rast        = grid_rast,
+      .support_poly_utm = support_poly_utm,
+      .florida_sf       = florida_sf,
+      idw_opts          = idw_options
+    )
+  
+  p_sal <- 
+    make_panel(
+      var_title      = "Salinity", 
+      legend_units   = "PSU", 
+      .legend_limits = legends_lim[[1]], 
+      .dd            = idw_sal$dd,
+      .r_pred_water  = idw_sal$r_pred_water,
+      .plot_df       = idw_sal$plot_df,
+      .florida_sf    = florida_sf, 
+      .bb_utm        = bb_utm
+    )
+  
+  # ---- temperature ---- #
+  idw_temp <- 
+    idw_func(
+      col_name          = "temp",
+      .df_st            = pts_utm,  
+      .alpha_utm        = alpha_utm,
+      .smooth_kernel    = smooth_kernel,
+      .grid_sf          = grid_sf,
+      .grid_rast        = grid_rast,
+      .support_poly_utm = support_poly_utm,
+      .florida_sf       = florida_sf,
+      idw_opts          = idw_options
+    )
+  
+  p_tmp <- 
+    make_panel(
+      var_title      = "Temperature", 
+      legend_units   = expression(paste(degree, "C")),
+      .legend_limits = legends_lim[[2]], 
+      .dd            = idw_temp$dd,
+      .r_pred_water  = idw_temp$r_pred_water,
+      .plot_df       = idw_temp$plot_df,
+      .florida_sf    = florida_sf, 
+      .bb_utm        = bb_utm
+    )
+  
+  # ---- oxygen ---- #
+  idw_oxy <- 
+    idw_func(
+      col_name = "oxy",
+      .df_st            = pts_utm,  
+      .alpha_utm        = alpha_utm,
+      .smooth_kernel    = smooth_kernel,
+      .grid_sf          = grid_sf,
+      .grid_rast        = grid_rast,
+      .support_poly_utm = support_poly_utm,
+      .florida_sf       = florida_sf,
+      idw_opts          = idw_options
+    )
+  
+  p_o2 <- 
+    make_panel(
+      var_title      = "Oxygen", 
+      legend_units   = expression(paste("mL ", L^{-1})),
+      .legend_limits = legends_lim[[3]], 
+      .dd            = idw_oxy$dd,
+      .r_pred_water  = idw_oxy$r_pred_water,
+      .plot_df       = idw_oxy$plot_df,
+      .florida_sf    = florida_sf, 
+      .bb_utm        = bb_utm
+    )
+  
+  
+  # ---- chlorophyll-a ---- #
+  idw_chl <- 
+    idw_func(
+      col_name          = "chl",
+      .df_st            = pts_utm,  
+      .alpha_utm        = alpha_utm,
+      .smooth_kernel    = smooth_kernel,
+      .grid_sf          = grid_sf,
+      .grid_rast        = grid_rast,
+      .support_poly_utm = support_poly_utm,
+      .florida_sf       = florida_sf,
+      idw_opts          = idw_options
+    )
+  
+  p_chl <- 
+    make_panel(
+      var_title      = chl_panel_title, 
+      legend_units   = expression(paste("mg ", m^{-3})),
+      .legend_limits = legends_lim[[4]], 
+      .dd            = idw_chl$dd,
+      .r_pred_water  = idw_chl$r_pred_water,
+      .plot_df       = idw_chl$plot_df,
+      .florida_sf    = florida_sf, 
+      .bb_utm        = bb_utm
+    )
+  
+  # ---- combine panels ---- #
   final_plot <-
     (p_sal + p_tmp) / (p_o2 + p_chl) +
     plot_annotation(
