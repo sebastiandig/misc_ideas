@@ -779,7 +779,8 @@ make_panel <- function(
     geom_sf(data = .florida_sf, fill = "#e8e6df", color = "grey35", linewidth = 0.55) +
     scale_fill_viridis_c(
       name = legend_units, option = "C", direction = 1, na.value = NA, 
-      limits = .legend_limits, oob = scales::squish) +
+      limits = .legend_limits, oob = scales::squish
+      ) +
     scale_alpha_identity() +
 
   # add contours if possible
@@ -812,7 +813,7 @@ make_panel <- function(
       max.overlaps       = Inf
     ) +
     
-    # add aroow and scale bar
+    # add arrow and scale bar
     annotation_north_arrow(
       location    = "tr",
       which_north = "true",
@@ -852,6 +853,43 @@ make_panel <- function(
   p
   
   # ---- end of function make_panel ---- #
+}
+
+
+# plot the data points, raster grid and convex hull
+plot_convex <- function(
+  .grid_sf,
+  .florida_sf,
+  .support_poly_utm,
+  .pts_utm
+  ) {
+  ggplot() +
+  geom_sf(data = grid_sf, color = "#500", alpha = 0.5) + # base grid for interpolation
+  geom_sf(data = florida_sf) + # florida map
+  geom_sf(
+    data = support_poly_utm,
+    color = "blue", fill = "lightblue", alpha = 0.5
+  ) + # convex hull
+  geom_sf(data = pts_utm) + # data points used
+  coord_sf(expand = FALSE) +
+  labs(x = NULL, y = NULL) +
+  ggrepel::geom_text_repel(
+    data = pts_utm,
+    aes(x = longitude, y = latitude, label = station),
+    seed               = 1,
+    size               = 2.0,
+    color              = "black",
+    box.padding        = 0.18,
+    point.padding      = 0.10,
+    min.segment.length = 0,
+    segment.color      = "grey35",
+    segment.size       = 0.30,
+    segment.curvature  = 0.0,
+    arrow              = grid::arrow(length = unit(0.006, "npc"), type = "closed"),
+    max.overlaps       = Inf
+  )
+  
+  # ---- end of function plot_convex ---- #
 }
 ```
 
@@ -899,9 +937,13 @@ legends_lim <- list(
   oxy_limits  = c(1, 5),
   chl_limits  = c(0, 5)
 )
-
+cruise_id <- cruise_ids[40]
 # for (cruise_id in cruise_ids) {
 for (cruise_id in cruise_ids[-c(1:48)]) {
+  
+  # ========================================================================== #
+  # ---- Select Cruise Data ---- #
+  # ========================================================================== #
   cat(paste("Cruise ID:", cruise_id))
 
   # extract cruise data
@@ -917,40 +959,23 @@ for (cruise_id in cruise_ids[-c(1:48)]) {
   grid_rast <- grid_temp$grid_rast
   grid_sf   <- grid_temp$grid_sf
 
-  # # show locations, convex hull in relation to Florida
-  # print(ggplot() +
-  #   geom_sf(data = grid_sf, color = "#500", alpha = 0.5) + # base grid for interpolation
-  #   geom_sf(data = florida_sf) + # florida map
-  #   geom_sf(
-  #     data = support_poly_utm,
-  #     color = "blue", fill = "lightblue", alpha = 0.5
-  #   ) + # convex hull
-  #   geom_sf(data = pts_utm) + # data points used
-  #   coord_sf(expand = FALSE) +
-  #   labs(x = NULL, y = NULL) +
-  #   ggrepel::geom_text_repel(
-  #     data = pts_utm,
-  #     aes(x = longitude, y = latitude, label = station),
-  #     seed               = 1,
-  #     size               = 2.0,
-  #     color              = "black",
-  #     box.padding        = 0.18,
-  #     point.padding      = 0.10,
-  #     min.segment.length = 0,
-  #     segment.color      = "grey35",
-  #     segment.size       = 0.30,
-  #     segment.curvature  = 0.0,
-  #     arrow              = grid::arrow(length = unit(0.006, "npc"), type = "closed"),
-  #     max.overlaps       = Inf
-  #   ))
+  # show locations, convex hull in relation to Florida
+  # print(plot_convex(grid_sf, florida_sf, support_poly_utm, pts_utm))
 
   # create edge opacity
   alpha_utm <- edge_opacity(grid_rast, support_poly_utm)
 
- # print(ggplot() +
- #    tidyterra::geom_spatraster(data = alpha_utm) +
- #    scale_fill_viridis())
+  # print(
+  #   ggplot() +
+  #   tidyterra::geom_spatraster(data = alpha_utm) +
+  #   scale_fill_viridis()
+  #   )
 
+  
+  # ========================================================================== #
+  # ---- IDW and Plotting ---- #
+  # ========================================================================== #
+  
   # ---- salinity ---- #
   idw_sal <- 
     idw_func(
@@ -1071,7 +1096,8 @@ for (cruise_id in cruise_ids[-c(1:48)]) {
     )
 
   print(final_plot)
-
+  
+  # ---- save plot ---- #
   save_maps(final_plot, map_dir, cruise_id)
 }
 ```
