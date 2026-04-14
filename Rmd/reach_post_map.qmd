@@ -25,9 +25,10 @@ librarian::shelf(
   forcats, lubridate, glue, fs, magrittr, here,
   
   # additional
+  readxl, janitor, hms,
   OpenStreetMap, leaflet,
   rerddap,
-  sf
+  sf, metR
   
 )
 
@@ -43,77 +44,82 @@ conflicts_prefer(
 ## 2.2 Load Dataset
 
 ```{r load-data}
+# set location to save data and plots
+dir_plt_save  <- here("data", "plots", "reach_map")
+
+# select path to cruise directory
 dir_path <- 
   here() %>%
   rstudioapi::selectDirectory()
 
-# logsheet
-sheet_names_log <-
+# metadata logsheet
+log_path <- 
   dir_path %>%
   dir_ls(regexp = "(?i)logsheet") %>%
-  str_subset("(?i)~|aquatic", negate = TRUE) %>%
+  str_subset("(?i)~|aquatic", negate = TRUE) %T>% 
+  print()
+
+# sheet names
+sheet_names_log <-
+  log_path %>%
   readxl::excel_sheets() %T>% 
   print()
 
-ctd_meta <- 
-  dir_path %>%
-  dir_ls(regexp = "(?i)logsheet") %>%
-  str_subset("(?i)~|aquatic", negate = TRUE) %>%
-  readxl::read_excel(sheet = sheet_names_log[3], .name_repair = janitor::make_clean_names) %>%
-  mutate(
-    sample_collection_time_gmt = hms::as_hms(sample_collection_time_gmt) 
-  ) %>%
+# load filter metadata
+filter_meta <- 
+  log_path %>%
+  read_excel(
+    sheet        = sheet_names_log[str_detect(sheet_names_log, "logsheet")], 
+    .name_repair = janitor::make_clean_names
+    ) %>%
   select(
-   station, "date" = date_mm_dd_yy, "time" = sample_collection_time_gmt,
+   "location_id" = station, 
+   "date" = date_mm_dd_yy, "time" = sample_collection_time_gmt,
    "long" = lon_actual, "lat" = lat_actual
   ) %>%
-  filter(!is.na(time), !is.na(station)) %>%
+  filter(!is.na(location_id), !is.na(time)) %>%
   distinct() %>%
   arrange(date, time) %>%
   mutate(
-    lon_lag = dplyr::lead(long),# default = 0),
-    lat_lag = dplyr::lead(lat),# default = 0),
-    )  %T>% 
+    time    = hms::as_hms(time), 
+    lon_lag = dplyr::lead(long, default = last(long)),
+    lat_lag = dplyr::lead(lat, default = last(lat)),
+    ) %T>% 
   print()
 
-zoo_label <- 
-  dir_path %>%
-  dir_ls(regexp = "(?i)logsheet") %>%
-  str_subset("(?i)~|aquatic", negate = TRUE) %>%
-  readxl::read_excel(sheet = sheet_names_log[5], .name_repair = janitor::make_clean_names) %>%
+# zooplankton net metadata
+zoo_label <-
+  log_path %>%
+  read_excel(
+    sheet = sheet_names_log[str_detect(sheet_names_log, "zoo_log")],
+    .name_repair = janitor::make_clean_names
+  ) %>%
   filter(!is.na(mesh_size_um)) %>%
   distinct(cruise_id, location_id, net_type) %>%
-  mutate(
-    .by = location_id,
-    zoo = case_when(
-      str_detect(net_type, "BA") ~ "Bongo A", 
-      str_detect(net_type, "BB") ~ "Bongo B", 
-      str_detect(net_type, "T") ~ "Tucker", 
-    )
-  ) %>%
-   pivot_wider(
-     data         = .,
-     id_cols      = c(cruise_id, location_id), # *optional* vector of unaffected columns,
-     names_from   = c(zoo), # category column(s) to pivot wide
-     values_from  = c(net_type), # value column(s) that hold data for each category column
-     names_sep    = "_",
-     names_repair = janitor::make_clean_names
-     ) %>%
+  mutate(sampled = "x") %>%
+  pivot_wider(
+    id_cols      = c(cruise_id, location_id),
+    names_from   = c(net_type),
+    values_from  = c(sampled), 
+    names_sep    = "_",
+    names_repair = janitor::make_clean_names
+    ) %>%
   mutate(
     .keep = "unused",
     label = case_when(
-      (!is.na(bongo_a) | is.na(bongo_b)) & !is.na(tucker) ~ "Bongo/Tucker",
-      (!is.na(bongo_a) | is.na(bongo_b)) ~ "Bongo",
-     !is.na(tucker) ~ "Tucker",
+      (!is.na(ba) | !is.na(bb)) & !is.na(t) ~ "Bongo/Tucker",
+      (!is.na(ba) | !is.na(bb)) ~ "Bongo",
+      !is.na(t) ~ "Tucker",
     )
-  ) %T>% 
+  ) %T>%
   print()
 
+# merge filter and zooplankton metadata
 metadata <-
   left_join(
-    ctd_meta,
+    filter_meta,
     zoo_label,
-    by = c("station" = "location_id")
+    by = c("location_id")
   ) %>%
   mutate(
     label = case_when(
@@ -123,35 +129,51 @@ metadata <-
   ) %T>% 
   print()
 
-# expected locations
-sheet_names_expec <- 
+# expected locations from schedule
+loc_path <- 
   dir_path %>%
   dir_ls(regexp = "(?i)schedule") %>%
-  readxl::excel_sheets() %T>% 
+  str_subset("~", negate = TRUE) %T>% 
   print()
 
+sheet_names_expec <- 
+  loc_path %>%
+  excel_sheets() %T>% 
+  print()
 
 loc_dat <- 
-  dir_path %>%
-  dir_ls(regexp = "(?i)schedule") %>%
-  str_subset("~", negate = TRUE) %>% 
-  readxl::read_xlsx(.name_repair = janitor::make_clean_names, sheet = sheet_names_expec[1]) %>%
+  loc_path %>%
+  read_xlsx(
+    sheet = sheet_names_expec[str_detect(sheet_names_expec, "(?i)location")],
+    .name_repair = janitor::make_clean_names, 
+    ) %>%
   janitor::remove_empty("cols") %>%
   drop_na(latitude_decimal_degree, longitude_decimal_degree)  %>%
-  filter(str_detect(description, "CTD")) %T>%
-  print() %>%
-  select(waypoint, description, 
-         "lat" = latitude_decimal_degree, "long" = longitude_decimal_degree, 
-         depth_m
-         ) %>%
+  filter(str_detect(description, "CTD")) %>%
+  select(
+    waypoint, description, depth_m,
+    "lat" = latitude_decimal_degree, "long" = longitude_decimal_degree, 
+    ) %>%
   mutate(
     description = if_else(str_detect(description, "0"), "CTD/Net Trawl", description),
     long = -long
     ) %T>% 
   print()
 
-# set location to save data and plots
-dir_plt_save  <- here("data", "plots", "reach_map")
+
+# stations not sampled
+stn_miss <- 
+  loc_dat %>%
+  filter(!str_detect(waypoint, str_c(metadata$location_id, collapse = "|"))) %>%
+  rename("location_id" = waypoint) %>%
+  mutate(label = "Missed") %T>% 
+  print()
+
+plot_data <-
+  bind_rows(
+    metadata,
+    stn_miss
+  )
 ```
 
 ## 2.3 Load Rice's Whale Distrbution Shapefile
@@ -169,18 +191,6 @@ whale_shp <- st_read(whale_shp_path)
 ```
 
 
-```{r}
-# add boundaries for openstreemap
-adj_deg <- 0.01 # degree widen
-bounds <- 
-  c(
-    range(loc_dat$long) + c(-adj_deg, adj_deg),
-    range(loc_dat$lat) + c(-adj_deg, adj_deg)
-  ) %T>%
-  print()
-```
-
-
 # 3.0 Plot using `leaflet`
 
 Overall points
@@ -192,8 +202,14 @@ leaflet::leaflet() %>%
 
 ```
 
-```{r}
+
+## 3.1 Load Bathymetry
+
+```{r load-bathymetry}
 source(here("scripts", "map_files_dwnlod.R"))
+
+# set bathymetric shapfile locations
+bathy_path <- here("data", "map_shp", "reach")
 
 # add boundaries for openstreemap
 adj_deg <- 1.5 # degree widen
@@ -204,19 +220,23 @@ bounds <-
   ) %T>%
   print()
 
+# change default ERDDAP to NOAA Coast Watch
 Sys.setenv(RERDDAP_DEFAULT_URL = "https://coastwatch.pfeg.noaa.gov/erddap/")
 
+# download bathymetric data to path_topo location
 world_download(
-  path_land = NULL,
-  path_topo = here("data", "map_shp", "reach"),
-  extent = bounds,
+  path_land     = NULL,
+  path_topo     = bathy_path,
+  extent        = bounds,
   etopo_version = "ETOPO_2022_v1_15s"
 )
-Sys.unsetenv("RERDDAP_DEFAULT_URL")
-debugonce(world_download)
 
+# change to default ERDDAO
+Sys.unsetenv("RERDDAP_DEFAULT_URL")
+
+# read bathymetric data
 bathy <- 
-  here("data", "map_shp", "reach") %>%
+  bathy_path %>%
   dir_ls()  %>%
   terra::rast() %>%
   as.data.frame(xy = TRUE)
@@ -224,27 +244,28 @@ bathy <-
 ```
 
 ```{r}
-long_lat_lag <- 
-  loc_dat %>%
-  mutate(
-    lon_lag = dplyr::lead(long, default = -82.58745),
-    lat_lag = dplyr::lead(lat, default = 27.67623),
-    ) %>%
-  mutate(
-    .by = waypoint,
-    te = row_number(),
-    t2 = n(),
-    waypoint = if_else(row_number() > 1, "", waypoint)
-  ) %T>% 
-  print()
+# long_lat_lag <- 
+#   loc_dat %>%
+#   filter(!str_detect(waypoint, str_c(metadata$location_id, collapse = "|"))) %>%
+#   mutate(
+#     lon_lag = dplyr::lead(long, default = last(long)),
+#     lat_lag = dplyr::lead(lat, default = last(lat)),
+#     ) %>%
+#   mutate(
+#     .by = waypoint,
+#     te = row_number(),
+#     t2 = n(),
+#     waypoint = if_else(row_number() > 1, "", waypoint)
+#   ) %T>% 
+#   print()
 
-# stations not sampled
-stn_miss <- 
-  long_lat_lag %>%
-  filter(!str_detect(waypoint, str_c(metadata$station, collapse = "|"))) %>%
-  rename("station" = waypoint) %>%
-  mutate(label = "Missed") %T>% 
-  print()
+# # stations not sampled
+# stn_miss <- 
+#   loc_dat %>%
+#   filter(!str_detect(waypoint, str_c(metadata$location_id, collapse = "|"))) %>%
+#   rename("station" = waypoint) %>%
+#   mutate(label = "Missed") %T>% 
+#   print()
 
 
 ```
@@ -255,17 +276,19 @@ Inspired from: <https://ajsmit.github.io/Intro_R_Official/mapping-google.html>
 
 ```{r mangrove-stations}
 # add boundaries for openstreemap
-adj_deg <- c(0.3, 1.25) # degree widen
-bounds <- 
-  c(
-    range(loc_dat$long) + c(-adj_deg[1], adj_deg[2]),
-    range(loc_dat$lat) + c(-adj_deg[1], adj_deg[2] - 0.8)
-  ) %T>%
-  print()
+# adj_deg <- c(0.3, 1.25) # degree widen
+# bounds <- 
+#   c(
+#     range(loc_dat$long) + c(-adj_deg[1], adj_deg[2]),
+#     range(loc_dat$lat) + c(-adj_deg[1], adj_deg[2] - 0.8)
+#   ) %T>%
+#   print()
 
-bounds[1] <- -88.5
-bounds[2] <- -82
-bounds[3] <- 26.5
+# bounds[1] <- -88.5
+# bounds[2] <- -82
+# bounds[3] <- 26.5
+
+bounds <- c(-88.5, -82, 26.5, 30.6)
 
 # extract openstreemap tiles
 osm_map <-
@@ -273,7 +296,6 @@ osm_map <-
     bounds[c(4, 1)], # upperleft
     bounds[c(3, 2)], # loweright
     zoom = 8,
-    # type = "esri-topo", 
     type = "esri-physical", 
     mergeTiles = TRUE
   ) %>%
@@ -314,34 +336,47 @@ bongo or tucker
 
 
 ```{r plt-stations}
-shp_label_dict <-
-  c(
-    "Arrive"           = 21,
-    "Waypoint"         = 21,
-    "CTD"              = 24,
-    "CTD/Bongo"        = 21,
-    "CTD/Bongo/Tucker" = 22,
-    "CTD/Tucker"       = 22,
-    "Bongo"    
-    = 22,
-    "Bongo/Tucker"     = 22,
-    "Tucker"           = 22,
-    "Surface Buoy/CTD" = 25,
-    "Missed"   = 4
-  )
-col_label_dict <-
-  c(
-    # "Arrive"           = 21,
-    # "Waypoint"         = 21,
-    "CTD"              = "lightblue",
-    "CTD/Bongo"        = "#546",
-    "CTD/Bongo/Tucker" = "#ffd",
-    "CTD/Tucker"       = "#778",
-    "Bongo"            = "#434",
-    "Bongo/Tucker"     = "yellow",
-    "Tucker"           = "green",
-    "Surface Buoy/CTD" = "blue",
-    "Missed"   = "red"
+# shp_label_dict <-
+#   c(
+#     # "Arrive"           = 21,
+#     # "Waypoint"         = 21,
+#     "CTD"              = 24,
+#     "CTD/Bongo"        = 21,
+#     "CTD/Bongo/Tucker" = 22,
+#     "CTD/Tucker"       = 22,
+#     "Bongo"            = 22,
+#     "Bongo/Tucker"     = 22,
+#     "Tucker"           = 22,
+#     "Surface Buoy/CTD" = 25,
+#     "Missed"           = 4,
+#   )
+# col_label_dict <-
+#   c(
+#     # "Arrive"           = 21,
+#     # "Waypoint"         = 21,
+#     "CTD"              = "lightblue",
+#     "CTD/Bongo"        = "#546",
+#     "CTD/Bongo/Tucker" = "#ffd",
+#     "CTD/Tucker"       = "#778",
+#     "Bongo"            = "#434",
+#     "Bongo/Tucker"     = "yellow",
+#     "Tucker"           = "green",
+#     "Surface Buoy/CTD" = "blue",
+#     "Missed"           = "red"
+#   )
+
+scale_key <- 
+  tribble(
+                ~label, ~shape,       ~fill,  ~color,
+                 "CTD",     24, "lightblue", "black",
+           "CTD/Bongo",     21,      "#546", "black",
+    "CTD/Bongo/Tucker",     22,      "#ffd", "black",
+          "CTD/Tucker",     22,      "#778", "black",
+               "Bongo",     22,      "#434", "black",
+        "Bongo/Tucker",     22,    "yellow", "black",
+              "Tucker",     22,     "green", "black",
+    "Surface Buoy/CTD",     25,      "blue", "black",
+              "Missed",      4,       "red",   "red"
   )
 
 loc_map_pts <-
@@ -350,120 +385,85 @@ loc_map_pts <-
 
   # add arrows for cruise track
   ggarchery::geom_arrowsegment(
-    data = metadata,
+    data = plot_data,
     aes(
       x     = long,
       xend  = lon_lag,
       y     = lat,
       yend  = lat_lag,
-      color = fct_reorder(format(date, "%B %d"), date)
+      group = fct_reorder(format(date, "%B %d"), date, .na_rm = TRUE)
     ),
-    # color = "green",
     arrow_positions = 0.5,
-    arrows = arrow(length = unit(0.1, "inches")),
-    na.rm = TRUE,
-    key_glyph = draw_key_point
-    # show.legend = FALSE
+    arrows          = arrow(length = unit(0.1, "inches")),
+    na.rm           = TRUE
   ) +
-
-  # add station points
-  geom_point(
-    data = stn_miss,
-    aes(
-      x = long, 
-      y = lat, 
-      shape = label
-      ),
-      # shape = 4,
-    size = 5,
-    color = "red"
-    # shape = 21
-    # show.legend = FALSE
-  ) +
-    # add station labels
-  # ggrepel::geom_text_repel(
-  #   data = stn_miss,
-  #   aes(x = long, y = lat, label = waypoint),
-  #   max.overlaps       = 15,
-  #   min.segment.length = 0.0,
-  #   size               = 3.5,
-  #   # uncomment for bold letters
-  #   fontface      = "bold",
-  #   color         = "red",
-  #   bg.color      = "black",
-  #   bg.r          = 0.15,
-  #   segment.color = "black",
-  #   # direction     = "x"
-  # ) +
   
-  
-  # add station points
+  # add stations sampled and missed
   geom_point(
-    data = metadata,
+    data = plot_data,
     aes(
-      x = long, 
-      y = lat, 
-      # fill = fct_reorder(format(date, "%B %d"), date), 
+      x     = long, 
+      y     = lat, 
       shape = label,
-      # color = label,
-      fill = label
+      color = label,
+      fill  = label
       ),
     size = 3,
-    # shape = 21
-    # show.legend = FALSE
   ) +
-
+  scale_color_manual(
+    values = setNames(scale_key$color, scale_key$label),
+    name   = NULL
+    ) +
+  ggnewscale::new_scale_color() +
+  
   # add station labels
   ggrepel::geom_text_repel(
-    data = bind_rows(
-  mutate(metadata),
-  stn_miss
-),
-    aes(x = long, y = lat, label = station, color = label),
+    data = plot_data,
+    aes(
+      x     = long, 
+      y     = lat, 
+      label = location_id, 
+      color = label
+      ),
     max.overlaps       = 15,
     min.segment.length = 0.0,
     size               = 3.5,
-    # uncomment for bold letters
-    fontface      = "bold",
-    # color         = "white",
-    bg.color      = "black",
-    bg.r          = 0.15,
-    segment.color = "black",
-    # direction     = "x"
-show.legend =  FALSE
+    fontface           = "bold",
+    bg.color           = "black",
+    bg.r               = 0.15,
+    segment.color      = "black", 
+    show.legend        =  FALSE
   ) +
   labs(
     title = "REACH-004 (March 1 - 7)",
-    x     = NULL, # "Longitude (°)",
-    y     = NULL, # "Latitude (°)",
+    x     = NULL,
+    y     = NULL,
     color = NULL,
-    shape = NULL
+    shape = NULL,
+    fill  = NULL
   ) +
-  # scale_shape_manual(values = c(21, 21:25)) +
-  scale_shape_manual(values = shp_label_dict) +
-  scale_color_manual(values = col_label_dict) +
-  scale_fill_manual(values = col_label_dict) +
-  coord_sf(expand = FALSE, xlim = bounds[1:2], ylim = bounds[3:4]) +
+  
+  # scales guides
+  scale_shape_manual(values = setNames(scale_key$shape, scale_key$label)) +
+  scale_fill_manual(values  = setNames(scale_key$fill, scale_key$label)) +
+  scale_color_manual(values = setNames(scale_key$fill, scale_key$label)) +
   guides(
-    color = guide_legend(
-      keywidth     = 0.05,
-      keyheight    = 0.05,
-      default.unit = "inch"
-    ),
+    color = guide_legend(position = "bottom", nrow = 1),
     shape = guide_legend(position = "bottom", nrow = 1),
-    fill = "none"
+    fill = guide_legend(position = "bottom", nrow = 1),
   ) +
+    
+  coord_sf(expand = FALSE, xlim = bounds[1:2], ylim = bounds[3:4]) +
   theme_bw() +
   theme(
-    legend.position        = "inside",
-    legend.position.inside = c(0.91, 0.8),
-    legend.text            = element_text(size = 7)
+    legend.position = "bottom",
+    legend.text     = element_text(size = 7)
   )
 ```
 
 
 ```{r show-stations}
-loc_map_ptslo
+loc_map_pts
 ```
 ```{r}
 bind_rows(
@@ -511,7 +511,7 @@ camcorder::gg_stop_recording()
 
 ```{r}
 bathy2 <- 
-  here("data", "map_shp", "reach") %>%
+  bathy_path %>%
   dir_ls()  %>%
   terra::rast()
 
