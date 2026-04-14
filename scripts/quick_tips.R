@@ -1500,3 +1500,25 @@ tibble::tibble(num_col = c(month.name, 1:10, "2020-01-01")) %>%
   hablar::retype() 
 
 # ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Lead or Lag Default ---- #
+# ============================================================================ #
+# Apr 14, 2026
+
+# when using lead or lag in dplyr, to set default value so as last/first value
+# lead is useful when drawing arrows from one point to the next
+
+tibble::tibble(col1 = c(1:5)) |>
+  dplyr::mutate(
+    # shifts up
+    lead_wo = dplyr::lead(col1, default = NULL),
+    lead    = dplyr::lead(col1, default = dplyr::last(col1)),
+    
+    # lag shifts down
+    lag_wo  = dplyr::lag(col1, default = NULL),
+    lag     = dplyr::lag(col1, default = dplyr::first(col1))
+  )
+  
+# ============================================================================ #
