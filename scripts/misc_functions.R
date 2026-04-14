@@ -455,7 +455,7 @@ save_gg <- function(
     ...
   )
   
-  # ---- end of function save_gg
+  # ---- end of function save_gg ---- #
 }
 
 ##%######################################################%##
