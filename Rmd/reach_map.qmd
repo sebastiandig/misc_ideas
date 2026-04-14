@@ -25,18 +25,16 @@ librarian::shelf(
   forcats, lubridate, glue, fs, magrittr, here,
   
   # additional
+  readxl, janitor, hms,
   OpenStreetMap, leaflet,
   rerddap,
-  sf
-  
+  sf, metR
 )
 
 conflicts_prefer(
   dplyr::filter(), 
   dplyr::select()
   )
-  
-
 ```
 
 
@@ -46,6 +44,9 @@ conflicts_prefer(
 dir_path <- 
   here() %>%
   rstudioapi::selectDirectory()
+
+plt_title <- glue("{basename(dir_path)} (November 19 - 25)")
+invisible(readline("\nDid you update the dates for the title?\n\n"))
 
 sheet_names <- 
   dir_path %>%
@@ -57,8 +58,8 @@ loc_dat <-
   dir_path %>%
   dir_ls(regexp = "(?i)schedule") %>%
   str_subset("~", negate = TRUE) %>% 
-  readxl::read_xlsx(.name_repair = janitor::make_clean_names, sheet = sheet_names[2]) %>%
-  janitor::remove_empty("cols") %>%
+  read_xlsx(.name_repair = make_clean_names, sheet = sheet_names[2]) %>%
+  remove_empty("cols") %>%
   drop_na(latitude_decimal_degree, longitude_decimal_degree) %T>%
   print() %>%
   select(waypoint, description, 
@@ -90,19 +91,6 @@ whale_shp_path <-
 whale_shp <- st_read(whale_shp_path)
 ```
 
-
-```{r}
-# add boundaries for openstreemap
-adj_deg <- 0.01 # degree widen
-bounds <- 
-  c(
-    range(loc_dat$long) + c(-adj_deg, adj_deg),
-    range(loc_dat$lat) + c(-adj_deg, adj_deg)
-  ) %T>%
-  print()
-```
-
-
 # 3.0 Plot using `leaflet`
 
 Overall points
@@ -111,7 +99,6 @@ Overall points
 leaflet::leaflet() %>%
   addTiles() %>%
   addMarkers(loc_dat$long, loc_dat$lat)
-
 ```
 
 ```{r}
@@ -135,7 +122,6 @@ world_download(
   etopo_version = "ETOPO_2022_v1_15s"
 )
 Sys.unsetenv("RERDDAP_DEFAULT_URL")
-debugonce(world_download)
 
 bathy <- 
   here("data", "map_shp", "reach") %>%
@@ -149,15 +135,16 @@ bathy <-
 long_lat_lag <- 
   loc_dat %>%
   mutate(
-    lon_lag = dplyr::lead(long, default = -82.58745),
-    lat_lag = dplyr::lead(lat, default = 27.67623),
+    lon_lag = dplyr::lead(long, default = first(long)),
+    lat_lag = dplyr::lead(lat, default = first(lat)),
     ) %>%
   mutate(
     .by = waypoint,
     te = row_number(),
     t2 = n(),
     waypoint = if_else(row_number() > 1, "", waypoint)
-  ) %T>% 
+  ) %>%
+  select(-te, -t2) %T>% 
   print()
 ```
 
@@ -167,17 +154,7 @@ Inspired from: <https://ajsmit.github.io/Intro_R_Official/mapping-google.html>
 
 ```{r mangrove-stations}
 # add boundaries for openstreemap
-adj_deg <- c(0.3, 1.25) # degree widen
-bounds <- 
-  c(
-    range(loc_dat$long) + c(-adj_deg[1], adj_deg[2]),
-    range(loc_dat$lat) + c(-adj_deg[1], adj_deg[2] - 0.8)
-  ) %T>%
-  print()
-
-bounds[1] <- -88.5
-bounds[2] <- -82
-bounds[3] <- 26.5
+bounds <- c(-88.5, -82, 26.5, 30.6)
 
 # extract openstreemap tiles
 osm_map <-
@@ -233,6 +210,24 @@ shp_label_dict <-
   "Surface Buoy/CTD" = 25
 )
 
+scale_key <- 
+  tribble(
+                           ~label, ~shape,       ~fill,  ~color,
+                         "Arrive",     21,     "black", "black",
+                       "Waypoint",     21,     "black", "black",
+                            "CTD",     24, "lightblue", "black",
+                      "CTD/Bongo",     21,      "#546", "black",
+"CTD/Bongo and Tucker/Subsurface",     22,      "#ffd", "black",
+           "CTD/Bongo and Tucker",     22,      "#ffd", "black",
+               "CTD/Bongo/Tucker",     22,      "#ffd", "black",
+                     "CTD/Tucker",     22,      "#778", "black",
+                          "Bongo",     22,      "#434", "black",
+                   "Bongo/Tucker",     22,    "yellow", "black",
+                         "Tucker",     22,     "green", "black",
+               "Surface Buoy/CTD",     25,      "blue", "black",
+                         "Missed",      4,       "red",   "red"
+  )
+
 loc_map_pts <-
   loc_map +
 
@@ -258,14 +253,12 @@ loc_map_pts <-
   geom_point(
     data = loc_dat,
     aes(
-      x = long, 
-      y = lat, 
-      fill = fct_reorder(format(date, "%B %d"), date), 
+      x     = long, 
+      y     = lat, 
+      fill  = fct_reorder(format(date, "%B %d"), date), 
       shape = description
       ),
-    size = 3,
-    # shape = 21
-    # show.legend = FALSE
+    size = 3
   ) +
 
   # add station labels
@@ -284,14 +277,14 @@ loc_map_pts <-
     # direction     = "x"
   ) +
   labs(
-    title = "REACH-003 (November 19 - 25)",
+    title = plt_title,
     x     = NULL, # "Longitude (°)",
     y     = NULL, # "Latitude (°)",
     color = NULL,
     shape = NULL
   ) +
-  # scale_shape_manual(values = c(21, 21:25)) +
-  scale_shape_manual(values = shp_label_dict) +
+  # scale_shape_manual(values = shp_label_dict) +
+  scale_shape_manual(values = setNames(scale_key$shape, scale_key$label)) +
   coord_sf(expand = FALSE, xlim = bounds[1:2], ylim = bounds[3:4]) +
   guides(
     color = guide_legend(
@@ -318,37 +311,60 @@ loc_map_pts
 ```{r}
 loc_dat$description %>%
   unique()
-
 ```
 
+
+```{r}
+# set location and name to save plot
+plt_save <- here(
+  "data", "cam_test", "reach_map", 
+  paste0(basename(dir_path), "_pre_cruise_map.jpeg")
+  ) %T>% 
+  print()
+
+if (FALSE) {
+  ggplot2::ggsave(
+    filename = plt_save,
+    plot = loc_map_pts,
+    device   = "jpeg",
+    dpi      = 600,
+    width    = 11,
+    height   = 8.5,
+    units    = "in",
+    bg       = "white"
+  )
+} else {
+  message("Not saving post cruise map!")
+}
+```
 
 # 5.0 Save Plots using `camcorder`
 
 After running, will need to redisplay plots for it to
 
 ```{r camcorder}
-shelf(camcorder)
-camcorder::gg_record(
-  dir    = here::here("data", "cam_test", "reach_map"),
-  device = "png",
-  dpi    = 600,
-  width = 11,
-  height = 8.5,
-  units  = "in",
-  bg     = "white"
-)
-
-shell.exec(here::here("data", "cam_test", "reach_map"))
-
-# uncomment if need to resize
-# camcorder::gg_resize_film(width = 90, height = 90 * 0.5625,  dpi = 600, units = "mm")
-
+# shelf(camcorder)
+# camcorder::gg_record(
+#   dir    = here::here("data", "cam_test", "reach_map"),
+#   device = "png",
+#   dpi    = 600,
+#   width = 11,
+#   height = 8.5,
+#   units  = "in",
+#   bg     = "white"
+# )
+# 
+# shell.exec(here::here("data", "cam_test", "reach_map"))
+# 
+# # uncomment if need to resize
+# # camcorder::gg_resize_film(width = 90, height = 90 * 0.5625,  dpi = 600, units = "mm")
+# 
 ```
 
 ## 5.1 When done saving plots
 
 ```{r stop-camcorder}
-camcorder::gg_stop_recording()
+# camcorder::gg_stop_recording()
 ```
 
 
