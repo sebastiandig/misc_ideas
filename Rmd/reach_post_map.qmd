@@ -57,6 +57,24 @@ log_path <-
 # sheet names
 sheet_names_log <- excel_sheets(log_path) 
 
+# extract date range
+date_string <- 
+  log_path %>%
+  read_excel(
+    sheet        = sheet_names_log[str_detect(sheet_names_log, "(?i)info")],
+    .name_repair = janitor::make_clean_names
+    ) %>%
+  filter(str_detect(x, "Start|End")) %$%
+  as.numeric(x_2) %>%
+  excel_numeric_to_date() %>%
+  format("%B %d, %Y") %>%
+  str_c(collapse = " - ")
+
+date_string <- 
+  glue("{basename(dir_path)} ({date_string})") %T>% 
+  print()
+
+
 # load filter metadata
 filter_meta <- 
   log_path %>%
@@ -356,7 +374,7 @@ loc_map_pts <-
     show.legend        =  FALSE
   ) +
   labs(
-    title = "REACH-004 (March 1 - 7)",
+    title = date_string,
     x     = NULL,
     y     = NULL,
     color = NULL,
