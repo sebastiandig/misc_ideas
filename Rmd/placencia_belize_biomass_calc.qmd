@@ -214,7 +214,7 @@ placencia_map
 # set location and name to save plot
 plt_save <- 
   here("data", "raw", "placencia",
-  paste0("placencia_mangrove_map2_", Sys.Date(), ".jpeg")
+  paste0("placencia_mangrove_map_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
@@ -389,7 +389,7 @@ idw_rast_smooth <-
 
 ## 6.1 Plot IDW Interpolation onto Map
 
-```{r}
+```{r plot-idw}
 ggplot() +
   geom_sf(data = belize_sf, fill = "grey", alpha = 0.5) +
   annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
@@ -448,7 +448,7 @@ ggplot() +
 # set location and name to save plot
 plt_save3 <- 
   here("data", "raw", "placencia",
-  paste0("placencia_mangrove_map_interp5_", Sys.Date(), ".jpeg")
+  paste0("placencia_mangrove_map_interp_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
