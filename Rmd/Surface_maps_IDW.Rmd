@@ -33,7 +33,6 @@ Output: PNG
 # Load Libraries
 
 ```{r setup}
-
 if (!nzchar(system.file(package = "librarian"))) 
   install.packages("librarian")
 
@@ -284,7 +283,7 @@ cruise_extract <- function(cruise_id, dat) {
           }
   
 
-  ## ---- station means (ONLY aggregation; no smoothing of source data)
+  # ---- station means (ONLY aggregation; no smoothing of source data) ---- #
   df_st <-
     df %>%
     summarise(
@@ -342,11 +341,11 @@ Output:
   grid_sf   - sf object version
 
 ```{r blank-grid}
-grid_blank <- function(.support_poly, utm_epsg, grid_res_m = 1000) {
+grid_blank <- function(.support_poly, utm_epsg, grid_res_m = 1000, buffer_m = 10000) {
   # create blank raster grid with equal grid numbers
   grid_rast <- 
     # add 10 km boundary around convex hull
-    st_buffer(.support_poly, dist = 10000) %>%
+    st_buffer(.support_poly, dist = buffer_m) %>%
     st_bbox() %>%
     {
       terra::rast(
@@ -395,7 +394,7 @@ edge_opacity <- function(
     ) {
   
   # convert convex hull to linestring
-  support_boundary_line <- st_boundary(support_poly_utm) %>%
+  support_boundary_line <- st_boundary(.support_poly_utm) %>%
     terra::vect()
   
   # calculate distance from convex hull (as linestring) then mask to within convex hull
@@ -867,7 +866,7 @@ plot_convex <- function(
   geom_sf(data = grid_sf, color = "#500", alpha = 0.5) + # base grid for interpolation
   geom_sf(data = florida_sf) + # florida map
   geom_sf(
-    data = support_poly_utm,
+    data = .support_poly_utm,
     color = "blue", fill = "lightblue", alpha = 0.5
   ) + # convex hull
   geom_sf(data = pts_utm) + # data points used
