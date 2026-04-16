@@ -80,6 +80,8 @@ bbox <- st_bbox(placencia_bbox)
 
 # 3.0 Locating and unzipping `kmz` file
 
+From Cissel et al
+
 ```{r kmz-to-kml}
 # path to kmz file
 mangrove_kmz <- rstudioapi::selectFile() %T>% 
