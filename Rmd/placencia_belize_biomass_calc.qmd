@@ -8,6 +8,16 @@ editor: source
 
 # 1.0 ---- Summary of Document ----
 
+This document is to run an inverse distance weighted interpolation on a mangrove
+biomass data set. 
+
+2 main inputs:
+- mangrove tiff file
+- mangrove height data
+  - location of each measured point
+  - average total biomass for each sampled site (above and below ground)
+  
+
 
 
 # 2.0 ---- Setup ----
@@ -21,13 +31,13 @@ if (!nzchar(system.file(package = "librarian")))
 
 librarian::shelf(
   quiet = TRUE,
-  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
-  forcats, lubridate, glue, fs, magrittr, here,
+  librarian, conflicted, ggplot2, tibble, tidyr, purrr, dplyr,
+  fs, magrittr, here,
   
   # additional packages, if from GitHub, include username
-  sf, ggspatial, terra, geodata, gstat, viridis, ggrepel, grid, gstat,
-  patchwork 
-  
+  sf, terra, geodata, gstat, ggrepel, grid,
+  patchwork, tidyterra,
+  readxl, janitor, viridisLite, scales
 )
 
 conflicts_prefer(
@@ -36,6 +46,28 @@ conflicts_prefer(
   )
 ```
 
+## 2.2 IDW Defaults and Gaussian Kernel Function
+
+```{r defaults}
+# default: local IDW = tighter, less spread, more visually refined
+idw_options <-
+  list(
+    "idp_pow"   = 2.0,  # idw power parameter
+    "maxdist_m" = 5000, # max distance from sampled points (in meters)
+    "nmin_nb"   = 3,    # min number of data points to use
+    "nmax_nb"   = 10    # maximum number of data points
+  )
+
+# gaussian kernel for smoothing
+# smooths over values with weights
+# size - number of cells from center pixel (i.e. 5 = 11 x 11 box)
+# sigma - control smoothness
+gaussian_kernel = function(size, sigma) {
+    x <- seq(-size, size, length.out = 2 * size + 1)
+    kernel <- outer(x, x, function(x, y) exp(-(x^2 + y^2) / (2 * sigma^2)))
+    return(kernel / sum(kernel)) # Normalize the kernel
+  }
+```
 
 
 ## 2.3 Placencia Bounding Box
@@ -54,7 +86,7 @@ var roi = ee.Geometry.Polygon([
 
 ```{r placencia-bbox}
 # projection
-wgs_crs  <- 4326 # WGS 84
+wgs_crs     <- 4326 # WGS 84
 belize_epsg <- 32616 # for Belize
 
 
@@ -78,7 +110,7 @@ placencia_bbox <-
 bbox <- st_bbox(placencia_bbox)
 ```
 
-## 2.2 Extract Belize Map from `geodata`
+## 2.4 Extract Belize Map from `geodata`
 
 ```{r belize-map}
 # belize map object from geodata then projected
@@ -96,7 +128,7 @@ plot(belize_sf)
 
 
 
-## 2.4 Path for Mangrove Map and Data
+## 2.5 Path for Mangrove Map and Data
 
 ```{r path-data}
 # mangrove tiff file
@@ -119,18 +151,19 @@ biomass_path <-
 
 # 3.0 Load Placencia Mangrove tiff
 
-```{r}
+```{r load-tiff}
 # load mangrove geotiff
 mang_load <- 
-  terra::rast(mang_tiff[1]) %T>% 
+  rast(mang_tiff[1]) %T>% 
   print()
 
 mang_load
 plot(mang_load)
 
+# name layer
 names(mang_load) <- c("co")
-test_m <- mang_load
 
+# set values of 0 to NA
 NAflag(mang_load) <- 0
 
 ggplot() +
@@ -141,32 +174,26 @@ ggplot() +
   scale_fill_discrete(na.value = "transparent") +
   theme_bw()
 
+# crop to Placencia bounding box
 mang_crop <- 
   mang_load %>%
   crop(bbox)
-
 ```
 
 
 
-# 4.0 Plot Mangrove on Belize Map
+## 3.1 Plot Mangrove on Belize Map
 
-```{r}
+```{r placencia map}
 placencia_map <- 
   ggplot() +
   geom_sf(data = belize_sf, fill = "grey", alpha = 0.5) +
-  # geom_tile(
-  #   data = as.data.frame(mang_crop, xy = TRUE),
-  #   aes(x = x, y = y, fill = co),
-  #   show.legend = FALSE
-  # ) +
   tidyterra::geom_spatraster(
     data = mang_crop, 
     aes(fill = co),
     show.legend = FALSE,
-    maxcell = Inf
+    maxcell     = Inf
   ) +
-  # guides(fill = "none") +
   scale_fill_continuous(na.value = "transparent") +
   coord_sf(
     expand = FALSE,
@@ -181,9 +208,9 @@ placencia_map <-
 
 placencia_map
 ```
-## 4.1 Save Mangrove Belize Map
+## 3.2 Save Mangrove Belize Map
 
-```{r}
+```{r save-base-map}
 # set location and name to save plot
 plt_save <- 
   here("data", "raw", "placencia",
@@ -192,7 +219,7 @@ plt_save <-
   print()
 
 if (FALSE) {
-  ggplot2::ggsave(
+  ggsave(
     filename = plt_save,
     plot = placencia_map,
     device   = "jpeg",
@@ -208,9 +235,9 @@ if (FALSE) {
 ```
 
 
-# 5.0 Load Data from the Field
+# 4.0 Load Data from the Field
 
-```{r}
+```{r load-sample-data}
 # read mangrove biomass dataset
 biomass_dat <- 
   readxl::read_xlsx(biomass_path) %>%
@@ -222,28 +249,11 @@ biomass_loc <-
   biomass_dat %>%
   select(
     "point" = samplingpoint_1,
-    "lat" = lat_16,
-    "long" = long_17,
+    "lat"   = lat_16,
+    "long"  = long_17,
     ) %>%
   distinct() %>%
   drop_na(lat, long) %T>% 
-  print()
-
-# location as sf
-biomass_sf <-
-  biomass_loc %>%
-  st_as_sf(coords = c("long", "lat"), remove = FALSE, crs = wgs_crs) %>%
-  
-  # convert to projection in meters
-  st_transform(crs = belize_epsg) %>%
-  mutate(
-    x = st_coordinates(geometry)[, 1],
-    y = st_coordinates(geometry)[, 2],
-  ) %>%
-  filter(
-    between(y, bbox[2], bbox[4]),
-    between(x, bbox[1], bbox[3]),
-  ) %T>%
   print()
 
 # biomass values
@@ -257,25 +267,41 @@ biom_val <-
   ) %T>%
   print() 
 
-biom_sf2 <- 
-  biomass_sf %>%
+# location merged with biomass converted to meters projection
+biom_df <-
+  biomass_loc %>%
+  st_as_sf(coords = c("long", "lat"), remove = FALSE, crs = wgs_crs) %>%
+  # convert to projection in meters
+  st_transform(crs = belize_epsg) %>%
   mutate(
-    point2 = biom_val$point,
-    total_biomass = biom_val$total_biomass_kg
-  )
+    x = st_coordinates(geometry)[, 1],
+    y = st_coordinates(geometry)[, 2],
+  ) %>%
+  filter(
+    between(y, bbox[2], bbox[4]),
+    between(x, bbox[1], bbox[3]),
+  )  %>%
+  left_join(
+    biom_val
+  )  %>%
+  as.data.frame() %T>%
+  print()
 ```
 
-```{r}
+## 4.1 Plot Data Point on Placencia Map
+
+```{r plt-points-map}
 placencia_map +
   geom_sf(
-    data = biomass_sf,
+    data = biom_df,
+    aes(geometry = geometry),
     alpha = 0.75,
-    size = rel(2),
+    size  = rel(2),
     color = "red4",
     shape = 16
   ) +
   ggrepel::geom_text_repel(
-    data = biomass_sf,
+    data = biom_df,
     aes(x = x, y = y, label = point),
     min.segment.length = 0,
     max.overlaps       = 100,
@@ -288,8 +314,13 @@ placencia_map +
     expand = FALSE,
     ylim = bbox[c(2, 4)],
     xlim = bbox[c(1, 3)],
-  ) 
+  )
+```
 
+
+## 4.2 Save Points on Map
+
+```{r save-points-map}
 # set location and name to save plot
 plt_save2 <- 
   here("data", "raw", "placencia",
@@ -298,7 +329,7 @@ plt_save2 <-
   print()
 
 if (FALSE) {
-  ggplot2::ggsave(
+  ggsave(
     filename = plt_save2,
     plot = last_plot(),
     device   = "jpeg",
@@ -314,96 +345,13 @@ if (FALSE) {
 ```
 
 
-```{r}
-source(here("scripts", "interpolation_functions.R"))
-```
+# 6.0 IDW Interpolation
 
-```{r}
-support_poly_utm <-
-  biom_sf2 %>%
-  st_union()  %>%
-  st_convex_hull() %>%
-  st_buffer(3000, nQuadSegs = 100)
-
-placencia_map +
-  geom_sf(
-    data = support_poly_utm,
-    color = "blue", fill = "lightblue", alpha = 0.5
-  ) 
-
-
-```
-
-
-
-```{r}
-grid_temp <-
-  grid_blank(
-    .support_poly = support_poly_utm,
-    utm_epsg      = belize_epsg,
-    grid_res_m    = res(mang_crop) * 10,
-    buffer_m      = 10000
-  )
-
-grid_rast2 <- grid_temp$grid_rast
-grid_sf2   <- grid_temp$grid_sf
-
-# grid_rast <- mang_crop
-grid_rast <- test_m
-values(grid_rast) <- NaN
-
-# grid_rast_50 <- terra::aggregate(grid_rast, fact = 10)
-grid_rast_50 <- terra::aggregate(test_m, fact = 5)
-grid_rast_50_t <- terra::aggregate(test_m, fact = 5)
-values(grid_rast_50) <- 0
-
-grid_sf <- 
-    as.data.frame(grid_rast_50, xy = TRUE, cells = TRUE, na.rm = FALSE) %>%
-    st_as_sf(coords = c("x","y"), crs = belize_epsg)
-
-
-ggplot() +
-  geom_sf(data = belize_sf, fill = "grey", alpha = 0.5) +
-  geom_tile(
-    # data = as.data.frame(grid_rast_50, xy = TRUE),
-    data = slice_sample(as.data.frame(grid_rast_50, xy = TRUE), prop = 0.5),
-    aes(x = x, y = y, fill = co)
-  ) +
-  guides(fill = "none") +
-  scale_fill_continuous(na.value = "blue") +
-  coord_sf(
-    expand = FALSE,
-    ylim = bbox[c(2,4)],
-    xlim = bbox[c(1,3)],
-  ) +
-  labs(
-    x = NULL,
-    y = NULL
-  ) +
-  theme_bw()
-
-# takes too long
-# placencia_map +
-#   geom_sf(
-#     data = support_poly_utm,
-#     color = "blue", fill = "lightblue", alpha = 0.5
-#   ) +
-#   geom_sf(data = grid_sf, color = "#500", alpha = 0.1)
-```
-
-
-
-```{r}
-biom_df <- sf::st_coordinates(biom_sf2) |> 
-  as.data.frame() %>%
-  rename("x" = X, "y" = Y)
-
-biom_df$total_biomass <- biom_sf2$total_biomass
-
+```{r idw-interp}
 idw_sf_utm <-
   gstat::gstat(
-    formula   = total_biomass ~ 1,
-    data      = biom_df,
+    formula   = total_biomass_kg ~ 1,
+    data      = as.data.frame(biom_df),
     locations = ~ x + y,
     set       = list(idp = idw_options$idp_pow),
     maxdist   = idw_options$maxdist_m,
@@ -411,235 +359,101 @@ idw_sf_utm <-
     nmax      = idw_options$nmax_nb
   )
 
+# create a blank grid based on spatial extent of mangrove cropped area
+# edit `res` to desired resolution in meters
+# rast_test <- rast(ext(mang_crop), res = 1000, crs = paste0("EPSG:", belize_epsg))
 rast_test <- rast(ext(mang_crop), res = 10, crs = paste0("EPSG:", belize_epsg))
-rast_test <- rast(ext(mang_crop), res = 1000, crs = paste0("EPSG:", belize_epsg))
-names(biom_df)
-idw_rast <- terra::interpolate(rast_test, idw_sf_utm) 
 
-idw_rast_test <- 
-  idw_rast %>%
-  # smooths over values with weighting of 3x3 kernel
-  terra::focal(
-    # w         = smooth_kernel,
-    w         = gaussian_kernel(sigma = 5, size = 10),
-    fun       = mean,
-    na.policy = "omit",
-    na.rm     = TRUE,
-    fillvalue = NA
-  ) %>%
-  terra::mask(terra::vect(as.data.frame(mang_crop, xy = TRUE), crs = paste0("EPSG:", belize_epsg)))
-
-
-placencia_map +
-  tidyterra::geom_spatraster(data = idw_rast %>%
-  terra::mask(terra::vect(as.data.frame(mang_crop, xy = TRUE), crs = paste0("EPSG:", belize_epsg)))
-  , aes(fill = var1.pred),
-  na.rm = TRUE) +
-  scale_fill_continuous(na.value = "transparent") 
-    
-ggplot() +
-  tidyterra::geom_spatraster(data = idw_rast %>%
-  terra::mask(terra::vect(support_poly_utm)), aes(fill = var1.pred),
-  na.rm = TRUE) +
-  scale_fill_continuous(na.value = "transparent") 
-
-
-
-```
-
-
-
-
-```{r}
-gaussian_kernel = function(size, sigma) {
-    x <- seq(-size, size, length.out = 2 * size + 1)
-    kernel <- outer(x, x, function(x, y) exp(-(x^2 + y^2) / (2 * sigma^2)))
-    return(kernel / sum(kernel)) # Normalize the kernel
-  }
-
-gaussian_kernel(sigma = 1, size = 4)
-
-idw_sf_utm <- 
-  gstat::idw(
-    formula   = total_biomass ~ 1,
-    locations = select(biom_sf2, -lat, -long),
-    newdata   = grid_sf,
-    idp       = idw_options$idp_pow,
-    maxdist   = idw_options$maxdist_m,
-    # maxdist   = 500000,
-    # nmin      = idw_options$nmin_nb,
-    nmax      = idw_options$nmax_nb
-    # nmax      = 3
-  )
-
-# idw_mod <- gstat::gstat(
-#   formula = value ~ 1,
-#   data    = as(biom_sf2, "Spatial"),
-#   set     = list(idp = 2)
-# )
-
-# replace empty grid with IDW values
-# terra::values(grid_rast) <- as.numeric(idw_sf_utm$var1.pred)
-terra::values(grid_rast_50) <- as.numeric(idw_sf_utm$var1.pred)
-
-# grid_rast <- terra::interpolate(grid_rast, idw_mod)
-
-# ---- LIGHT DISPLAY SMOOTHING ONLY ---- #
-r_pred_water <-
-  # grid_rast %>%
-  grid_rast_50 %>%
-  # mask data outside convex hull
-  # terra::mask(terra::vect(support_poly_utm)) %>%
+idw_rast_smooth <- 
+  # run model on grid
+  terra::interpolate(rast_test, idw_sf_utm) %>%
   
-  # smooths over values with weighting of 3x3 kernel
+  # gaussian smooth
   terra::focal(
-    # w         = smooth_kernel,
-    w         = gaussian_kernel(sigma = 5, size = 10),
+    w         = gaussian_kernel(size = 10, sigma = 5),
     fun       = mean,
     na.policy = "omit",
     na.rm     = TRUE,
     fillvalue = NA
   ) %>%
-
-  # mask again so smoothing does not bleed outside supported footprint
-  # of convex hull
-  terra::mask(terra::vect(support_poly_utm))
-
-r_pred_water <- 
-  r_pred_water %>%
-  # mask landmass
-  # terra::mask(mang_crop, inverse = FALSE) 
-  # terra::mask(test_m, inverse = FALSE) 
-  terra::mask(grid_rast_50_t, inverse = FALSE) 
-
-# convert into data frame
-plot_df <- 
-  r_pred_water %>%
-  as.data.frame(xy = TRUE, na.rm = FALSE) %>%
-  rename("pred" = focal_mean) %>%
-  # rename("pred" = co) %>%
-  filter(!is.na(pred))
+  
+  # mask to valid mangrove points
+  terra::mask(
+    terra::vect(
+      as.data.frame(mang_crop, xy = TRUE), 
+      crs = paste0("EPSG:", belize_epsg)
+      )
+    )
 ```
-grid_rast_50 - 343460, 379460, 1820340, 1863540
-               343460, 379460, 1820340, 1863540
-               343460, 379460, 1820340, 1863540 
-test_m       - 343460, 379450, 1820390, 1863540
+
+
+## 6.1 Plot IDW Interpolation onto Map
 
 ```{r}
-placencia_map +
-  # ggplot() +
-  # annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = "#cfe8f3") +
+ggplot() +
+  geom_sf(data = belize_sf, fill = "grey", alpha = 0.5) +
   annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
-  tidyterra::geom_spatraster(data = idw_rast_test
-                               # idw_rast %>%
-  # terra::mask(terra::vect(as.data.frame(mang_crop, xy = TRUE), crs = paste0("EPSG:", belize_epsg)))
-  , 
-  aes(fill = var1.pred),
-  na.rm = TRUE,
-  maxcell = Inf
+  
+  # add interpolated map
+  tidyterra::geom_spatraster(
+    data = idw_rast_smooth,
+    aes(fill = var1.pred),
+    na.rm   = TRUE,
+    maxcell = Inf
   ) +
-  # scale_fill_continuous(na.value = "transparent") +
-  # ggnewscale::new_scale_fill() +
-  # geom_tile(data = plot_df, aes(x = x, y = y, fill = pred)) +
-  # geom_sf(data = idw_sf_utm, aes(color = var1.pred)) +
-  # geom_sf(data = test, aes(color = var1.pred), size = rel(0.5)) +
-  # geom_tile(
-  # data = mutate(
-  #   test,
-  #   x = st_coordinates(geometry)[,1],
-  #   y = st_coordinates(geometry)[,2],
-  #   ),
-  # aes(x = x, y = y, fill = var1.pred)
-  # ) +
-  # scale_fill_viridis_c(
-  # scale_fill_continuous(
-    # palette = ggsci::pal_cosmic(),
-  scale_fill_stepsn(
-    colours = viridisLite::viridis(8),
-    # option = "C",
-    # direction = 1,
-    na.value = NA,
-    oob = scales::squish,
-    breaks = c(0, 10, 20, 30, 40, 50, 75, 100, 200, 300, 400),
-    limits = c(0, 400),
-    trans = "sqrt",
-  ) +
-  # scale_color_stepsn(
-  #   colours = viridisLite::viridis(8),
-  #   # option = "C",
-  #   # direction = 1,
-  #   na.value = NA,
-  #   oob = scales::squish,
-  #   breaks = c(0, 10, 20, 30, 40, 50, 75, 100, 200, 300, 400),
-  #   limits = c(0, 400),
-  # ) +
-
+  
+  # add sample points
   geom_sf(
-    # data = biomass_sf,
-    data = biom_sf2,
-    aes(fill = total_biomass),
-    alpha = 0.75,
-    size = rel(2),
-    color = "white",
-    shape = 21
+    data = biom_df,
+    aes(fill = total_biomass_kg, geometry = geometry),
+    alpha  = 0.75,
+    size   = rel(1.5),
+    stroke = rel(0.75),
+    color  = "white",
+    shape  = 21
   ) +
   ggrepel::geom_text_repel(
-    data = biomass_sf,
+    data = biom_df,
     aes(x = x, y = y, label = point),
     min.segment.length = 0,
-    max.overlaps = 100,
-    color = "white",
-    bg.color = "black",
-    segment.color = "black",
-    alpha = 0.75
+    max.overlaps       = 100,
+    color              = "white",
+    bg.color           = "black",
+    segment.color      = "black",
+    alpha              = 0.75
   ) +
-    coord_sf(
+  scale_fill_stepsn(
+    name     = "Total Biomass (kg)",
+    colours  = viridisLite::viridis(8),
+    na.value = NA,
+    oob      = scales::squish,
+    breaks   = c(0, 25, 50, 75, 100, 200, 400),
+    limits   = c(0, 400),
+    trans    = "sqrt",
+  ) +
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  coord_sf(
     expand = FALSE,
     ylim = bbox[c(2, 4)],
     xlim = bbox[c(1, 3)],
-  )
+  ) +
+  theme_bw()
 ```
 
-
-```{r}
-idw_sf_utm
-ggplot() +
-# geom_sf(data = idw_sf_utm, aes(color = var1.pred))
-geom_sf(data = st_intersection(idw_sf_utm, st_as_sf(as.polygons(grid_rast, dissolve = TRUE))), aes(color = var1.pred))
-
-terra::extract(mang_crop, vect(idw_sf_utm), xy = TRUE) %>%
-  filter(!is.na(co))
-
-mang_sf_crop <- 
-as.polygons(!is.nan(mang_crop), dissolve = TRUE) %>%
-  st_as_sf() %>%
-  filter(co > 0) 
-
-test <-
-  # st_intersection(mang_sf_crop, idw_sf_utm)
-  st_filter(idw_sf_utm, mang_sf_crop)
-
-ggplot() +
-geom_tile(
-  data = mutate(
-    test,
-    x = st_coordinates(geometry)[,1],
-    y = st_coordinates(geometry)[,2],
-    ),
-  aes(x = x, y = y, fill = var1.pred)
-  )
-```
-
-```{r}
+## 6.2 Save Interpolation Map
+```{r save-interp}
 # set location and name to save plot
 plt_save3 <- 
   here("data", "raw", "placencia",
-  paste0("placencia_mangrove_map_interp4_", Sys.Date(), ".jpeg")
+  paste0("placencia_mangrove_map_interp5_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
 if (FALSE) {
-  ggplot2::ggsave(
+  ggsave(
     filename = plt_save3,
     plot = last_plot(),
     device   = "jpeg",
