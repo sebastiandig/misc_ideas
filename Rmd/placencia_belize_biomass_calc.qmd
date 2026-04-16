@@ -225,7 +225,7 @@ if (FALSE) {
     device   = "jpeg",
     dpi      = 600,
     width    = 8.5,
-    height   = 11,
+    height   = 9,
     units    = "in",
     bg       = "white"
   )
@@ -335,7 +335,7 @@ if (FALSE) {
     device   = "jpeg",
     dpi      = 600,
     width    = 8.5,
-    height   = 11,
+    height   = 9,
     units    = "in",
     bg       = "white"
   )
@@ -459,7 +459,7 @@ if (FALSE) {
     device   = "jpeg",
     dpi      = 600,
     width    = 8.5,
-    height   = 11,
+    height   = 9,
     units    = "in",
     bg       = "white"
   )
@@ -468,4 +468,121 @@ if (FALSE) {
 }
 ```
 
+
+## 6.3 Load OpenStreetMap and Plot
+
+```{r interpo-imagery}
+shelf(OpenStreetMap)
+
+# bounds <- 
+#   st_transform(placencia_bbox, crs = wgs_crs) %>%
+#   st_bbox() %>%
+#   as.numeric()
+
+bounds <- c(-88.5, -88.2, 16.4,   16.7)
+# extract openstreemap tiles
+osm_map <-
+  openmap(
+    bounds[c(4, 1)], # upperleft
+    bounds[c(3, 2)], # loweright
+    zoom = 14,
+    # type = "esri-physical", 
+    type = "esri-imagery", 
+    mergeTiles = TRUE
+  ) %>%
+  openproj(projection = paste("EPSG:", belize_epsg))
+
+# plot openstree
+OpenStreetMap::autoplot.OpenStreetMap(osm_map) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
+  
+  # add interpolated map
+  tidyterra::geom_spatraster(
+    data = idw_rast_smooth,
+    aes(fill = var1.pred),
+    na.rm   = TRUE,
+    maxcell = Inf
+  ) +
+  
+  # add sample points
+  geom_sf(
+    data = biom_df,
+    aes(fill = total_biomass_kg, geometry = geometry),
+    alpha  = 0.75,
+    size   = rel(1.5),
+    stroke = rel(0.75),
+    color  = "white",
+    shape  = 21
+  ) +
+  ggrepel::geom_text_repel(
+    data = biom_df,
+    aes(x = x, y = y, label = point),
+    min.segment.length = 0,
+    max.overlaps       = 100,
+    color              = "white",
+    bg.color           = "black",
+    segment.color      = "black",
+    alpha              = 0.75
+  ) +
+  scale_fill_stepsn(
+    name     = "Total Biomass (kg)",
+    colours  = viridisLite::viridis(8),
+    na.value = NA,
+    oob      = scales::squish,
+    breaks   = c(0, 25, 50, 75, 100, 200, 400),
+    limits   = c(0, 400),
+    trans    = "sqrt",
+  ) +
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  coord_sf(
+    expand = FALSE,
+    ylim = bbox[c(2, 4)],
+    xlim = bbox[c(1, 3)],
+  ) +
+  theme_bw()
+```
+
+```{r save-interp}
+# set location and name to save plot
+plt_save4 <- 
+  here("data", "raw", "placencia",
+  paste0("placencia_mangrove_map_interp_imagery_", Sys.Date(), ".jpeg")
+  ) %T>% 
+  print()
+
+if (FALSE) {
+  ggsave(
+    filename = plt_save4,
+    plot = last_plot(),
+    device   = "jpeg",
+    dpi      = 600,
+    width    = 8.5,
+    height   = 9,
+    units    = "in",
+    bg       = "white"
+  )
+} else {
+  message("Not saving mangrove map with points!")
+}
+```
+
+# 7.0 Save Interplation as `tiff` File
+
+```{r save-tiff}
+idw_rast_smooth
+tiff_save <- 
+  here("data", "raw", "placencia",
+  paste0("placencia_mangrove_map_interp_", Sys.Date(), ".tiff")
+  ) %T>% 
+  print()
+terra::writeRaster(idw_rast_smooth, tiff_save)
+
+# load tiff
+rast(tiff_save) %T>% 
+  print() %>%
+  plot()
+```
 
