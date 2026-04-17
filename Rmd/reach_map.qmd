@@ -45,9 +45,6 @@ dir_path <-
   here() %>%
   rstudioapi::selectDirectory()
 
-plt_title <- glue("{basename(dir_path)} (April 22 - May 1)")
-invisible(readline("\nDid you update the dates for the title?\n\n"))
-
 sheet_names <- 
   dir_path %>%
   dir_ls(regexp = "(?i)schedule")  %>%
@@ -76,6 +73,7 @@ loc_dat <-
 
 
 # extract date range
+invisible(readline("\nDid you update the dates in the loghsheet for the title?\n\n"))
 date_string <- 
   dir_path %>%
   dir_ls(regexp = "(?i)logsheet") %>%
