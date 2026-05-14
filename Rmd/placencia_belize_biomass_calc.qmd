@@ -32,7 +32,7 @@ if (!nzchar(system.file(package = "librarian")))
 librarian::shelf(
   quiet = TRUE,
   librarian, conflicted, ggplot2, tibble, tidyr, purrr, dplyr,
-  fs, magrittr, here,
+  fs, magrittr, here, stringr,
   
   # additional packages, if from GitHub, include username
   sf, terra, geodata, gstat, ggrepel, grid,
@@ -53,9 +53,9 @@ conflicts_prefer(
 idw_options <-
   list(
     "idp_pow"   = 2.0,  # idw power parameter
-    "maxdist_m" = 5000, # max distance from sampled points (in meters)
+    "maxdist_m" = 2000, # max distance from sampled points (in meters)
     "nmin_nb"   = 3,    # min number of data points to use
-    "nmax_nb"   = 10    # maximum number of data points
+    "nmax_nb"   = 6    # maximum number of data points
   )
 
 # gaussian kernel for smoothing
@@ -142,7 +142,8 @@ mang_tiff <-
 # biomass excel file
 biomass_path <- 
   here("data", "raw", "placencia") %>%
-  dir_ls(regexp = "full_Placencia") %>% 
+  dir_ls(regexp = "Placencia") %>% 
+  str_subset("update") %>% 
   str_subset("~", negate = TRUE) %T>% 
   print()
 ```
@@ -241,30 +242,40 @@ if (FALSE) {
 # read mangrove biomass dataset
 biomass_dat <- 
   readxl::read_xlsx(biomass_path) %>%
-  janitor::clean_names() %T>% 
+  janitor::clean_names() %>%
+  select(-x4) %>%
+  janitor::remove_empty("cols") %>%
+  janitor::remove_empty("rows") %T>% 
   print()
 
 # locations as dataframe
 biomass_loc <- 
   biomass_dat %>%
   select(
-    "point" = samplingpoint_1,
-    "lat"   = lat_16,
-    "long"  = long_17,
+    # "point" = samplingpoint_1,
+    "point" = samplingpoint,
+    "lat"   = lat,
+    # "lat"   = lat_16,
+    # "long"  = long_17,
+    "long"  = long,
+    upper_lower
     ) %>%
   distinct() %>%
-  drop_na(lat, long) %T>% 
+  drop_na(lat, long) %>%
+  mutate(lat = as.numeric(lat)) %T>% 
   print()
 
 # biomass values
 biom_val <- 
   biomass_dat %>%
-  select(samplingpoint_21:last_col()) %>%
-  rename("point" = samplingpoint_21) %>%
-  drop_na() %>% 
-  right_join(
-    biomass_sf
-  ) %T>%
+  # select(samplingpoint_21:last_col()) %>%
+  # rename("point" = samplingpoint_21) %>%
+  select(sampling_point:total_biomass_per_point) %>%
+  rename("point" = sampling_point) %>%
+  drop_na() %T>% 
+  # right_join(
+  #   biomass_sf
+  # ) %T>%
   print() 
 
 # location merged with biomass converted to meters projection
@@ -280,26 +291,76 @@ biom_df <-
   filter(
     between(y, bbox[2], bbox[4]),
     between(x, bbox[1], bbox[3]),
-  )  %>%
+  ) %>%
   left_join(
     biom_val
-  )  %>%
+  ) %>%
   as.data.frame() %T>%
+  print() %>%
+  left_join(
+    tribble(
+      ~upper_lower, ~density_per_0_1_ha,
+      "Upper", 470,
+      "Lower", 733,
+      "Mango Creek", 189
+    ) %>%
+      mutate(density_100_sq_m = density_per_0_1_ha / 10)
+  )  %>%
+  mutate(
+    total_biomass_per_100_sq_m = total_biomass_per_point * density_100_sq_m
+  ) %T>%
   print()
+
 ```
+
+```{r}
+hist(
+  # biom_df$total_biomass_kg, 
+  biom_df$total_biomass_per_point, 
+  breaks = 50, 
+  main   = paste("Histogram of Total Biomass (kg)"),
+  xlab   = "Total Biomass (kg)"
+  )
+
+hist(
+  biom_df$total_biomass_per_100_sq_m, 
+  breaks = 100, 
+  main   = paste("Histogram of Total Biomass per 100 sq. m (kg 100 m^-2)"),
+  xlab   = "Total Biomass per 100 sq. m (kg 100 m^-2)"
+  )
+axis(side = 1, at = seq(0, 11000, 250))
+
+
+```
+
 
 ## 4.1 Plot Data Point on Placencia Map
 
 ```{r plt-points-map}
 placencia_map +
+  # ggspatial::geom_spatial_rect(
+  #   aes(
+  #     xmin = bbox[1],
+  #     ymin = bbox[2],
+  #     xmax = bbox[3],
+  #     ymax = bbox[4],
+  #     ),
+  #   color = "red",
+  #   fill = NA,
+  #   crs = belize_epsg,
+  #   ) +
   geom_sf(
     data = biom_df,
-    aes(geometry = geometry),
+    aes(geometry = geometry, color = upper_lower),
     alpha = 0.75,
     size  = rel(2),
-    color = "red4",
-    shape = 16
+    # color = "red4",
+    shape = 16,
+    show.legend = FALSE
   ) +
+  scale_color_manual(
+    values = c("Upper" = "#8566ff", "Lower" = "#ff84ac", "Mango Creek" = "#fab474")
+    ) +
   ggrepel::geom_text_repel(
     data = biom_df,
     aes(x = x, y = y, label = point),
@@ -315,6 +376,7 @@ placencia_map +
     ylim = bbox[c(2, 4)],
     xlim = bbox[c(1, 3)],
   )
+
 ```
 
 
@@ -324,7 +386,8 @@ placencia_map +
 # set location and name to save plot
 plt_save2 <- 
   here("data", "raw", "placencia",
-  paste0("placencia_mangrove_map_w_points_", Sys.Date(), ".jpeg")
+  paste0("placencia_mangrove_map_w_points_update_", Sys.Date(), ".jpeg")
+  # paste0("placencia_mangrove_map_w_points_all_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
@@ -350,7 +413,8 @@ if (FALSE) {
 ```{r idw-interp}
 idw_sf_utm <-
   gstat::gstat(
-    formula   = total_biomass_kg ~ 1,
+    # formula   = total_biomass_kg ~ 1,
+    formula   = total_biomass_per_100_sq_m ~ 1,
     data      = as.data.frame(biom_df),
     locations = ~ x + y,
     set       = list(idp = idw_options$idp_pow),
@@ -405,11 +469,13 @@ ggplot() +
   # add sample points
   geom_sf(
     data = biom_df,
-    aes(fill = total_biomass_kg, geometry = geometry),
+    # aes(fill = total_biomass_kg, geometry = geometry),
+    # aes(fill = total_biomass_per_100_sq_m, geometry = geometry),
+    aes(fill = total_biomass_per_100_sq_m, geometry = geometry, color = upper_lower),
     alpha  = 0.75,
     size   = rel(1.5),
     stroke = rel(0.75),
-    color  = "white",
+    # color  = "white",
     shape  = 21
   ) +
   ggrepel::geom_text_repel(
@@ -422,13 +488,25 @@ ggplot() +
     segment.color      = "black",
     alpha              = 0.75
   ) +
+  
+  
+  scale_color_manual(
+    name   = "Region",
+    values = c("Upper" = "#8566ff", "Lower" = "#ff84ac", "Mango Creek" = "#fab474"),
+    breaks = c("Upper", "Lower", "Mango Creek")
+    # values = unname(pals::alphabet2(26)[c(15, 4, 6)])
+    ) +
+  
   scale_fill_stepsn(
-    name     = "Total Biomass (kg)",
+    # name     = "Total Biomass (kg)",
+    name     = expression("Total Biomass (kg"~100~m^-2*")"),
     colours  = viridisLite::viridis(8),
     na.value = NA,
     oob      = scales::squish,
-    breaks   = c(0, 25, 50, 75, 100, 200, 400),
-    limits   = c(0, 400),
+    # breaks   = c(0, 25, 50, 75, 100, 200, 400),
+    # limits   = c(0, 400),
+    breaks   = c(0, 500, 1000, 2000, 3000, 6000, 8000, 11000),
+    limits   = c(0, 11000),
     trans    = "sqrt",
   ) +
   labs(
@@ -441,6 +519,10 @@ ggplot() +
     xlim = bbox[c(1, 3)],
   ) +
   theme_bw()
+
+
+
+
 ```
 
 ## 6.2 Save Interpolation Map
@@ -448,7 +530,7 @@ ggplot() +
 # set location and name to save plot
 plt_save3 <- 
   here("data", "raw", "placencia",
-  paste0("placencia_mangrove_map_interp_", Sys.Date(), ".jpeg")
+  paste0("placencia_mangrove_map_interp2_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
@@ -457,6 +539,17 @@ if (FALSE) {
     filename = plt_save3,
     plot = last_plot(),
     device   = "jpeg",
+    dpi      = 600,
+    width    = 8.5,
+    height   = 9,
+    units    = "in",
+    bg       = "white"
+  )
+
+  ggsave(
+    filename = str_replace(plt_save3, "jpeg", "svg"),
+    plot = last_plot(),
+    device   = "svg",
     dpi      = 600,
     width    = 8.5,
     height   = 9,
@@ -569,7 +662,7 @@ if (FALSE) {
 }
 ```
 
-# 7.0 Save Interplation as `tiff` File
+# 7.0 Save Interpolation as `tiff` File
 
 ```{r save-tiff}
 idw_rast_smooth
