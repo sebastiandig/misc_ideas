@@ -44,7 +44,7 @@ ODV_colours <- c("#feb483", "#d31f2a", "#ffc000", "#27ab19", "#0db5e6", "#7139fe
 dir_data_save <- here("data", "processed", "reach_ctd_process")
 dir_plt_save  <- here("data", "plots", "reach_ctd_process")
 
-cruise_id <- "REACH004"
+cruise_id <- "REACH005"
 
 ctd_path <- 
   here("../ctd_data", cruise_id, "/datcnv/") %>%
@@ -65,8 +65,14 @@ test_ctd <-
   read.ctd()
 
 oce::summary(test_ctd)
-
-plot(test_ctd)
+(as.data.frame(test_ctd@data) %>%
+  ggplot(aes(y = depth, x = temperature)) +
+  geom_path() +
+    geom_point(aes(color = scan), alpha = 0.5) +
+  scale_y_continuous(transform = "reverse") +
+    scale_color_viridis_c()) %>%
+  plotly::ggplotly() 
+# plot(test_ctd, which = "temperature", type = "l") 
 
 test_trim <- ctdTrim(test_ctd, method = "sbe") 
   
@@ -94,16 +100,19 @@ ctd_all <-
   .x = ctd_path,
   \(.x) {
     
-    station <- basename(.x) %>%
-    str_remove_all("(_|\\.)cnv") %>%
-    str_remove("\\d+_") %>%
-    str_remove("dat") %>%
-    str_replace("_", "/")
-    
-    
-    if (str_detect(.x, "REACH003|REACH004")) {
+    if (str_detect(.x, "REACH002")) {
+    station <- 
+      basename(.x) %>%
+      str_remove("_DatCnv_processed") %>%
+      str_remove_all("(_|\\.)cnv") %>%
+      str_remove("\\d+_") %>%
+      str_remove("dat") %>%
+      str_replace("_", "/")
+    } else {
+      
      station <- .x %>%
-      str_extract("S\\d{2}|GR")
+      str_extract("S\\d{2}(C\\d{2})*|GR") %>%
+      str_replace("(C\\d{2})", "/\\1")
     }
     
     
@@ -146,9 +155,18 @@ leaflet::leaflet() %>%
 
 
 ```{r}
-sel_stn1 <- c("S07|S06|S05",
-"S01|S02|S03|S04|S05",
-"S09|S10|S11|S12")
+sel_stn1 <- c(
+  "S08|S07|S06|S05",
+  "S01|S02|S03|S04|S05",
+  "S08|S09|S10|S11|S12",
+  "S15|S16|S17|S18|S19",
+  "S23|S22|S21|S20",
+  "S15|S14|S13|S12",
+  "S20|S19|S12|S05"
+)
+
+
+
 for (sel_stn in sel_stn1) {
   sel_stn_num <- which(str_detect(names(ctd_all), sel_stn))
 
@@ -309,7 +327,8 @@ print(ggplot(ctd_tib, aes(y = depth, color = station)) +
   scale_y_continuous(transform = "reverse") +
   scale_x_continuous(position = "top") +
   # scale_color_manual(values = colorRampPalette(ODV_colours)(12)) +
-  scale_color_manual(values = colorRampPalette(ODV_colours)(18)) +
+  # scale_color_manual(values = colorRampPalette(ODV_colours)(18)) +
+  scale_color_manual(values = colorRampPalette(ODV_colours)(23)) +
   # lemon::geom_pointline(aes(x = temperature), linewidth = rel(1), size = rel(0.1)) +
   # geom_path(aes(x = get(column[[1]][1])), size = rel(0.5)) +
   geom_path(aes(x = get(column[[1]][1])), linewidth = rel(0.5)) +
