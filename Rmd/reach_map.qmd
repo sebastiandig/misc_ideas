@@ -151,6 +151,67 @@ bathy <-
   terra::rast() %>%
   as.data.frame(xy = TRUE)
 
+
+  
+# ---- contour function ---- #
+contour_labels <- function(
+    contour, 
+    z_name = "z",
+    n_per_level = 1, 
+    breaks      = c(25, 50, 100, 500, 1000, 2000, 3000),
+    upper_lower = "upper"
+    # quantiles   = 0.2,
+    # slice_type  = c("max", "random")
+    ) {
+
+  if (str_detect(upper_lower, "upper")) {
+    upper_lower <- "lower"
+  } else if (str_detect(upper_lower, "lower")) {
+    upper_lower <- "upper"
+    
+  } else if (str_detect(upper_lower, "both")) {
+    upper_lower <- ".*"
+  } 
+  
+  z <-  matrix(-rev(contour[[z_name]]), nrow = length(unique(contour$x)), byrow = FALSE)
+  
+  # 1. Extract contours using base R
+  clines <- contourLines(
+    x = sort(unique(contour$x)),
+    y = sort(unique(contour$y)),
+    z = z[length(unique(contour$x)):1,],
+    levels = breaks
+  )
+  
+  # 2. Find the longest segment for each level
+  contour_df <- do.call(
+    rbind,
+    lapply(clines, function(cl) {
+      data.frame(
+        level = cl$level,
+        x = cl$x,
+        y = cl$y,
+        length = length(cl$x)
+      )
+    })
+  )
+  
+  label_pts <-
+    contour_df %>%
+    mutate(
+      mid = if_else(x > mean(range(x)), "upper", "lower")
+    ) %>%
+    filter(str_detect(mid, upper_lower)) %>%
+    slice_sample(n = n_per_level, by = c(level))
+  
+    return(label_pts)
+  # ---- end of function contour_labels ---- #
+  }  
+  
+  
+  
+bathy_contour_label <- contour_labels(bathy, upper_lower = "upper", n_per_level = 1)
+
 ```
 
 ```{r}
@@ -217,6 +278,14 @@ osm_map <-
     alpha       = 0.5,
     linetype    = "dashed",
     inherit.aes = FALSE
+  ) +
+  shadowtext::geom_shadowtext(
+    data = bathy_contour_label,
+    aes(x, y, label = level),
+    size      = 3,
+    bg.colour = "gray30",
+    colour    = "white",
+    alpha     = 0.7
   ))
 ```
 
@@ -394,28 +463,31 @@ After running, will need to redisplay plots for it to
 bathy2 <- 
   here("data", "map_shp", "reach") %>%
   dir_ls()  %>%
-  terra::rast()
+  terra::rast() %>%
+  as.data.frame(xy = TRUE)
 
 # 1. Extract contours using base R
 clines <- contourLines(
-  x = sort(unique(bathy$x)),
-  y = sort(unique(bathy$y)),
-  z = rev(matrix(-bathy$z, nrow = length(unique(bathy$x)), byrow = FALSE)),
+  x = sort(unique(bathy2$x)),
+  y = sort(unique(bathy2$y)),
+  z = matrix(-rev(bathy2$z), nrow = length(unique(bathy2$x)), byrow = FALSE)[length(unique(bathy2$x)):1,],
   levels = c(25, 50, 100, 500, 1000, 2000, 3000)
 )
-  rev(matrix(-bathy$z, nrow = length(unique(bathy$x)), byrow = FALSE)[1:10, 1:10])
-clines %>%
-  str()
+
 # 2. Find the longest segment for each level
-contour_df <- do.call(rbind, lapply(clines, function(cl) {
-  data.frame(
-    level = cl$level, 
-    x = cl$x, 
-    y = cl$y, 
-    length = length(cl$x)
-  )
-}))
+contour_df <- do.call(
+  rbind,
+  lapply(clines, function(cl) {
+    data.frame(
+      level = cl$level,
+      x = cl$x,
+      y = cl$y,
+      length = length(cl$x)
+    )
+  })
+)
 unique(contour_df$level)
+
 longest <- 
   contour_df %>%
   # group_by(level) %>%
@@ -425,29 +497,196 @@ longest <-
     idx = which.max(length)
   )
 distinct(contour_df, length)
+
 # 3. Label only these segments
 # (Alternatively, you may need to join or filter your original 'bathy' or contour data for plotting)
 
 # 4. In your ggplot: use metR geom_label_contour/data for those only (omitting many details since
 # extra wrangling is needed).
-label_points <- contour_df %>%
+label_points <- bathy_contour_label <- contour_df %>%
   group_by(level) %>%
   summarise(
     x_label = mean(x),  # or x[middle point]
     y_label = mean(y)
   )
 
-ggplot() +
-  geom_path(
-    data = contour_df,  # all your contour segments for all levels
-    aes(x = x, y = y, group = interaction(level, length), color = factor(level))
-  ) +
-  geom_text(
-    data = label_points,
-    aes(x = x_label, y = y_label, label = level),
-    color = "black", fontface = "bold", size = 4
+bathy_contour_label2 <-
+  contour_df %>%
+  mutate(
+    mid = if_else(x > mean(range(x)), "upper", "lower")
+  ) %>%
+  filter(str_detect(mid, "lower")) %>%
+  slice_sample(n = 1, by = c(level, mid))
+
+# ---- contour function ---- #
+contour_labels <- function(
+    contour, 
+    z_name = "z",
+    n_per_level = 1, 
+    breaks      = c(25, 50, 100, 500, 1000, 2000, 3000),
+    upper_lower = "upper"
+    # quantiles   = 0.2,
+    # slice_type  = c("max", "random")
+    ) {
+
+  if (str_detect(upper_lower, "upper")) {
+    upper_lower <- "lower"
+  } else if (str_detect(upper_lower, "lower")) {
+    upper_lower <- "upper"
+    
+  } else if (str_detect(upper_lower, "both")) {
+    upper_lower <- ".*"
+  } 
+  
+  z <-  matrix(-rev(contour[[z_name]]), nrow = length(unique(contour$x)), byrow = FALSE)
+  
+  # 1. Extract contours using base R
+  clines <- contourLines(
+    x = sort(unique(contour$x)),
+    y = sort(unique(contour$y)),
+    z = z[length(unique(contour$x)):1,],
+    levels = breaks
   )
+  
+  # 2. Find the longest segment for each level
+  contour_df <- do.call(
+    rbind,
+    lapply(clines, function(cl) {
+      data.frame(
+        level = cl$level,
+        x = cl$x,
+        y = cl$y,
+        length = length(cl$x)
+      )
+    })
+  )
+  
+  label_pts <-
+    contour_df %>%
+    mutate(
+      mid = if_else(x > mean(range(x)), "upper", "lower")
+    ) %>%
+    filter(str_detect(mid, upper_lower)) %>%
+    slice_sample(n = n_per_level, by = c(level))
+  
+    return(label_pts)
+  # ---- end of function contour_labels ---- #
+  }
+
+
+bathy_contour_label3 <- contour_labels(bathy2, upper_lower = "both", n_per_level = 1)
+
+ggplot() +
+  # contour lines
+  metR::geom_contour2(
+    data = bathy2,
+    aes(
+      x = x,
+      y = y,
+      z = -z
+    ),
+    col = "blue",
+    breaks = c(3000, 2000, 1000, 500, 100, 50, 25)
+  ) +
+    shadowtext::geom_shadowtext(
+    data = bathy_contour_label3,
+    # aes(x_label, y_label, label = level),
+    aes(x, y, label = level),
+    size      = rel(3),
+    bg.colour = "gray30",
+    colour    = "white",
+    alpha     = 0.7
+  ) +
+  theme()
+  
+
 ```
 
 
+```{r}
+contour_labels <- function(
+    contour, 
+    z_name = "z",
+    n_per_level = 2, 
+    breaks      = c(3000, 2000, 1000, 500, 100, 50, 25), 
+    quantiles   = 0.2,
+    slice_type  = c("max", "random")
+    ) {
+  
+  library(isoband)
+  
+  z <- matrix(-contour[[z_name]], nrow = length(unique(contour$y)), byrow = TRUE)
+  
+  # list of contours breaks with id, x, y as sub-list
+  iso <- isolines(
+    x = sort(unique(contour$x)),
+    y = sort(unique(contour$y)),
+    z = z[length(unique(contour$y)):1, ],
+    levels = breaks
+  )
+  # combine iso list of for each contour break keeping contour level
+  contours_df <-
+    imap(
+      iso,
+      \(.x, .y) {
+        as_tibble(.x) %>%
+          mutate(.before = 1, level = .y)
+      }
+    ) %>%
+    list_c()
+  # calculate the distances between segments of same ID
+  contours_df <-
+    contours_df %>%
+    arrange(level, id, row_number()) %>%
+    mutate(
+      .by       = c(level, id),
+      dx        = dplyr::lag(x, default = first(x)),
+      dy        = dplyr::lag(y, default = first(y)),
+      seg_len   = geosphere::distHaversine(cbind(x, y), cbind(dx, dy)) / 1000,
+      seg_cum   = cumsum(seg_len),
+      seg_total = max(seg_cum)
+    )
+
+  label_pts <-
+    contours_df %>%
+    # drop segments less than x% by level
+    filter(seg_total >= quantile(seg_total, quantiles, na.rm = TRUE), .by = level) %>%
+    summarise(
+      .by = c(level, id),
+      # choose mid-point along this segment
+      target = max(seg_cum) / 2,
+      seg_total = max(seg_cum),
+      idx = which.min(abs(seg_cum - target)),
+      x = x[idx],
+      y = y[idx],
+    )
+  
+  # at most n_per_level
+  if (slice_type == "max") {
+    label_pts <- 
+      label_pts %>%
+      slice_max(order_by = seg_total, n = n_per_level, with_ties = FALSE, by = level)
+  } else if (slice_type == "min") {
+    label_pts <- 
+      label_pts %>%
+      slice_min(order_by = seg_total, n = n_per_level, with_ties = FALSE, by = level)
+  } else if (slice_type == "random") {
+    label_pts <- 
+      label_pts %>%
+        slice_sample(n = 1, by = level)
+  } else {
+    warning(
+      paste0(
+        "Pick slice_type:\n", 
+        "- max = select top lengths\n", 
+        "- random = select 2 random\n",
+        "Currently, not reducing labels by n_per_level"
+        )
+      )
+  }
+
+  return(label_pts)
+  # ---- end of function contour_labels ---- #
+}
+```
 
