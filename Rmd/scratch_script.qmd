@@ -982,7 +982,9 @@ mean:
 - G/B * original: 1.315853
 
 
-```{r}
+# Phytoclass benchmarking
+
+```{r phytoclass}
 # shelf(phytoclass)
 # Sm
 # Fm
