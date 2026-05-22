@@ -1,0 +1,323 @@
+---
+title: "ECMWFR Tutotirla"
+author: "Sebastian Di Geronimo"
+date: 2026-05-22
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+Tutorial from: <https://www.youtube.com/watch?v=2VHuaFqtAsY&t=4s>
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  # librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  # forcats, lubridate, glue, fs, magrittr, here,
+  
+  librarian, tidyverse, tidyr,
+  
+  # additional
+  sf, ErikKusch/KrigR, giscoR, classInt, RColorBrewer, gganimate
+  )
+
+# conflicts_prefer(
+#   dplyr::filter(), 
+#   dplyr::select()
+#   )
+  
+
+```
+
+# 3.0 Queary Tenoerature Data
+
+```{r set-vars}
+# path
+weather_dir_path <- here::here("data", "raw", "era5_test")
+fs::dir_create(weather_dir_path)
+
+# start and end date
+start_date <- "2022-01-01 00:00"
+# end_date <- "2023-01-01 23:00"
+end_date <- "2022-01-05 23:00"
+
+# poland sf variable
+poland_sf <- giscoR::gisco_get_countries(
+  country = "PL",
+  resolution = 10
+)
+# plot(poland_sf)
+
+fl_dat <- tribble(
+  ~lon, ~lat,
+  -80, 23,
+  -80, 28,
+  -79, 23,
+  -79, 28
+)
+
+fl_dat <- terra::ext(c(-84, -79, 23, 28))
+
+```
+
+# 4.0 Download ERA5 Data
+
+
+Var: 2m temperature
+Unit: K
+Description: Temperature of air at 2m above the surface of land, sea or in-land 
+             waters. 
+
+```{r load-data}
+poland_temp <- CDownloadS(
+  # Variable    = "2m_temperature",
+  # DataSet     = "reanalysis-era5-land-monthly-means",
+  # Type        = "monthly_averaged_reanalysis",
+  Variable    = c("10m_u_component_of_wind", "10m_v_component_of_wind"),
+  DataSet     = "reanalysis-era5-single-levels",
+  Type        = "reanalysis",
+  DateStart   = start_date,
+  DateStop    = end_date,
+  # TResolution = "month",
+  TResolution = "day",
+  TStep       = 1,
+  Dir         = weather_dir_path,
+  # FileName    = "poland_2m_temperature",
+  # FileName    = "fl_2m_temperature",
+  FileName    = "fl_wind",
+  # Extent      = as(poland_sf, "Spatial"),
+  Extent      = fl_dat,
+  API_User    = Sys.getenv("CDS_ID"),
+  API_Key     = Sys.getenv("CDS_KEY")
+)
+
+# layer names
+pl_name <- names(poland_temp) |>
+  print()
+
+terra::time(poland_temp)
+
+poland_temp
+```
+# 6.0 Plot 2m Temperature Data
+
+```{r plot-one-time}
+poland_temp[[pl_name[5]]] |>
+  as.data.frame(xy = TRUE, na.rm = TRUE) |>
+  rename(x6 = last_col()) |>
+  ggplot() +
+  geom_tile(aes(x = x, y = y, fill = x6)) +
+  coord_sf() +
+  scale_fill_viridis_c(option = "plasma") +
+  theme_void()
+
+```
+
+# Convert NC to Dataframe
+
+```{r convert-dataframe}
+poland_temp_df <- as.data.frame(
+  poland_temp, xy = TRUE, na.rm = TRUE
+)
+poland_temp_df
+
+
+poland_temp_long <- 
+  poland_temp_df |>
+   pivot_longer(
+     # data      = .,
+     cols      = -c(x, y),     # columns to pivot long,
+     names_to  = "layer",  # desired name for category column
+     values_to = "value", # desired name for value column
+     ) %>%
+    mutate(
+      ord = stringr::str_extract(layer, "\\d{1,2}$"),
+      ord = as.numeric(ord),
+      celsius = value - 273.15
+    )
+
+
+
+poland_temp_long
+```
+
+## 6.1 Add Dates 
+```{r}
+pl_date <- 
+  terra::time(poland_temp) |>
+  tibble(datum = _) |>
+  mutate(ord = row_number()) 
+
+poland_temp_dates <-
+  left_join(
+    poland_temp_long,
+    pl_date
+  ) |>
+  select(-ord, -layer, -value)
+```
+
+
+# 7.0 Temp Breaks
+
+```{r temp-breaks}
+vmin <- min(poland_temp_dates$celsius)
+vmax <- max(poland_temp_dates$celsius)
+
+
+breaks <- classIntervals(
+  poland_temp_dates$celsius,
+  n = 14,
+  style = "pretty"
+)$brks
+
+breaks
+```
+
+
+## 7.1 Color Palette
+
+```{r color-palette}
+cols <- brewer.pal(
+  11, "Spectral"
+  ) |>
+  rev() |>
+  colorRampPalette()
+```
+
+```{r}
+crsLAEA <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +datum=WGS84 +units=m +no_defs"
+
+
+(poland_map <- 
+  poland_temp_dates |>
+  ggplot() +
+  geom_tile(aes(x = x, y = y, fill = celsius)) +
+  facet_wrap(~ datum) +
+  scale_fill_gradientn(
+    name = "°C",
+    colors = cols(15),
+    limits = c(vmin, vmax),
+    breaks = breaks
+  ) +
+  coord_sf(crs = crsLAEA) +
+  guides(
+    fill = guide_legend(
+      direction      = "horizontal",
+      keyheight      = unit(1.5, units = "mm"),
+      keywidth       = unit(10, units = "mm"),
+      title.position = "top",
+      label.position = "bottom",
+      title.hjust    = 0.5,
+      label.hjust    = 0.5,
+      nrow           = 1, 
+      byrow          = TRUE
+    )
+  ) +
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    legend.position = "top",
+    legend.title = element_text(size = 11, color = "grey10"),
+    legend.text = element_text(size = 11, color = "grey10"),
+    plot.title = element_text(
+      size = 20, color = "grey10", 
+      hjust = 0.5, vjust = -3),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = unit(c(t = 1, r = 0, l = 0, b = 0), "lines")
+  ) +
+  labs(
+    x = NA,
+    y = NA,
+    title = "Monthly Temperature in Poland"
+  ))
+```
+
+```{r}
+poland_map <- 
+  poland_temp_dates |>
+  ggplot() +
+  geom_tile(aes(x = x, y = y, fill = celsius)) +
+  # facet_wrap(~ datum) +
+  scale_fill_gradientn(
+    name = "°C",
+    colors = cols(15),
+    limits = c(vmin, vmax),
+    breaks = breaks
+  ) +
+  coord_sf(crs = crsLAEA) +
+  guides(
+    fill = guide_legend(
+      direction      = "horizontal",
+      keyheight      = unit(1.5, units = "mm"),
+      keywidth       = unit(10, units = "mm"),
+      title.position = "top",
+      label.position = "bottom",
+      title.hjust    = 0.5,
+      label.hjust    = 0.5,
+      nrow           = 1, 
+      byrow          = TRUE
+    )
+  ) +
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 11, color = "grey10"),
+    legend.text = element_text(size = 11, color = "grey10"),
+    plot.title = element_text(
+      size  = 20, color = "grey10", 
+      hjust = 0.5, vjust = -3
+      ),
+    plot.subtitle = element_text(
+      size  = 40, color = "#c43c4e",
+      hjust = 0.5, vjust = --1
+      ),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = unit(c(t = 1, r = 0, l = 0, b = 0), "lines")
+  ) +
+  labs(
+    x = NA,
+    y = NA,
+    title = "Monthly Temperature in Poland",
+    subtitle = "{as.Date(frame_time)}"
+  )
+
+timeplapse_poland_map <- poland_map +
+  transition_time(time = as.Date(datum)) +
+  enter_fade() +
+  exit_fade() +
+  ease_aes("linear", interval = 0.2)
+
+
+animate_temp_map <- animate(
+  timeplapse_poland_map,
+  nframe      = nrow(pl_date) * 5,
+  duration    = 20,
+  start_pause = 3,
+  end_pause   = 30,
+  height      = 7, 
+  width       = 7,
+  units = "in",
+  res         = 300,
+  fps         = 15,
+  renderer = gifski_renderer(loop = TRUE)
+)
+
+anim_save(here::here(weather_dir_path, "poland_temperature.gif"), animate_temp_map)
+```
+
