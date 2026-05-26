@@ -609,12 +609,13 @@ ggplot() +
   
   scale_color_manual(
     name   = "Region",
-    values = region_col,
+    # values = unname(pals::alphabet2(26)[c(15, 4, 6)])
     # values = c("Upper" = "#8566ff", "Lower" = "#ff84ac", 
     #            # "Mango Creek" = "#fab474"),
     #            "Main Creek" = "#fab474"),
-    breaks = c("Upper", "Lower", "Main Creeks")#"Mango Creek")
-    # values = unname(pals::alphabet2(26)[c(15, 4, 6)])
+    # breaks = c("Upper", "Lower", "Main Creeks")#"Mango Creek")
+    values = region_col,
+    breaks = names(region_col)
     ) +
   
   scale_fill_stepsn(
