@@ -211,7 +211,25 @@ if (file_exists(here("data", "processed", "avg_env_join_zoo.csv"))) {
 depths <- c(0, 5, 10, 20)         # meters
 chl <- c(2.1, 1.7, 0.9, 0.5)      # mg/m^3
 
+integrate_eq <- function(depth, chl) {
+  # base of trapezoid
+  base_shallow <- chl[-length(chl)] 
+  base_deep <- chl[-1]
+  
+  # differences between depth
+  diff_depth <- diff(depth)
+  
+  # trapezoid area = 1/2 * (p + q) * h
+  area_trapezoid <- 1/2 * (base_shallow + base_deep) * diff_depth
+  
+  integrated_chl <- sum(area_trapezoid)
+  return(integrated_chl)
+}
+
+# or use pracma::trapz(depths, chl)
+
 # Calculate integrated chlorophyll-a (mg/m^2)
+integrate_eq(depths, chl)
 integrated_chl <- sum(diff(depths) * (head(chl, -1) + tail(chl, -1)) / 2)
 integrated_chl
 
@@ -237,6 +255,108 @@ sd_integrated   <- sd(integrated)
 
 mean_integrated  # Average integrated chlorophyll-a (mg/m^2)
 sd_integrated    # Standard deviation (mg/m^2)
+
+```
+
+```{r}
+z   <- c(0, 25, 50, 100, 150, 250, 400, 700, 1000)
+chl <- c(0.3, 0.4, 0.8, 1.2, 0.9, 0.5, 0.2, 0.1, 0.05)
+integrate_eq(z, chl)
+
+# interpolate profile
+f <- approxfun(z, chl, rule = 2)
+
+# example euphotic depth guess
+Zeu <- 120
+
+# depth-integrated chlorophyll from surface to Zeu
+zseq <- seq(0, Zeu, by = 1)
+int_chl <- sum(f(zseq)) * 1
+int_chl
+```
+
+
+```{r}
+# depth (m) and chlorophyll from 9 bottle samples
+z <- c(0, 10, 25, 50, 100, 200, 400, 700, 1000)
+chl <- c(0.15, 0.18, 0.25, 0.40, 0.55, 0.00, 0.0, 0.0, 0.0)
+
+# interpolate chlorophyll profile
+f_chl <- approxfun(z, chl, rule = 2)
+
+# function for Zeu from chl_tot
+zeu_fun <- function(chl_tot) {
+  ze1 <- 912.5 * chl_tot^-0.839
+  ze2 <- 426.3 * chl_tot^-0.547
+  
+  ifelse(ze1 <= 102, ze1, ze2)
+}
+
+# starting guess
+zeu_old <- 50
+tol <- 0.1
+max_iter <- 100
+
+for (i in 1:max_iter) {
+  zseq <- seq(0, zeu_old, by = 1)
+  chl_mean <- mean(f_chl(zseq))
+  
+  zeu_new <- zeu_fun(chl_mean)
+  print(zeu_new)
+  if (abs(zeu_new - zeu_old) < tol) {
+    break
+  }
+  
+  zeu_old <- zeu_new
+}
+
+zeu_new
+chl_mean
+i
+
+
+for (i in seq(length(z))) {
+  
+  if (i <= 1) next
+  
+  z2 <- z[1:i]
+  chl2 <- chl[1:i]
+  
+  integrated_chl2 <- integrate_eq(z2, chl2)
+  
+  zeu <- zeu_fun(integrated_chl2)
+  # print(integrated_chl2)
+  print(z2[i])
+  print(zeu)
+  
+  if (zeu <= z2[i]) {
+    message("reached depth")
+    break
+    }
+}
+
+chl_fine <- approx(z2, chl2, xout = seq(1, z2[i], 0.1))
+
+for (i in seq(length(chl_fine$x))) {
+  
+  if (i <= 1) next
+  
+  z2 <- chl_fine$x[1:i]
+  chl2 <- chl_fine$y[1:i]
+  
+  integrated_chl2 <- integrate_eq(z2, chl2)
+  
+  zeu <- zeu_fun(integrated_chl2)
+  # print(integrated_chl2)
+  print(z2[i])
+  print(zeu)
+  
+  if (zeu <= z2[i]) {
+    message("reached depth")
+    break
+    }
+}
+
 
 ```
 
