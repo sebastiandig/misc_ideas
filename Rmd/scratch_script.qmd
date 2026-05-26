@@ -1613,3 +1613,21 @@ rrs_unk_nc$var$`__xarray_dataarray_variable__`$dim
 nc_close(rrs_unk_nc)
 ```
 
+
+
+# Load ERA5 Wind Data
+
+NEEDS: wgrib2 external dependency
+
+```{r}
+# shelf(rNOMADS)
+# 
+# era_path <- rstudioapi::selectFile()
+# 
+# data <- ReadGrib(
+#   file.names = era_path
+#   # levels = c("2 m above ground"),
+#   # variables = c("TMP")
+# ) # Temperature
+```
+
