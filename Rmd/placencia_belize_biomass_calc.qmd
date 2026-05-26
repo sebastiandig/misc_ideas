@@ -599,21 +599,16 @@ ggplot() +
     min.segment.length = 0,
     max.overlaps       = 100,
     # color              = "white",
-    # bg.color           = "black",
-    bg.color           = "white",
+    bg.color           = "black",
+    # bg.color           = "white",
     segment.color      = "black",
     alpha              = 0.75,
     show.legend = FALSE
   ) +
   
-  
+  # region colors
   scale_color_manual(
     name   = "Region",
-    # values = unname(pals::alphabet2(26)[c(15, 4, 6)])
-    # values = c("Upper" = "#8566ff", "Lower" = "#ff84ac", 
-    #            # "Mango Creek" = "#fab474"),
-    #            "Main Creek" = "#fab474"),
-    # breaks = c("Upper", "Lower", "Main Creeks")#"Mango Creek")
     values = region_col,
     breaks = names(region_col)
     ) +
