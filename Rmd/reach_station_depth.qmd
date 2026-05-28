@@ -1,0 +1,204 @@
+---
+title: "Extract Depth from REACH Stations"
+author: "Sebastian Di Geronimo"
+date: 2026-05-28
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  readxl, hms, nngeo
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+# 3.0 Base map for FLRACEP V
+
+
+## 3.1 Read Location Data
+
+IMaRS_Projects > FLRACEP V (REACH) project > FieldWork > REACH Stations LatLon.xlsx
+
+
+```{r}
+file_path <- rstudioapi::selectFile()
+file_path
+
+race_loc <- 
+  read_xlsx(file_path) %>%
+  janitor::clean_names() %>%
+  janitor::remove_empty(which = "rows") %>%
+  add_row(
+    tibble(name = c("waypoint", "FIO"),
+           lat_in_degree = c(27.676, 27.759),
+           lon_in_degree = c(-82.587, -82.632)
+           )
+  ) %>%
+  filter(
+    !(name %in% c("C23", "C24", "C25", "C26"))
+  ) %T>% 
+  print()
+```
+
+
+```{r}
+ymax <- max(race_loc$lat_in_degree, na.rm = TRUE) + 1
+xmin <- min(race_loc$lon_in_degree, na.rm = TRUE) - 1
+
+base_plt +
+  geom_contour2(breaks =  c(500, 100, 50, 25, 10, 2))
+  geom_point(
+    data = race_loc,
+    aes(x = lon_in_degree, 
+        y = lat_in_degree),
+  ) +
+  geom_text_repel(
+    aes(x = lon_in_degree, 
+        y = lat_in_degree, 
+        label = name),
+    data   = race_loc,
+    size   = 2.5,
+    hjust  = 0,
+    family = "serif",
+    min.segment.length = 0,
+    bg.color = "white"
+  )
+
+
+ggplot(map_obj$bathy, aes(x = x, y = y, color = altitude)) +
+  geom_point() +
+  geom_contour2(aes(z = -altitude),
+                breaks = c(100, 50, 25, 10, 2)
+                )
+
+race_loc
+base2 <- 
+base_plt +
+    geom_contour2(
+      data = map_obj$bathy,
+      aes(
+        x = x,
+        y = y,
+        z = -altitude
+      ),
+      col = "grey70",
+      breaks = c(8000, 5000, 1000, 500, 100, 50, 25, 10, 2)
+    ) +
+    directlabels::geom_dl(
+      data = filter(
+         map_obj$bathy,
+        between(x, -84, -81.2)
+        & between(y, 25, 25.5)
+      ),
+      aes(
+        x = x, 
+        y = y, 
+        z = -altitude,
+        # label = ..level..
+        label = after_stat(level)
+      ), 
+      method = list(
+        "bottom.pieces",
+        fontfamily = "serif",
+        alpha = 0.5,
+        hjust = 1.5),
+      stat   = "contour",
+      breaks = c(100, 50, 25, 10, 0)
+    )
+
+
+
+base2 +
+  geom_point(
+    data = race_loc,
+    aes(x = lon_in_degree, 
+        y = lat_in_degree),
+  ) +
+  geom_text_repel(
+    aes(x = lon_in_degree, 
+        y = lat_in_degree, 
+        label = name),
+    data   = race_loc,
+    size   = 2.5,
+    hjust  = 0,
+    family = "serif",
+    min.segment.length = 0,
+    bg.color = "white"
+  )
+
+
+
+# Convert points dataset to sf
+points_sf <- st_as_sf(race_loc, coords = c("lon_in_degree", "lat_in_degree"), crs = 4326)
+
+# Convert bathymetry dataset to sf
+bathy_sf <- st_as_sf(map_obj$bathy, coords = c("x", "y"), crs = 4326)
+
+
+
+
+nearest_pt <- st_nn(points_sf, bathy_sf, k = 1)
+mathched_bathy <- map_obj$bathy[unlist(nearest_pt), ]
+
+mathched_bathy$altitude
+
+points_sf %>%
+  mutate(
+    # 
+    
+  )
+race_loc$closest_bathy_depth <- mathched_bathy$altitude
+race_loc$closest_bathy_lon <- mathched_bathy$x
+race_loc$closest_bathy_lat <- mathched_bathy$y
+race_loc
+
+race_loc %>%
+  mutate(
+    dist_lon = lon_in_degree - closest_bathy_lon,
+    dist_lat = lat_in_degree - closest_bathy_lat,
+    dist = geosphere::distGeo(
+      cbind(lon_in_degree, lat_in_degree),
+      cbind(closest_bathy_lon, closest_bathy_lat)
+    )
+  ) %>%
+    print()
+
+(race_loc %>%
+  
+ggplot() +
+  geom_point(aes(closest_bathy_lon, closest_bathy_lat), color = "green", size = 2) +
+  geom_point(aes(lon_in_degree, lat_in_degree), color = "blue", alpha = 0.5)) %>%
+  
+
+  plotly::ggplotly()
+
+race_loc %>%
+  select(-x4) %>%
+  mutate(closest_bathy_depth = -closest_bathy_depth) %>%
+  writexl::write_xlsx(path = here("Locations_nWFS_depth.xlsx"))
+file_path
+```
