@@ -66,7 +66,22 @@ gaussian_kernel = function(size, sigma) {
     x <- seq(-size, size, length.out = 2 * size + 1)
     kernel <- outer(x, x, function(x, y) exp(-(x^2 + y^2) / (2 * sigma^2)))
     return(kernel / sum(kernel)) # Normalize the kernel
-  }
+}
+
+
+# region colors and lighten
+# region_col <- c("Upper" = "#8566ff", "Lower" = "#ff84ac",
+#                 # "Mango Creek" = "#fab474")
+#                 "Main Creeks" = "#fab474")
+region_col <- c(
+  "Upper" = "#c2b3ff", 
+  "Lower" = "#ff9ebd", 
+  "Main Creeks" = "#f89943")
+# region_col <-
+#   prismatic::clr_alpha(region_col, 0.75) %>%
+#   as.vector() %>%
+#   magrittr::set_names(names(region_col)) %T>%
+#   print()
 ```
 
 
@@ -149,8 +164,8 @@ shelf(maptiles)
 
 belize_tile <- 
   st_transform(bbox, crs = wgs_crs) %>% # convert to WGS
-  get_tiles(provider = "CartoDB.DarkMatter", zoom = 13) %>%
-  project(tiles,  paste0("EPSG:", belize_epsg)) # project to Belize UTM
+  get_tiles(provider = "CartoDB.DarkMatterNoLabels", zoom = 14) %>%
+  project(paste0("EPSG:", belize_epsg)) # project to Belize UTM
 
 ggplot() +
   geom_spatraster_rgb(data = belize_tile)
@@ -392,24 +407,13 @@ biom_df <-
 #   left_join(select(re_station, station_id, point)) %>%
 #   relocate(station_id, .after = 1)
 # 
-# # region colors and lighten
-# # region_col <- c("Upper" = "#8566ff", "Lower" = "#ff84ac", 
-# #                 # "Mango Creek" = "#fab474")
-# #                 "Main Creeks" = "#fab474")
-# region_col <- c("Upper" = "#c2b3ff", "Lower" = "#ff9ebd", 
-#                 # "Mango Creek" = "#fab474")
-#                 "Main Creeks" = "#f89943")
-# # region_col <-
-# #   prismatic::clr_alpha(region_col, 0.75) %>%
-# #   as.vector() %>%
-# #   magrittr::set_names(names(region_col)) %T>% 
-# #   print()
+
 
 
 ```
 
-
-```{r}
+## 4.1 Set Value Breaks from Histogram
+```{r breaks}
 hist(
   # biom_df$total_biomass_kg, 
   biom_df$total_biomass_per_point, 
@@ -426,21 +430,26 @@ hist(
   )
 axis(side = 1, at = seq(0, 11000, 250))
 
+plot(ecdf(biom_df$total_biomass_per_100_sq_m))
 
-classInt::classIntervals(biom_df$total_biomass_per_100_sq_m, 15, style = "bclust")  %T>% 
+classInt::classIntervals(biom_df$total_biomass_per_100_sq_m, 15, style = "bclust") %T>% 
   print() %>%
   plot(pal = viridisLite::viridis(15))
 
-classInt::classIntervals(biom_df$total_biomass_per_100_sq_m, 15, style = "jenks")  %T>% 
-  print() %>%
-  plot(pal = viridisLite::viridis(8))
+breaks_8 <- 
+  classInt::classIntervals(biom_df$total_biomass_per_100_sq_m, 8, style = "quantile") %T>% 
+  print() 
 
-plot(ecdf(biom_df$total_biomass_per_100_sq_m))
+plot(breaks_8, pal = viridisLite::viridis(8), main = "ECDF Breaks 8")
+
+breaks_8$brks
+
+breaks_8 <- c(0, 50, 200, 400, 800, 1600, 2400, 2400, 5700, 11000)
 
 ```
 
 
-## 4.1 Plot Data Point on Placencia Map
+## 4.2 Plot Data Point on Placencia Map
 
 ```{r plt-points-map}
 placencia_map +
@@ -491,7 +500,7 @@ placencia_map +
 ```
 
 
-## 4.2 Save Points on Map
+## 4.3 Save Points on Map
 
 ```{r save-points-map}
 # set location and name to save plot
@@ -566,8 +575,8 @@ idw_rast_smooth <-
 
 ```{r plot-idw}
 ggplot() +
-  # geom_sf(data = belize_sf, fill = "grey", alpha = 0.5) + # gray basemap
-  geom_spatraster_rgb(data = belize_tile) + # dark base map
+  geom_sf(data = belize_sf, fill = "grey", alpha = 0.5) + # gray basemap
+  # geom_spatraster_rgb(data = belize_tile) + # dark base map
   
   annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
   
@@ -600,8 +609,10 @@ ggplot() +
     max.overlaps       = 100,
     # color              = "white",
     bg.color           = "black",
-    # bg.color           = "white",
     segment.color      = "black",
+    # bg.color           = "white",
+    bg.r = 0.05,
+    # segment.color      = "white",
     alpha              = 0.75,
     show.legend = FALSE
   ) +
@@ -616,18 +627,20 @@ ggplot() +
   scale_fill_stepsn(
     # name     = "Total Biomass (kg)",
     name     = expression("Total Biomass (kg"~100~m^-2*")"),
-    colours  = viridisLite::viridis(8),
+    # colours  = viridisLite::viridis(8),
+    colours  = viridisLite::viridis(length((breaks_8))),
     na.value = NA,
     oob      = scales::squish,
     # breaks   = c(0, 25, 50, 75, 100, 200, 400),
     # limits   = c(0, 400),
-    breaks   = c(0, 500, 1000, 2000, 3000, 6000, 8000, 11000),
+    breaks = ceiling(breaks_8),
+    # breaks   = c(0, 500, 1000, 2000, 3000, 6000, 8000, 11000),
     limits   = c(0, 11000),
     trans    = "sqrt",
   ) +
   guides(
     color = guide_legend(order = 1),
-    fill  = guide_legend(order = 2)
+    fill  = guide_legend(order = 2, reverse = TRUE)
   ) +
   labs(
     x = NULL,
@@ -650,7 +663,8 @@ ggplot() +
 # set location and name to save plot
 plt_save3 <- 
   here("data", "raw", "placencia",
-  paste0("placencia_mangrove_map_interp2_", Sys.Date(), ".jpeg")
+  paste0("placencia_mangrove_map_interp_", Sys.Date(), ".jpeg")
+  # paste0("placencia_mangrove_map_interp_black2_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
