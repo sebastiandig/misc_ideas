@@ -372,6 +372,176 @@ if (FALSE) {
   write.csv(here("data", "raw", "placencia", "placencia_biomass_density.csv"))
 }
 ```
+```{r}
+biomass_select <- 
+  biomass_dat %>%
+  filter(str_detect(upper_lower,  "Main Creeks|Upper|Lower")) %>%
+  select(
+    samplingpoint, 
+    station_id, 
+    quarternumber, 
+    species, 
+    morphotype,
+    upper_lower,
+    east_west,
+    location,
+    dbh_cm
+    ) %>%
+  mutate(
+    across(morphotype:location, ~ as.factor(.x)),
+    upper_lower = factor(upper_lower, levels = c("Upper", "Lower", "Main Creeks"))
+         ) %T>% 
+  print()
+
+biomass_select %>%
+  # filter(!is.na(east_west)) %>%
+  WRS2::t1way(
+  data    = .,
+  dbh_cm  ~ morphotype,
+  # dep     = "dbh_cm",       # dependent variable (numeric)
+  # factors = c("morphotype"), # independent variables (factors)
+  # method  = "trim",                  # "trim" (default), "median", or "boot"
+  # ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+  )
+
+biomass_select %>%
+  filter(!is.na(east_west)) %>%
+  walrus::ranova(
+  data    = .,
+  dep     = "dbh_cm",       # dependent variable (numeric)
+  factors = c("morphotype", "east_west"), # independent variables (factors)
+  method  = "trim",                  # "trim" (default), "median", or "boot"
+  ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+  )
+
+biomass_select %>%
+  walrus::ranova(
+  data    = .,
+  dep     = "dbh_cm",       # dependent variable (numeric)
+  factors = c("morphotype", "upper_lower"), # independent variables (factors)
+  method  = "trim",                  # "trim" (default), "median", or "boot"
+  ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+  )
+
+morph_loc <- biomass_select %>%
+  walrus::ranova(
+  data    = .,
+  dep     = "dbh_cm",       # dependent variable (numeric)
+  factors = c("morphotype", "location"), # independent variables (factors)
+  method  = "trim",                  # "trim" (default), "median", or "boot"
+  ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+  )
+
+morph_loc$phs
+
+WRS2::t2way(dbh_cm ~ morphotype*upper_lower, data = biomass_select)
+WRS2::mcp2atm(dbh_cm ~ morphotype*upper_lower, data = biomass_select)
+
+
+# set location and name to save plot
+box_save <- 
+  here("data", "raw", "placencia",
+  paste0("placencai_box_", c("upper_lower_", "east_west_", "loc_"), Sys.Date(), ".jpeg")
+  ) %T>% 
+  print()
+shell.exec(dirname(box_save)[1])
+biomass_select %>%
+  ggplot(aes(x = morphotype, y = dbh_cm)) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, 
+           color = "black", fill = NA, linewidth = rel(1.1)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.15, alpha = 0.5) +
+  facet_wrap(~upper_lower) +
+  labs(
+    x = "Morphotype",
+    y = "dbh (cm)"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = rel(1.5)),
+    axis.text = element_text(size = rel(1.5)),
+    axis.line = element_blank(),
+    strip.text = element_text(size = rel(2))
+  )
+
+
+ggsave(
+    filename = box_save[1],
+    plot = last_plot(),
+    device   = "jpeg",
+    dpi      = 600,
+    width    = 9,
+    height   = 6,
+    units    = "in",
+    bg       = "white"
+  )
+
+biomass_select %>%
+  filter(!is.na(east_west)) %>%
+  ggplot(aes(x = morphotype, y = dbh_cm)) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, 
+           color = "black", fill = NA, linewidth = rel(1.1)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.15, alpha = 0.5) +
+  facet_wrap(~east_west) +
+  labs(
+    x = "Morphotype",
+    y = "dbh (cm)"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = rel(1.5)),
+    axis.text = element_text(size = rel(1.5)),
+    axis.line = element_blank(),
+    strip.text = element_text(size = rel(2))
+  )
+
+ggsave(
+    filename = box_save[2],
+    plot = last_plot(),
+    device   = "jpeg",
+    dpi      = 600,
+    width    = 9,
+    height   = 6,
+    units    = "in",
+    bg       = "white"
+  )
+
+biomass_select %>%
+  ggplot(aes(x = morphotype, y = dbh_cm)) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, 
+           color = "black", fill = NA, linewidth = rel(1.1)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.15, alpha = 0.5) +
+  facet_wrap(~location) +
+  labs(
+    x = "Morphotype",
+    y = "dbh (cm)"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = rel(1.5)),
+    axis.text = element_text(size = rel(1.5)),
+    axis.line = element_blank(),
+    strip.text = element_text(size = rel(2))
+  )
+ggsave(
+    filename = box_save[3],
+    plot = last_plot(),
+    device   = "jpeg",
+    dpi      = 600,
+    width    = 9,
+    height   = 6,
+    units    = "in",
+    bg       = "white"
+  )
+
+
+```
 
 ```{r}
 # re_station <- 
@@ -417,7 +587,28 @@ if (FALSE) {
 #   left_join(select(re_station, station_id, point)) %>%
 #   relocate(station_id, .after = 1)
 # 
-
+biomass_dat %>%
+  select(1,5,aboveground_biomass_kg_per_tree, belowground_biomass_kg_per_tree, total_biomass_per_tree) %T>% 
+  print() %>%
+  summarise(
+    .by = c(samplingpoint),
+    across(c(aboveground_biomass_kg_per_tree:total_biomass_per_tree),
+           list(avg = ~mean(.x, na.rm = TRUE)))
+  ) %>%
+  left_join(biom_val, by = c( "samplingpoint" = "point")) %>%
+  filter(!is.na(average_agb_per_point)) %>%
+  mutate(
+    across(aboveground_biomass_kg_per_tree_avg:last_col(),
+           ~ round(.x, 6))
+  ) %>%
+  mutate(
+    all_equal = aboveground_biomass_kg_per_tree_avg == average_agb_per_point &
+      belowground_biomass_kg_per_tree_avg == average_bgb_per_point & 
+      total_biomass_per_tree_avg == total_biomass_per_point,
+    aba_equal = aboveground_biomass_kg_per_tree_avg == average_agb_per_point,
+    bgb_eg =  belowground_biomass_kg_per_tree_avg == average_bgb_per_point, 
+    tot_eq  = total_biomass_per_tree_avg == total_biomass_per_point
+  )
 
 
 ```
