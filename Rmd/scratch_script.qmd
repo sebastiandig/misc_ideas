@@ -12,7 +12,8 @@ format: html
 # 2.0 ---- Setup ----
 
 ## 2.1 Load Libraries
-```{r setup, include=FALSE}
+```{r, include=FALSE}
+#{r setup, include=FALSE}
 if (!nzchar(system.file(package = "librarian"))) 
   install.packages("librarian")
 
@@ -1630,4 +1631,232 @@ NEEDS: wgrib2 external dependency
 #   # variables = c("TMP")
 # ) # Temperature
 ```
+
+
+# Robust ANOVA Trimmed Mean
+
+Trimmed mean: cuts the top and bottom x percent of values
+- ex if 0.1 (10%) than 5% at bottom and 5% at top or 5% < x < 95%
+
+Example from: <https://metricgate.com/docs/robust-anova-trimmed-means/>
+Reasons to use:
+whenever the assumptions behind classical ANOVA look fragile:
+  * Boxplots or QQ plots show outliers, heavy tails, or skewness.
+  * Group variances are clearly unequal
+  * Sample sizes per group are small, so you cannot rely on the central limit theorem.
+  * Skewed measurements such as response times, incomes, or biological assay readouts.
+  * You want one procedure that simultaneously handles location and scale problems.
+  
+interpret:
+  * xi (explanatory effect size): reports magnitude on a 0-1 scale; values near 1 indicate large group separation.
+  
+  
+```{r}
+librarian::shelf(quiet = TRUE, WRS2)
+
+data("iris")
+iris
+
+# jamovi version 
+result <- walrus::ranova(
+  data    = WRS2::goggles,
+  dep     = "attractiveness",       # dependent variable (numeric)
+  factors = c("gender"), # independent variables (factors)
+  method  = "trim",                  # "trim" (default), "median", or "boot"
+  ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+)
+# View main ANOVA table
+result$main$asDF
+
+# View post-hoc results
+result$phs$asDF
+
+re <- WRS2::t1way(attractiveness ~ gender, data = WRS2::goggles)
+re$Qb
+# robust ANOVA (trimmed means 20%)
+res <- WRS2::t1way(Sepal.Length ~ Species, data = iris, tr = 0.2)
+F_stat  <- as.numeric(res$test)
+df1_val <- as.numeric(res$df1)
+df2_val <- as.numeric(res$df2)
+p_val   <- as.numeric(res$p.value)
+xi_val  <- if (!is.null(res$effsize)) as.numeric(res$effsize) else NA_real_
+res
+
+# Robust Bootstrapped for small datasets
+res2 <- WRS2::t1waybt(Sepal.Length ~ Species, data = iris, tr = 0.2)
+res2$test
+res2$Effect.Size
+res2$p.value
+
+# classical ANOVA
+aov_fit <- aov(Sepal.Length ~ Species, data = iris)
+aov_sum <- summary(aov_fit)[[1]]
+  F_cl   <- aov_sum[["F value"]][1]
+  p_cl   <- aov_sum[["Pr(>F)"]][1]
+  df1_cl <- aov_sum[["Df"]][1]
+  df2_cl <- aov_sum[["Df"]][2]
+cat(sprintf("  Classical F = %.4f, df1 = %.2f, df2 = %.2f, p = %.6g\n",
+              F_cl, df1_cl, df2_cl, p_cl))
+
+cat(sprintf("  Robust    F = %.4f, df1 = %.2f, df2 = %.2f, p = %.6g\n",
+              F_stat, df1_val, df2_val, p_val))
+
+rm(list = ls())
+
+# librarian::unshelf(WRS2)
+
+timevec <- c(77, 87, 88, 114, 151, 210, 219, 
+  246, 253, 262, 296, 299, 306, 
+  376, 428, 515, 666, 1310, 2611
+  )
+
+mean(timevec)
+
+# manual timmed mean 
+quant <- quantile(timevec, c(0.05, 0.95)) # 10% - 5% at each end
+mean(timevec[timevec > quant[1] & timevec < quant[2]])
+
+# trimmed mean
+mean(timevec, 0.1)
+# trimmed se
+WRS2::trimse(timevec, 0.1)
+
+median(timevec)
+WRS2::msmedse(timevec)
+
+
+# 2 way robust ANOVA
+# jamovi version 
+result <- walrus::ranova(
+  data    = WRS2::goggles,
+  dep     = "attractiveness",       # dependent variable (numeric)
+  factors = c("gender", "alcohol"), # independent variables (factors)
+  method  = "trim",                  # "trim" (default), "median", or "boot"
+  ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+)
+# View main ANOVA table
+result$main$asDF
+
+# View post-hoc results
+result$phs$asDF
+```
+## Test Robust ANOVA on Mangrove
+
+```{r}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional packages, if from GitHub, include username
+  WRS2, walrus
+)
+
+conflicts_prefer(
+  dplyr::filter, 
+  dplyr::select
+  )
+
+# biomass excel file
+biomass_path <- 
+  here("data", "raw", "placencia") %>%
+  dir_ls(regexp = "Placencia") %>% 
+  str_subset("update2") %>% 
+  str_subset("~", negate = TRUE) %T>% 
+  print()
+
+# read mangrove biomass dataset
+biomass_dat <- 
+  readxl::read_xlsx(biomass_path) %>%
+  janitor::clean_names() %>%
+  select(-x5) %>%
+  janitor::remove_empty("cols") %>%
+  janitor::remove_empty("rows") %>%
+  mutate(
+    upper_lower = if_else(str_detect(upper_lower, "Mango"), "Main Creeks", upper_lower)
+  ) %>%
+  filter(str_detect(upper_lower,  "Main Creeks|Upper|Lower")) %T>% 
+  print()
+
+# # locations as dataframe
+# biomass_loc <- 
+#   biomass_dat %>%
+#   select(
+#     # "point" = samplingpoint_1,
+#     station_id,
+#     "point" = samplingpoint,
+#     "lat"   = lat,
+#     # "lat"   = lat_16,
+#     # "long"  = long_17,
+#     "long"  = long,
+#     upper_lower
+#     ) %>%
+#   distinct() %>%
+#   drop_na(lat, long) %>%
+#   mutate(lat = as.numeric(lat)) %T>% 
+#   print()
+
+biomass_select <- 
+  biomass_dat %>%
+  select(
+    samplingpoint, 
+    station_id, 
+    quarternumber, 
+    species, 
+    morphotype,
+    upper_lower,
+    east_west,
+    location,
+    dbh_cm
+    ) %>%
+  mutate(
+    across(morphotype:location, ~ as.factor(.x)),
+    upper_lower = factor(upper_lower, levels = c("Upper", "Lower", "Main Creeks"))
+         ) %T>% 
+  print()
+
+biomass_select %>%
+  filter(!is.na(east_west)) %>%
+  walrus::ranova(
+  data    = .,
+  dep     = "dbh_cm",       # dependent variable (numeric)
+  factors = c("morphotype", "east_west"), # independent variables (factors)
+  method  = "trim",                  # "trim" (default), "median", or "boot"
+  ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+  )
+
+biomass_select %>%
+  walrus::ranova(
+  data    = .,
+  dep     = "dbh_cm",       # dependent variable (numeric)
+  factors = c("morphotype", "upper_lower"), # independent variables (factors)
+  method  = "trim",                  # "trim" (default), "median", or "boot"
+  ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+  )
+
+morph_loc <- biomass_select %>%
+  walrus::ranova(
+  data    = .,
+  dep     = "dbh_cm",       # dependent variable (numeric)
+  factors = c("morphotype", "location"), # independent variables (factors)
+  method  = "trim",                  # "trim" (default), "median", or "boot"
+  ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+  )
+
+morph_loc$phs
+
+WRS2::t2way(dbh_cm ~ morphotype*upper_lower, data = biomass_select)
+WRS2::mcp2atm(dbh_cm ~ morphotype*upper_lower, data = biomass_select)
+
+
+```
+
 
