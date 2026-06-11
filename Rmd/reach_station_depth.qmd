@@ -8,7 +8,8 @@ editor: source
 
 # 1.0 ---- Summary of Document ----
 
-
+This takes the locations from the REACH stations and extracts the depths each
+station.
 
 # 2.0 ---- Setup ----
 
@@ -16,6 +17,9 @@ editor: source
 ## 2.1 Load Libraries
 
 ```{r setup, include=FALSE}
+stop("Needs etopo1 from ERDDAP for the REACH spatial extent! Check cruise_setup.qmd from `sampling processing`")
+
+
 if (!nzchar(system.file(package = "librarian"))) 
   install.packages("librarian")
 
