@@ -209,6 +209,128 @@ cat("Total cruises found:", length(cruise_ids), "\n")
 # remove variables
 rm(list = names(var_names), var_names)
 ```
+```{r salinity-ecdf}
+df0 <- df0 %>%
+  filter(str_detect(region, "(?i)keys|thousand|everglades")) %>%
+  filter(sal < 50)
+
+# class int
+brk_num <- 3 # edit number of breaks
+brk_int <- 
+  classInt::classIntervals(df0$sal, brk_num, style = "pretty") %T>% 
+  print()
+
+break_df <- data.frame(
+  xmin = head(brk_int$brks, -1),
+  xmax = tail(brk_int$brks, -1),
+  y = 0,
+  cls = factor(seq_len(length(brk_int$brks) - 1))
+)
+
+# ---- all regions together ---- #
+ecdf_df <- df0 %>%
+  select("x" = sal) %>%
+  arrange(x) %>%
+  mutate(
+    .keep = "used",
+    ecdf = seq_along(x) / length(x)
+    )
+
+ggplot() +
+  geom_rect(
+    # data = break_df,
+    data = tribble(
+      ~xmin, ~xmax, ~cls,
+      10, 32, 1,
+      32, 34, 2,
+      34, ceiling(max(df0$sal)), 3
+      ) %>% mutate(cls = as.factor(cls)),
+    aes(xmin = xmin, xmax = xmax, ymin = -0.06, ymax = -0.02, fill = cls),
+    color = "grey40"
+  ) +
+  geom_step(data = ecdf_df, aes(x = x, y = ecdf), color = "black") +
+  geom_point(data = ecdf_df, aes(x = x, y = ecdf), color = "black", alpha = 0.2) +
+  # geom_vline(xintercept = brk_int$brks, color = "grey", linewidth = 0.4,
+  geom_vline(xintercept = c(32, 34), color = "grey", linewidth = 0.4,
+             linetype = "dashed") +
+  labs(
+    # title = paste("ECDF with", brk_num, "Breaks"),
+    x = "Salinity",
+    y = "F(n)"
+  ) +
+  facet_wrap(~region) +
+  scale_fill_manual(values = viridisLite::viridis(nrow(break_df)), guide = "none") +
+  scale_x_continuous(breaks = scales::breaks_width(5), expand = expansion()) +
+  scale_y_continuous(expand = expansion()) +
+  theme_classic() +
+  theme(
+    # axis.title.x       = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.title.y       = element_text(angle = 90),
+    axis.text.y        = element_text(angle = 90),
+  )
+
+if (FALSE) {
+  ggsave(here(base_dir, "salinity_edcf_all_regions.jpeg"), width = 10, height = 5)
+  shell.exec(base_dir)
+}
+
+# ---- ecdf by each region ---- #
+ecdf_df <- df0 %>%
+  select("x" = sal, region) %>%
+  arrange(x) %>%
+  mutate(
+    .by = region,
+    .keep = "used",
+    ecdf = seq_along(x) / length(x),
+    region = factor(
+      region,
+      levels = c(
+        "Ten_Thousand_Islands", "Everglades",
+        "Lower_Keys", "Middle_Keys", "Upper_Keys"
+      )
+    )
+  )
+
+ggplot() +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
+  geom_rect(
+    # data = break_df,
+    data = tribble(
+      ~xmin, ~xmax, ~cls,
+      10, 32, 1,
+      32, 34, 2,
+      34, ceiling(max(df0$sal)), 3
+      ) %>% mutate(cls = as.factor(cls)),
+    aes(xmin = xmin, xmax = xmax, ymin = -0.06, ymax = -0.02, fill = cls),
+    color = "grey40"
+  ) +
+  geom_step(data = ecdf_df, aes(x = x, y = ecdf), color = "black") +
+  geom_point(data = ecdf_df, aes(x = x, y = ecdf), color = "black", alpha = 0.2) +
+  # geom_vline(xintercept = brk_int$brks, color = "grey", linewidth = 0.4,
+  geom_vline(xintercept = c(32, 34), color = "grey", linewidth = 0.4,
+             linetype = "dashed") +
+  labs(
+    x = "Salinity",
+    y = "F(n)"
+  ) +
+  facet_wrap(~region) +
+  scale_fill_manual(values = viridisLite::viridis(nrow(break_df)), guide = "none") +
+  scale_x_continuous(breaks = scales::breaks_width(5), expand = expansion()) +
+  scale_y_continuous(expand = expansion()) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.title.y       = element_text(angle = 90),
+    axis.text.y        = element_text(angle = 90),
+    strip.background = element_rect(fill = "white")
+  )
+
+if (FALSE) {
+  ggsave(here(base_dir, "salinity_edcf_each_regions.jpeg"), width = 10, height = 5)
+  shell.exec(base_dir)
+}
+```
 
 # ============================================================================ #
 # Functions:
