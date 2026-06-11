@@ -82,6 +82,9 @@ region_col <- c(
 #   as.vector() %>%
 #   magrittr::set_names(names(region_col)) %T>%
 #   print()
+
+# print without degree symbol or N/S/E/W
+plain_coord <- function(x) sprintf("%.2f", x)
 ```
 
 
@@ -219,7 +222,12 @@ ggplot() +
     ) + 
   guides(fill = "none") +
   
-  ggspatial::annotation_north_arrow(location = "br") + 
+  ggspatial::annotation_north_arrow(
+    location = "br", 
+    # pad_x = unit(0.4, "in"), 
+    pad_y = unit(0.4, "in"),
+    style  = ggspatial::north_arrow_orienteering(fill = c("white", "white"))
+    ) + 
   ggspatial::annotation_scale(location = "br") +
   
   scale_fill_discrete(na.value = "transparent") +
@@ -245,15 +253,31 @@ placencia_map <-
     show.legend = FALSE,
     maxcell     = Inf
   ) +
+  
+  ggspatial::annotation_north_arrow(
+    location = "br", 
+    # pad_x = unit(0.4, "in"), 
+    pad_y = unit(0.4, "in"),
+    style  = ggspatial::north_arrow_orienteering(fill = c("white", "white"))
+    ) + 
+  ggspatial::annotation_scale(location = "br") +
+  
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  
   scale_fill_continuous(na.value = "transparent") +
+  scale_y_continuous(breaks = seq(16.52, 16.68, 0.02), labels = plain_coord,
+                     expand = expansion()) +
+  scale_x_continuous(breaks = seq(-88.44, -88.32, 0.02), labels = plain_coord
+                     ) +
+  
   coord_sf(
     expand = FALSE,
     ylim = bbox[c(2,4)],
     xlim = bbox[c(1,3)],
-  ) +
-  labs(
-    x = NULL,
-    y = NULL
+    label_axes = "ENEN"
   ) +
   theme_bw()
 
@@ -633,22 +657,66 @@ axis(side = 1, at = seq(0, 11000, 250))
 
 plot(ecdf(biom_df$total_biomass_per_100_sq_m))
 
-classInt::classIntervals(biom_df$total_biomass_per_100_sq_m, 15, style = "bclust") %T>% 
-  print() %>%
-  plot(pal = viridisLite::viridis(15))
+# class int
+brk_num <- 15 # edit number of breaks
+
+# classInt::classIntervals(biom_df$total_biomass_per_100_sq_m, 15, style = "bclust") %T>% 
+#   print() %>%
+#   plot(pal = viridisLite::viridis(15), main = "ECDF Breaks 15")
 
 breaks_8 <- 
-  classInt::classIntervals(biom_df$total_biomass_per_100_sq_m, 8, style = "quantile") %T>% 
+  classInt::classIntervals(biom_df$total_biomass_per_100_sq_m, brk_num, style = "quantile") %T>% 
   print() 
 
-plot(breaks_8, pal = viridisLite::viridis(8), main = "ECDF Breaks 8")
+plot(breaks_8, pal = viridisLite::viridis(brk_num), main = "ECDF Breaks 8")
+
+break_df <- data.frame(
+  xmin = head(breaks_8$brks, -1),
+  xmax = tail(breaks_8$brks, -1),
+  y = 0,
+  cls = factor(seq_len(length(breaks_8$brks) - 1))
+)
+
+ecdf_df <- biom_df %>%
+  select("x" = total_biomass_per_100_sq_m) %>%
+  arrange(x) %>%
+  mutate(
+    .keep = "used",
+    ecdf = seq_along(x) / length(x)
+    )
+
+ggplot() +
+  geom_rect(
+    data = break_df,
+    aes(xmin = xmin, xmax = xmax, ymin = -0.06, ymax = -0.02, fill = cls),
+    color = "grey40"
+  ) +
+  geom_step(data = ecdf_df, aes(x = x, y = ecdf), color = "black") +
+  geom_vline(xintercept = breaks_8$brks, color = "grey", linewidth = 0.4,
+             linetype = "dashed") +
+  labs(
+    title = paste("ECDF with", brk_num, "Breaks"),
+    x = NA,
+    y = "F(n)"
+  ) +
+  scale_fill_manual(values = viridisLite::viridis(brk_num), guide = "none") +
+  scale_x_continuous(breaks = scales::breaks_width(2000), expand = expansion()) +
+  scale_y_continuous(expand = expansion()) +
+  theme_classic() +
+  theme(
+    axis.title.x       = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.title.y       = element_text(angle = 90),
+    axis.text.y        = element_text(angle = 90),
+  )
+
 
 breaks_8$brks
-
+breaks_8 <- c(0, round(breaks_8$brks / 50) * 50, 11000)
 breaks_8 <- c(0, 50, 200, 400, 800, 1600, 2400, 2400, 5700, 11000)
 
+# rm(break_df, ecdf_df)
 ```
-
 
 ## 4.2 Plot Data Point on Placencia Map
 
@@ -775,8 +843,6 @@ idw_rast_smooth <-
 ## 6.1 Plot IDW Interpolation onto Map
 
 ```{r plot-idw}
-plain_coord <- function(x) sprintf("%.2f", x)
-
 ggplot() +
   geom_sf(data = belize_sf, fill = "grey", alpha = 0.5) + # gray basemap
   # geom_spatraster_rgb(data = belize_tile) + # dark base map
@@ -830,16 +896,15 @@ ggplot() +
   scale_fill_stepsn(
     # name     = "Total Biomass (kg)",
     name     = expression("Total Biomass (kg"~100~m^-2*")"),
-    # colours  = viridisLite::viridis(8),
     colours  = viridisLite::viridis(length((breaks_8))),
     na.value = NA,
     oob      = scales::squish,
-    # breaks   = c(0, 25, 50, 75, 100, 200, 400),
-    # limits   = c(0, 400),
-    breaks = ceiling(breaks_8),
-    # breaks   = c(0, 500, 1000, 2000, 3000, 6000, 8000, 11000),
+    breaks   = ceiling(breaks_8),
     limits   = c(0, 11000),
     trans    = "sqrt",
+    # breaks   = c(0, 25, 50, 75, 100, 200, 400),
+    # breaks   = c(0, 500, 1000, 2000, 3000, 6000, 8000, 11000),
+    # limits   = c(0, 400),
   ) +
   
   ggspatial::annotation_north_arrow(
@@ -852,13 +917,7 @@ ggplot() +
   
   scale_y_continuous(breaks = seq(16.52, 16.68, 0.02), labels = plain_coord,
                      expand = expansion()) +
-  scale_x_continuous(breaks = seq(-88.44, -88.32, 0.02), labels = plain_coord,
-                     # limits = bbox[c(1, 3)],
-                     # expand = expansion(mult = c(0.05, 0.0))
-                     # expand = expansion(mult = c(0.05, 0.0))
-                     # limits = range(-88.44, -88.32),
-                     # labels = as.character(seq(-88.44, -88.32, 0.02)),
-                     # expand = c(0, 0)
+  scale_x_continuous(breaks = seq(-88.44, -88.32, 0.02), labels = plain_coord
                      ) +
   guides(
     color = guide_legend(order = 1),
@@ -892,7 +951,7 @@ ggplot() +
 # set location and name to save plot
 plt_save3 <- 
   here("data", "raw", "placencia",
-  paste0("placencia_mangrove_map_interp_l2", Sys.Date(), ".jpeg")
+  paste0("placencia_mangrove_map_interp_l", Sys.Date(), ".jpeg")
   # paste0("placencia_mangrove_map_interp_black2_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
@@ -1005,23 +1064,21 @@ ggplot() +
   scale_fill_stepsn(
     # name     = "Total Biomass (kg)",
     name     = expression("Total Biomass (kg"~100~m^-2*")"),
-    # colours  = viridisLite::viridis(8),
     colours  = viridisLite::viridis(length((breaks_8))),
     na.value = NA,
     oob      = scales::squish,
-    # breaks   = c(0, 25, 50, 75, 100, 200, 400),
-    # limits   = c(0, 400),
-    breaks = ceiling(breaks_8),
-    # breaks   = c(0, 500, 1000, 2000, 3000, 6000, 8000, 11000),
+    breaks   = ceiling(breaks_8),
     limits   = c(0, 11000),
     trans    = "sqrt",
+    # breaks   = c(0, 500, 1000, 2000, 3000, 6000, 8000, 11000),
+    # breaks   = c(0, 25, 50, 75, 100, 200, 400),
+    # limits   = c(0, 400),
   ) +
   
   ggspatial::annotation_north_arrow(
     location = "br", 
-    # pad_x = unit(0.4, "in"), 
-    pad_y = unit(0.4, "in"),
-    style  = north_arrow_orienteering(fill = c("white", "white"))
+    pad_y    = unit(0.4, "in"),
+    style    = ggspatial::north_arrow_orienteering(fill = c("white", "white"))
     ) + 
   ggspatial::annotation_scale(location = "br", text_col = "white") + 
   
@@ -1045,59 +1102,12 @@ ggplot() +
   theme_bw() +
   theme(
     legend.position        = "inside",
-    legend.position.inside = c(0.15, 0.75),
+    # legend.position.inside = c(0.15, 0.75),
+    legend.position.inside = c(0.8, 0.4),
     legend.title           = element_text(size = rel(0.75)),
     legend.text            = element_text(size = rel(0.75)),
     axis.ticks             = element_blank()
   )
-
-  # # add interpolated map
-  # tidyterra::geom_spatraster(
-  #   data = idw_rast_smooth,
-  #   aes(fill = var1.pred),
-  #   na.rm   = TRUE,
-  #   maxcell = Inf
-  # ) +
-  # 
-  # # add sample points
-  # geom_sf(
-  #   data = biom_df,
-  #   aes(fill = total_biomass_kg, geometry = geometry),
-  #   alpha  = 0.75,
-  #   size   = rel(1.5),
-  #   stroke = rel(0.75),
-  #   color  = "white",
-  #   shape  = 21
-  # ) +
-  # ggrepel::geom_text_repel(
-  #   data = biom_df,
-  #   aes(x = x, y = y, label = point),
-  #   min.segment.length = 0,
-  #   max.overlaps       = 100,
-  #   color              = "white",
-  #   bg.color           = "black",
-  #   segment.color      = "black",
-  #   alpha              = 0.75
-  # ) +
-  # scale_fill_stepsn(
-  #   name     = "Total Biomass (kg)",
-  #   colours  = viridisLite::viridis(8),
-  #   na.value = NA,
-  #   oob      = scales::squish,
-  #   breaks   = c(0, 25, 50, 75, 100, 200, 400),
-  #   limits   = c(0, 400),
-  #   trans    = "sqrt",
-  # ) +
-  # labs(
-  #   x = NULL,
-  #   y = NULL
-  # ) +
-  # coord_sf(
-  #   expand = FALSE,
-  #   ylim = bbox[c(2, 4)],
-  #   xlim = bbox[c(1, 3)],
-  # ) +
-  # theme_bw()
 ```
 
 ```{r save-interp}
@@ -1136,8 +1146,143 @@ tiff_save <-
 terra::writeRaster(idw_rast_smooth, tiff_save)
 
 # load tiff
-rast(tiff_save) %T>% 
+mang_bio <- 
+  here("data", "raw", "placencia") %>%
+  dir_ls(regexp = "placencia_mangrove_map_interp.*tiff") %>%
+  sort(decreasing = TRUE) %>%
+  .[1] %>%
+  # rast(tiff_save) %T>% 
+  rast() 
+mang_bio %T>% 
   print() %>%
   plot()
+```
+
+```{r}
+sector_shp <- 
+  here("data", "raw", "placencia") %>%
+  dir_ls(regexp = "merged") %>%
+  dir_ls(regexp = "shp") %>%
+  sf::st_read() %>%
+  mutate(
+    region2 = str_replace(region, "_", " "),
+    region2 = str_to_title(region2),
+    region2 = str_replace(region2, "Creek", "Creeks"),
+  )
+
+ggplot() +
+  geom_sf(
+    data = sector_shp, aes(fill = region2)
+  ) 
+
+
+  ggplot() +
+  geom_sf(data = belize_sf, fill = "grey", alpha = 0.5) +
+  geom_sf(
+    data = sector_shp, aes(fill = region2)
+  ) +
+  ggspatial::annotation_north_arrow(
+    location = "br", 
+    # pad_x = unit(0.4, "in"), 
+    pad_y = unit(0.4, "in"),
+    style  = ggspatial::north_arrow_orienteering(fill = c("white", "white"))
+    ) + 
+  ggspatial::annotation_scale(location = "br") +
+  
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = "Region"
+  ) +
+  
+  scale_fill_manual(values = region_col) +
+  scale_y_continuous(breaks = seq(16.52, 16.68, 0.02), labels = plain_coord,
+                     expand = expansion()) +
+  scale_x_continuous(breaks = seq(-88.44, -88.32, 0.02), labels = plain_coord
+                     ) +
+  
+  coord_sf(
+    expand = FALSE,
+    ylim = bbox[c(2,4)],
+    xlim = bbox[c(1,3)],
+    label_axes = "ENEN"
+  ) +
+  theme_bw()
+
+```
+
+```{r}
+plot(st_geometry(sector_shp), main = "Total Area")
+upper_region <- sector_shp[sector_shp$region2 == "Upper", ]
+plot(st_geometry(upper_region), main = "Upper")
+
+upper_bio <- crop(mang_bio, vect(upper_region))
+
+lower_region <- sector_shp[sector_shp$region2 == "Lower", ]
+plot(st_geometry(lower_region), main = "Lower")
+
+lower_bio <- crop(mang_bio, vect(lower_region))
+
+main_region <- sector_shp[sector_shp$region2 == "Main Creeks", ]
+plot(st_geometry(main_region), main = "Main Creeks")
+
+main_bio <- crop(mang_bio, vect(main_region))
+
+plot(mang_bio)
+plot(upper_bio)
+plot(lower_bio)
+plot(main_bio)
+# total biomass per region
+bind_rows(
+  global(mang_bio, fun = "sum", na.rm = TRUE),
+  global(upper_bio, fun = "sum", na.rm = TRUE),
+  global(lower_bio, fun = "sum", na.rm = TRUE),
+  global(main_bio, fun = "sum", na.rm = TRUE)
+) %>%
+  filter(!is.na(sum)) %>%
+  bind_cols(
+    region = c("Total", "Upper", "Lower", "Main Creeks")
+  ) %>%
+  mutate(
+    percent = sum / max(sum) * 100,
+    percent = round(percent, 2),
+    biomass_kg = scales::label_comma()(sum)
+  ) %>%
+  bind_cols(
+    ha_mult = c(
+      1,
+      25287.9 * 1000 * 2.0109,
+      19868.98 * 1000 * 6.7776,
+      23183.8 * 1000 * 4.0935
+    )
+  ) %>%
+  mutate(
+     ha_mult = scales::label_comma()(ha_mult)
+  )
+
+upper_region %>%
+  mutate(
+    area    = st_area(geometry),
+    area_km = units::set_units(area, "km2"),
+    area_km = units::drop_units(area_km)
+    ) %>%
+  summarise(sum = sum(area_km)) %>%
+  as.data.frame()
+lower_region %>%
+  mutate(
+    area    = st_area(geometry),
+    area_km = units::set_units(area, "km2"),
+    area_km = units::drop_units(area_km)
+    ) %>%
+  summarise(sum = sum(area_km)) %>%
+  as.data.frame()
+main_region %>%
+  mutate(
+    area    = st_area(geometry),
+    area_km = units::set_units(area, "km2"),
+    area_km = units::drop_units(area_km)
+    ) %>%
+  summarise(sum = sum(area_km)) %>%
+  as.data.frame()
 ```
 
