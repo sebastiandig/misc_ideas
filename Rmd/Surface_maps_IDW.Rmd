@@ -212,6 +212,18 @@ rm(list = names(var_names), var_names)
 ```{r salinity-ecdf}
 df0 <- df0 %>%
   filter(str_detect(region, "(?i)keys|thousand|everglades")) %>%
+  mutate(
+        region = factor(
+      region,
+      levels = c(
+        "Ten_Thousand_Islands",
+        "Everglades",
+        "Lower_Keys",
+        "Middle_Keys",
+        "Upper_Keys"
+      )
+    )
+  ) %>%
   filter(sal < 50)
 
 # class int
@@ -237,6 +249,8 @@ ecdf_df <- df0 %>%
     )
 
 ggplot() +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
+  annotate("text", x = c(32, 34), y = 0.95, label = c("32", "34"), color = "grey50") +
   geom_rect(
     # data = break_df,
     data = tribble(
@@ -245,21 +259,32 @@ ggplot() +
       32, 34, 2,
       34, ceiling(max(df0$sal)), 3
       ) %>% mutate(cls = as.factor(cls)),
-    aes(xmin = xmin, xmax = xmax, ymin = -0.06, ymax = -0.02, fill = cls),
+    aes(xmin = xmin, xmax = xmax, ymin = -0.1, ymax = -0.02, fill = cls),
     color = "grey40"
   ) +
-  geom_step(data = ecdf_df, aes(x = x, y = ecdf), color = "black") +
-  geom_point(data = ecdf_df, aes(x = x, y = ecdf), color = "black", alpha = 0.2) +
+  geom_point(data = ecdf_df, aes(x = x, y = ecdf), color = "black", alpha = 0.7, size = rel(1)) +
+  geom_step(data = ecdf_df, aes(x = x, y = ecdf), color = "blue", alpha = 1) +
   # geom_vline(xintercept = brk_int$brks, color = "grey", linewidth = 0.4,
-  geom_vline(xintercept = c(32, 34), color = "grey", linewidth = 0.4,
+  geom_vline(xintercept = c(32, 34), ymax = 0.5, color = "grey", linewidth = 0.4,
              linetype = "dashed") +
+  annotate("text",
+           x = c(
+             (10 + 32) / 2, 
+             33, 
+             (max(ecdf_df$x[ecdf_df$x > 34]) + 34) / 2
+             ),
+           y = -0.06,
+           size = rel(3.5),
+           label = c("Low Salinity (<32)", "Moderate\n(32-<34)", "Marine/Background (≥34)"),
+           color = c("white", "white", "black")) +
   labs(
     # title = paste("ECDF with", brk_num, "Breaks"),
     x = "Salinity",
-    y = "F(n)"
+    y = "Cumulative Proportion"
   ) +
-  facet_wrap(~region) +
-  scale_fill_manual(values = viridisLite::viridis(nrow(break_df)), guide = "none") +
+  # facet_wrap(~region) +
+  # scale_fill_manual(values = viridisLite::viridis(nrow(break_df)), guide = "none") +
+  scale_fill_manual(values = c("#457db4", "#39a585", "#cfcfcf"), guide = "none") +
   scale_x_continuous(breaks = scales::breaks_width(5), expand = expansion()) +
   scale_y_continuous(expand = expansion()) +
   theme_classic() +
@@ -271,10 +296,13 @@ ggplot() +
   )
 
 if (FALSE) {
-  ggsave(here(base_dir, "salinity_edcf_all_regions.jpeg"), width = 10, height = 5)
+  ggsave(here(base_dir, "salinity_edcf_all_regions2.jpeg"), width = 10, height = 5)
   shell.exec(base_dir)
 }
+```
 
+
+```{r salinity-ecdf}
 # ---- ecdf by each region ---- #
 ecdf_df <- df0 %>%
   select("x" = sal, region) %>%
@@ -312,10 +340,11 @@ ggplot() +
              linetype = "dashed") +
   labs(
     x = "Salinity",
-    y = "F(n)"
+    y = "Cumulative Proportion"
   ) +
   facet_wrap(~region) +
-  scale_fill_manual(values = viridisLite::viridis(nrow(break_df)), guide = "none") +
+  # scale_fill_manual(values = viridisLite::viridis(nrow(break_df)), guide = "none") +
+  scale_fill_manual(values = c("#457db4", "#39a585", "#cfcfcf"), guide = "none") +
   scale_x_continuous(breaks = scales::breaks_width(5), expand = expansion()) +
   scale_y_continuous(expand = expansion()) +
   theme_bw() +
@@ -330,6 +359,96 @@ if (FALSE) {
   ggsave(here(base_dir, "salinity_edcf_each_regions.jpeg"), width = 10, height = 5)
   shell.exec(base_dir)
 }
+
+# ---- ecdf by colored by month each region ---- #
+palette_12 <- RColorBrewer::brewer.pal(12, "Paired") 
+
+ecdf_df <-
+  df0 %>%
+  select("x" = sal, region, date) %>%
+  arrange(x) %>%
+  mutate(
+    .by = region,
+    .keep = "used",
+    ecdf = seq_along(x) / length(x),
+    region = factor(
+      region,
+      levels = c(
+        "Ten_Thousand_Islands", "Everglades",
+        "Lower_Keys", "Middle_Keys", "Upper_Keys"
+      )
+    ),
+    date = mdy(date),
+    month = format(date, "%B"),
+    month = factor(month, levels = month.name)
+  )
+test_plt <- 
+ggplot() +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
+  geom_rect(
+    # data = break_df,
+    data = tribble(
+      ~xmin, ~xmax, ~cls,
+      10, 32, 1,
+      32, 34, 2,
+      34, ceiling(max(df0$sal)), 3
+      ) %>% mutate(cls = as.factor(cls)),
+    aes(xmin = xmin, xmax = xmax, ymin = -0.06, ymax = -0.02, fill = cls),
+    color = "grey40"
+  ) +
+  geom_step(data = ecdf_df, aes(x = x, y = ecdf), color = "black") +
+  # geom_point(data = ecdf_df, aes(x = x, y = ecdf), color = "black", alpha = 0.2) +
+  geom_point(data = ecdf_df, aes(x = x, y = ecdf, color = month), alpha = 0.5) +
+  # geom_vline(xintercept = brk_int$brks, color = "grey", linewidth = 0.4,
+  geom_vline(xintercept = c(32, 34), color = "grey", linewidth = 0.4,
+             linetype = "dashed") +
+  labs(
+    x = "Salinity",
+    y = "Cumulative Proportion"
+  ) +
+  facet_wrap(~region) +
+  scale_color_manual(values = palette_12) +
+  # scale_fill_manual(values = viridisLite::viridis(nrow(break_df)), guide = "none") +
+  scale_fill_manual(values = c("#457db4", "#39a585", "#cfcfcf"), guide = "none") +
+  scale_x_continuous(breaks = scales::breaks_width(5), expand = expansion()) +
+  scale_y_continuous(expand = expansion()) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.title.y       = element_text(angle = 90),
+    axis.text.y        = element_text(angle = 90),
+    strip.background = element_rect(fill = "white")
+  )
+
+plotly::ggplotly(test_plt)
+
+
+
+```
+
+```{r}
+df0 %>%
+  filter(!(CHL_0_5m <= 0 )) %>%
+  mutate(
+    sal_class =
+      case_when(
+        S_0_5m < 32 ~ "low",
+        between(S_0_5m, 32, 34) ~ "moderate",
+        S_0_5m >= 34 ~ "high"
+      ),
+    CHL_0_5m = if_else(CHL_0_5m < 0, 0.0001, CHL_0_5m),
+    chl_log = log10(CHL_0_5m),
+  ) %>%
+  ggplot(aes(y = CHL_0_5m, x = region, color = sal_class)) +
+  geom_boxplot(aes()) +
+  geom_jitter(aes(), alpha = 0.5, position = position_jitterdodge()) +
+  scale_y_log10(
+    breaks = 10^(-2:2),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  annotation_logticks(side = "l") +
+  coord_cartesian(ylim = c(NA, 200)) +
+  theme_bw()
 ```
 
 # ============================================================================ #
