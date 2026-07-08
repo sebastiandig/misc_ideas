@@ -1821,6 +1821,18 @@ biomass_select <-
   print()
 
 biomass_select %>%
+  # filter(!is.na(east_west)) %>%
+  WRS2::t1way(
+  data    = .,
+  dbh_cm  ~ morphotype,
+  # dep     = "dbh_cm",       # dependent variable (numeric)
+  # factors = c("morphotype"), # independent variables (factors)
+  # method  = "trim",                  # "trim" (default), "median", or "boot"
+  # ph      = TRUE,                    # post-hoc tests
+  tr      = 0.2                      # trim proportion (20%)
+  )
+
+biomass_select %>%
   filter(!is.na(east_west)) %>%
   walrus::ranova(
   data    = .,
@@ -1856,7 +1868,32 @@ morph_loc$phs
 WRS2::t2way(dbh_cm ~ morphotype*upper_lower, data = biomass_select)
 WRS2::mcp2atm(dbh_cm ~ morphotype*upper_lower, data = biomass_select)
 
+dbh_height <- biomass_dat %>%
+  filter(str_detect(species, "mangle")) %>%
+  lm(height_m ~ dbh_cm, data = .)
+summary(dbh_height)
 
+biomass_dat %>%
+  filter(str_detect(species, "mangle")) %>%
+  ggplot(aes(x = dbh_cm, y = height_m)) +
+  geom_smooth(method = "lm", fill = "#9cb8ea") +
+  geom_point(color = "#9cb8ea") +
+  labs(
+    x = "dbh (cm)",
+    y = "Height (m)",
+    title = "Rhizophora mangle"
+  ) +
+  coord_equal() +
+  theme_classic() +
+  theme(title = element_text(face = "bold"))
+
+shelf(terra) 
+  (here("data", "raw", "placencia") %>%
+  dir_ls(regexp = "placencia_mangrove_map_interp.*tiff") )[3] %>%
+  rast() %>%
+  # plot()
+  global(fun = c("sum", "mean", "min", "max"), na.rm = TRUE) %>%
+  mutate(sum = sum /1000)
 ```
 
 
