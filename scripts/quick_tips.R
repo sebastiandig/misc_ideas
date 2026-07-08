@@ -81,6 +81,33 @@ saveRDS(x,
 )
 
 # ============================================================================ #
+# ----Update R  ----
+# ============================================================================ #  
+# current recommendation is using `rig` <https://github.com/r-lib/rig>
+# from cmd `winget install posit.rig`
+# 
+# Commands
+# rig add        -- install a new R version [alias: install]
+# rig available  -- list R versions available to install.
+# rig default    -- print or set default R version [alias: switch]
+# rig library    -- manage package libraries [alias: lib] (experimental)
+# rig list       -- list installed R versions [alias: ls]
+# rig repos      -- manage package repositories
+# rig resolve    -- resolve a symbolic R version
+# rig rm         -- remove R versions [aliases: del, remove, delete]
+# rig rstudio    -- start RStudio with specified R version
+# rig run        -- run R, an R script or an R project
+# rig sysreqs    -- manage R-related system libraries and tools (experimental)
+# rig system     -- manage current installations
+
+# for help: 
+#   rig <subcommand> --help
+# rig add 
+# 
+# will need to switch R version in rstudio > Tools > global options
+
+
+# ============================================================================ #
 # ---- Check Packages in Updated R to Previous R  ----
 # ============================================================================ #  
 # To be used after previous tip and updated R
@@ -109,15 +136,58 @@ x <-
 
 # find packages not included in current version of R that you had previously
 y <- x[!x$package %in% .packages(TRUE),]
+y <- y[-agrep("assertive|gguidance", y$source_loc), ]
+set_num <- 5 # number to download at a time
 
 # download first from CRAN then GitHub
-if (nrow(y) > 0) {
-  try(install.packages(y[agrep("CRAN", y$source), ]))
-  try(devtools::install_github(y[agrep("Git", y$source), ]))
-} else {
-  message("No packages to download")
-  rm(x, y)
+while (nrow(y) > 0) {
+  try_err <- try(pak::pkg_install(y$source_loc[1:set_num]))
+  
+  if (class(try_err) == "try-error") {
+    for (i in y$source_loc) {
+      message(paste("\nPackage:", i))
+      try(pak::pkg_install(i))
+    }
   }
+  
+  y <- x[!x$package %in% .packages(TRUE), ]
+  y <- y[-agrep("assertive", y$source_loc), ]
+  y_dec <- nrow(y)
+  message(paste(y_dec, "packages left."))
+  y <- y[sample(seq(1, nrow(y)), set_num), ]
+
+  message("Next batch of downloads")
+  Sys.sleep(7)
+}
+
+
+y <- x[!x$package %in% .packages(TRUE),]
+y <- y[-agrep("assertive", y$source_loc), ]
+y <- y[-agrep("gguidance", y$source_loc), ]
+failed <- vector("character")
+for (i in seq_along(y$source_loc)) {
+  message(paste(i, "in", length(y$source_loc)))
+  message(paste("\nPackage:", y$source_loc[i]))
+  try_err <- try(pak::pkg_install(y$source_loc[i]))
+  
+  if (class(try_err) == "try-error") {
+    failed <- c(failed, y$source_loc[i])  
+  }
+}
+cat(failed, sep = "\n")
+
+failed[!failed %in% .packages(TRUE)]
+# old way
+# if (nrow(y) > 0) {
+#     try(pak::pkg_install(y[agrep("CRAN", y$source), ]))
+#     try(devtools::install_github(y[agrep("Git", y$source), ]))
+#   } else {
+#   message("No packages to download")
+#   rm(x, y)
+#   }
+
+
+  
 
 # ============================================================================ #
 # ---- Detect OS ----
