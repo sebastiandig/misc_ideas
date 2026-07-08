@@ -469,10 +469,11 @@ WRS2::mcp2atm(dbh_cm ~ morphotype*upper_lower, data = biomass_select)
 # set location and name to save plot
 box_save <- 
   here("data", "raw", "placencia",
-  paste0("placencai_box_", c("upper_lower_", "east_west_", "loc_"), Sys.Date(), ".jpeg")
+  paste0("placencia_box_", c("upper_lower_", "east_west_", "loc_"), Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 shell.exec(dirname(box_save)[1])
+
 biomass_select %>%
   ggplot(aes(x = morphotype, y = dbh_cm)) +
   annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, 
@@ -492,10 +493,10 @@ biomass_select %>%
     strip.text = element_text(size = rel(2))
   )
 
-
-ggsave(
+if (FALSE) {
+  ggsave(
     filename = box_save[1],
-    plot = last_plot(),
+    plot     = last_plot(),
     device   = "jpeg",
     dpi      = 600,
     width    = 9,
@@ -503,6 +504,7 @@ ggsave(
     units    = "in",
     bg       = "white"
   )
+}
 
 biomass_select %>%
   filter(!is.na(east_west)) %>%
@@ -524,16 +526,18 @@ biomass_select %>%
     strip.text = element_text(size = rel(2))
   )
 
-ggsave(
-    filename = box_save[2],
-    plot = last_plot(),
-    device   = "jpeg",
-    dpi      = 600,
-    width    = 9,
-    height   = 6,
-    units    = "in",
-    bg       = "white"
-  )
+if (FALSE) {
+  ggsave(
+      filename = box_save[2],
+      plot = last_plot(),
+      device   = "jpeg",
+      dpi      = 600,
+      width    = 9,
+      height   = 6,
+      units    = "in",
+      bg       = "white"
+    )
+}
 
 biomass_select %>%
   ggplot(aes(x = morphotype, y = dbh_cm)) +
@@ -553,16 +557,19 @@ biomass_select %>%
     axis.line = element_blank(),
     strip.text = element_text(size = rel(2))
   )
-ggsave(
-    filename = box_save[3],
-    plot = last_plot(),
-    device   = "jpeg",
-    dpi      = 600,
-    width    = 9,
-    height   = 6,
-    units    = "in",
-    bg       = "white"
-  )
+
+if (FALSE) {
+  ggsave(
+      filename = box_save[3],
+      plot = last_plot(),
+      device   = "jpeg",
+      dpi      = 600,
+      width    = 9,
+      height   = 6,
+      units    = "in",
+      bg       = "white"
+    )
+}
 
 
 ```
@@ -626,12 +633,13 @@ biomass_dat %>%
            ~ round(.x, 6))
   ) %>%
   mutate(
-    all_equal = aboveground_biomass_kg_per_tree_avg == average_agb_per_point &
-      belowground_biomass_kg_per_tree_avg == average_bgb_per_point & 
-      total_biomass_per_tree_avg == total_biomass_per_point,
+    all_equal = aboveground_biomass_kg_per_tree_avg == average_agb_per_point 
+    & belowground_biomass_kg_per_tree_avg == average_bgb_per_point 
+    & total_biomass_per_tree_avg == total_biomass_per_point,
+    
     aba_equal = aboveground_biomass_kg_per_tree_avg == average_agb_per_point,
-    bgb_eg =  belowground_biomass_kg_per_tree_avg == average_bgb_per_point, 
-    tot_eq  = total_biomass_per_tree_avg == total_biomass_per_point
+    bgb_eg    =  belowground_biomass_kg_per_tree_avg == average_bgb_per_point, 
+    tot_eq    = total_biomass_per_tree_avg == total_biomass_per_point
   )
 
 
@@ -1189,6 +1197,23 @@ ggplot() +
     ) + 
   ggspatial::annotation_scale(location = "br") +
   
+  ggrepel::geom_text_repel(
+    data = biom_df,
+    aes(x = x, y = y, label = station_id),#, color = upper_lower),
+    min.segment.length = 0,
+    max.overlaps       = 100,
+    color              = "white",
+    bg.color           = "black",
+    segment.color      = "black",
+    # alpha              = 0.75,
+    segment.ncp = 10,
+    show.legend = FALSE,
+  ) +
+    
+  geom_point( 
+     data = biom_df,
+    aes(x = x, y = y),
+    ) +  
   labs(
     x = NULL,
     y = NULL,
@@ -1196,6 +1221,11 @@ ggplot() +
   ) +
   
   scale_fill_manual(values = region_col) +
+  # scale_color_manual(
+  #   name = "Region",
+  #   values = region_col,
+  #   breaks = names(region_col)
+  #   ) +
   scale_y_continuous(breaks = seq(16.52, 16.68, 0.02), labels = plain_coord,
                      expand = expansion()) +
   scale_x_continuous(breaks = seq(-88.44, -88.32, 0.02), labels = plain_coord
@@ -1210,6 +1240,43 @@ ggplot() +
   theme_bw()
 
 ```
+
+
+```{r}
+plt_save5 <- 
+  here("data", "raw", "placencia",
+  paste0("placencia_mangrove_map_section", Sys.Date(), ".jpeg")
+  # paste0("placencia_mangrove_map_interp_black2_", Sys.Date(), ".jpeg")
+  ) %T>% 
+  print()
+
+if (FALSE) {
+  ggsave(
+    filename = plt_save5,
+    plot = last_plot(),
+    device   = "jpeg",
+    dpi      = 600,
+    width    = 8.5,
+    height   = 9,
+    units    = "in",
+    bg       = "white"
+  )
+
+  ggsave(
+    filename = str_replace(plt_save5, "jpeg", "svg"),
+    plot = last_plot(),
+    device   = "svg",
+    dpi      = 600,
+    width    = 8.5,
+    height   = 9,
+    units    = "in",
+    bg       = "white"
+  )
+} else {
+  message("Not saving mangrove map with points!")
+}
+```
+
 
 ```{r}
 plot(st_geometry(sector_shp), main = "Total Area")
