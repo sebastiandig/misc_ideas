@@ -99,6 +99,32 @@ date_string <-
 dir_plt_save  <- here("data", "plots", "reach_map")
 ```
 
+```{r}
+loc_other <- 
+  dir_path %>%
+  dir_ls(regexp = "(?i)schedule") %>%
+  str_subset("~", negate = TRUE) %>% 
+  read_xlsx(.name_repair = make_clean_names, sheet = sheet_names[1]) %>%
+  remove_empty("cols") %>%
+  remove_empty("rows") %T>%
+  # drop_na(latitude_decimal_degree, longitude_decimal_degree) %T>%
+  print() %>%
+  select(
+    waypoint, 
+    "lat" = lat_in_degree, "long" = lon_in_degree, 
+    ) %>%
+  mutate(
+    waypoint = str_remove(waypoint, "_(D|R|S)")
+    ) %>%
+  filter_out(
+    waypoint %in% str_remove(loc_dat$waypoint, "_(D|R|S)") |
+    waypoint %in% str_remove(loc_dat$waypoint, "S\\d{2}/")
+  ) %>%
+  distinct() %T>%
+  print() 
+```
+
+
 ## 2.3 Load Rice's Whale Distrbution Shapefile
 Shapefile of Rice's Whale Distrbution from:
 <https://www.fisheries.noaa.gov/resource/map/rices-whale-core-distribution-area-map-gis-data>
@@ -225,7 +251,9 @@ long_lat_lag <-
     .by = waypoint,
     te = row_number(),
     t2 = n(),
-    waypoint = if_else(row_number() > 1, "", waypoint)
+    waypoint = if_else(row_number() > 1, "", waypoint),
+    waypoint = str_remove(waypoint, "_(R|S|D)"),
+    description = str_remove(description, "Recover|Deploy")
   ) %>%
   select(-te, -t2) %T>% 
   print()
@@ -342,6 +370,36 @@ loc_map_pts <-
 
   # add station points
   geom_point(
+    data = loc_other,
+    aes(
+      x     = long, 
+      y     = lat
+      ),
+    size = 3,
+    color = "gray",
+    # shape = 3,
+    show.legend = FALSE,
+    inherit.aes = FALSE
+  ) +
+  
+    # add station labels
+  ggrepel::geom_text_repel(
+    data = loc_other,
+    aes(x = long, y = lat, label = waypoint),
+    max.overlaps       = 15,
+    min.segment.length = 0.0,
+    size               = 2.5,
+    # uncomment for bold letters
+    fontface      = "bold",
+    color         = "white",
+    bg.color      = "gray",
+    bg.r          = 0.15,
+    segment.color = "gray",
+    # direction     = "x"
+  ) +
+  
+  # add station points
+  geom_point(
     data = loc_dat,
     aes(
       x     = long, 
@@ -403,7 +461,6 @@ loc_map_pts
 loc_dat$description %>%
   unique()
 ```
-
 
 ```{r}
 # set location and name to save plot
