@@ -22,15 +22,15 @@ ctd_file
 
 # test <- read.ctd(ctd_file, type = "WOCE", station = "16")
 
-test <- read_csv(ctd_file)
-
+test <- read_csv(ctd_file, skip = 2, col_names = names(read_csv(ctd_file, n_max = 1)))
+names(test)
 test_ctd <-
   as.ctd(
-    salinity = test$sea_water_salinity,
+    salinity    = test$sea_water_salinity,
     temperature = test$sea_water_temperature,
-    pressure = test$depth,
-    ship = "Walton Smith",
-    station = "21/LK"
+    pressure    = test$depth,
+    ship        = "WeatherBird II",
+    station     = "12"
   )
 test_ctd %>%
   plotScan()
@@ -38,7 +38,7 @@ test_ctd %>%
 test_ctd2 <- oceSetData(
   test_ctd,
   name = "fluorescence",
-  value = test$chlorophyll_fluorescence,
+  value = test$chlorophyll_concentration,
 )
 
 plotProfile(test_ctd)
@@ -68,7 +68,10 @@ ctd_load <- function(file) {
     # ---- end of function ctd_load
 }
 
-
+plotProfile(test_ctd2)
+ctdTrim(test_ctd2) %>%
+  ctdDecimate(p = 0.5) %>%
+  plotProfile()
 
 ctd_file <- rstudioapi::selectDirectory(path = "~/Box/ctd_data/")
 
