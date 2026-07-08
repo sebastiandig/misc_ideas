@@ -64,7 +64,9 @@ dir_create(ts_dir)
 # file with all ctd casts
 in_file <- 
   ts_dir  %>%
-  dir_ls(regexp = "CTD_surface_0_5m_ALL")
+  # dir_ls(regexp = "CTD_surface_0_5m_ALL")
+  dir_ls(regexp = "five_regions") %T>% 
+  print()
 
 stopifnot(length(in_file) != 0)
 
@@ -138,11 +140,17 @@ smooth_kernel <- smooth_kernel / sum(smooth_kernel)
 # Read Data 
 
 ```{r read-all-data}
-df0 <- read_csv(in_file, show_col_types = FALSE) %T>% 
+df0 <- read_csv(in_file, show_col_types = FALSE) %>%
+  rename(
+    "latitude" = latitude_mean,
+    "longitude" = longitude_mean,
+    # "date_raw" = date
+  ) %T>% 
   print()
 
 # check missing columns in data file
-need_base <- c("cruise_file", "station", "latitude", "longitude")
+# need_base <- c("cruise_file", "station", "latitude", "longitude")
+need_base <- c("cruise_id", "station", "latitude", "longitude")
 miss_base <- setdiff(need_base, names(df0))
 if (length(miss_base) > 0) stop("Missing base columns: ", paste(miss_base, collapse = ", "))
 
@@ -155,13 +163,13 @@ pick_first_col <- function(candidates, col_names) {
 }
 
 var_names <- list(
-  col_sal     = c("S_0_5m", "sal_0_5m", "mean_sal_psu", "salinity"),
-  col_temp    = c("T_0_5m", "temp_0_5m", "mean_temp_C", "temperature", "temp_C"),
-  col_o2      = c("O2_0_5m", "oxy_0_5m", "mean_oxy", "oxygen", "DO"),
+  col_sal     = c("salinity_analysis", "S_0_5m", "sal_0_5m", "mean_sal_psu", "salinity"),
+  col_temp    = c("temperature_analysis", "T_0_5m", "temp_0_5m", "mean_temp_C", "temperature", "temp_C"),
+  col_o2      = c("dissolved_oxygen_analysis", "O2_0_5m", "oxy_0_5m", "mean_oxy", "oxygen", "DO"),
   col_date    = c("date", "Date", "cast_date", "datetime", "time", "timestamp"),
   # confirmed by you:
-  col_chl     = c("CHL_0_5m"),
-  col_chl_src = c("chl_source")
+  col_chl     = c("chlorophyll_analysis", "chlorophyll_mean", "CHL_0_5m"),
+  col_chl_src = c("chlorophyll_source_column", "chl_source")
 ) %>%
   map(
     y = names(df0),
@@ -182,7 +190,8 @@ for (i in seq(var_names)) do.call("<-", list(names(var_names)[i], var_names[i]))
 df0 <- 
   df0 %>%
   mutate(
-    cruise_file = as.character(cruise_file),
+    # cruise_file = as.character(cruise_file),
+    cruise_file = as.character(cruise_id),
     station     = str_squish(as.character(station)),
     latitude    = suppressWarnings(as.numeric(latitude)),
     longitude   = suppressWarnings(as.numeric(longitude)),
@@ -192,8 +201,10 @@ df0 <-
     chl         = suppressWarnings(as.numeric(.data[[col_chl]])),
     chl_source  = as.character(.data[[col_chl_src]]),
     date_raw    = if (!is.na(col_date)) .data[[col_date]] else NA,
-    date_raw    = mdy(date_raw)
-  ) %T>% 
+    # date_raw    = mdy(date_raw)
+    date_raw    = ymd(date_raw)
+  ) %>%
+  arrange(date) %T>% 
   print()
 
 # extract all crusie IDs
@@ -208,9 +219,15 @@ cat("Total cruises found:", length(cruise_ids), "\n")
 
 # remove variables
 rm(list = names(var_names), var_names)
+
+
+max_date <- max(df0$date)
 ```
+
+
 ```{r salinity-ecdf}
-df0 <- df0 %>%
+df0 <- 
+  df0 %>%
   filter(str_detect(region, "(?i)keys|thousand|everglades")) %>%
   mutate(
         region = factor(
@@ -245,12 +262,13 @@ ecdf_df <- df0 %>%
   arrange(x) %>%
   mutate(
     .keep = "used",
-    ecdf = seq_along(x) / length(x)
+    ecdf = seq_along(x) / length(x),
+    range = between(x, 32, 34)
     )
 
 ggplot() +
   annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
-  annotate("text", x = c(32, 34), y = 0.95, label = c("32", "34"), color = "grey50") +
+  # annotate("text", x = c(32, 34) - 0.35, y = -1, label = c("32", "34"), color = "grey50") +
   geom_rect(
     # data = break_df,
     data = tribble(
@@ -259,24 +277,28 @@ ggplot() +
       32, 34, 2,
       34, ceiling(max(df0$sal)), 3
       ) %>% mutate(cls = as.factor(cls)),
-    aes(xmin = xmin, xmax = xmax, ymin = -0.1, ymax = -0.02, fill = cls),
+    aes(xmin = xmin, xmax = xmax, ymin = -0.15, ymax = -0.02, fill = cls),
     color = "grey40"
   ) +
   geom_point(data = ecdf_df, aes(x = x, y = ecdf), color = "black", alpha = 0.7, size = rel(1)) +
   geom_step(data = ecdf_df, aes(x = x, y = ecdf), color = "blue", alpha = 1) +
   # geom_vline(xintercept = brk_int$brks, color = "grey", linewidth = 0.4,
-  geom_vline(xintercept = c(32, 34), ymax = 0.5, color = "grey", linewidth = 0.4,
+  geom_vline(xintercept = c(32, 34), color = "grey", linewidth = 1,
              linetype = "dashed") +
-  annotate("text",
-           x = c(
-             (10 + 32) / 2, 
-             33, 
-             (max(ecdf_df$x[ecdf_df$x > 34]) + 34) / 2
-             ),
-           y = -0.06,
-           size = rel(3.5),
-           label = c("Low Salinity (<32)", "Moderate\n(32-<34)", "Marine/Background (≥34)"),
-           color = c("white", "white", "black")) +
+  annotate(
+    "text",
+    x = c(
+    (10 + 32) / 2, 
+    33, 
+    (max(ecdf_df$x[ecdf_df$x > 34]) + 34) / 2
+    ),
+    y     = -0.15 / 2,
+    size  = rel(3.9),
+    label = c("Low Salinity (<32)", "Moderate\n(32-<34)", "Marine/Background (≥34)"),
+    color = c("white", "white", "black"),
+    lineheight = 0.8,
+    fontface = "bold"
+    ) +
   labs(
     # title = paste("ECDF with", brk_num, "Breaks"),
     x = "Salinity",
@@ -286,17 +308,25 @@ ggplot() +
   # scale_fill_manual(values = viridisLite::viridis(nrow(break_df)), guide = "none") +
   scale_fill_manual(values = c("#457db4", "#39a585", "#cfcfcf"), guide = "none") +
   scale_x_continuous(breaks = scales::breaks_width(5), expand = expansion()) +
-  scale_y_continuous(expand = expansion()) +
+  # scale_x_continuous(breaks = c(seq(10,30,5), 32, 34, 35, 40, 45), expand = expansion()) +
+  scale_y_continuous(expand = expansion(add = c(0, .1))) +
   theme_classic() +
   theme(
     # axis.title.x       = element_blank(),
     panel.grid.major.x = element_blank(),
+    axis.title = element_text(size = rel(1.5)),
     axis.title.y       = element_text(angle = 90),
-    axis.text.y        = element_text(angle = 90),
+    axis.text.y        = element_text(angle = 90, hjust = 0.5),
+    axis.text          = element_text(size = rel(1.5)),
+    axis.line          = element_line(linewidth = rel(1.5))
   )
 
 if (FALSE) {
-  ggsave(here(base_dir, "salinity_edcf_all_regions2.jpeg"), width = 10, height = 5)
+  ggsave(
+    here(base_dir, glue("salinity_edcf_all_regions_{Sys.Date()}.jpeg")), 
+    width  = 10, 
+    height = 5, 
+    dpi    = 600)
   shell.exec(base_dir)
 }
 ```
@@ -378,7 +408,8 @@ ecdf_df <-
         "Lower_Keys", "Middle_Keys", "Upper_Keys"
       )
     ),
-    date = mdy(date),
+    # date = mdy(date),
+    date = ymd(date),
     month = format(date, "%B"),
     month = factor(month, levels = month.name)
   )
@@ -427,29 +458,384 @@ plotly::ggplotly(test_plt)
 ```
 
 ```{r}
-df0 %>%
-  filter(!(CHL_0_5m <= 0 )) %>%
+sfer_data <- 
+  here("data", "raw") %>%
+  dir_ls(regexp = "SFER") %>%
+  read_csv(show_col_types = FALSE) %>%
+  filter(datetime <= max_date) %T>% 
+  print()
+
+
+regions <- 
+  sfer_data %>% 
+  distinct(station, lat_dec, lon_dec) %>%
+  summarise(
+    .by = station,
+    lat = mean(lat_dec),
+    lon = mean(lon_dec)
+  ) %>%
+  filter(lon > -82.4 & lat < 26) 
+
+regions %>%
+  ggplot(aes(x = lon, y = lat)) +
+  geom_point() +
+  ggrepel::geom_text_repel(aes(label = station))
+
+station <-
+  df0 %>%
+  select(station, region, latitude, longitude) %>%
+  summarise(
+    .by = c(station, region),
+    lat1 = mean(latitude),
+    lon1 = mean(longitude)
+  ) %>%
+  distinct() %>%
+  full_join(
+    regions
+  ) %>%
+  filter(!is.na(lat)) %>%
+  select(station, region)
+  
+shelf(patchwork)
+
+(left_join(
+  sfer_data,
+  station
+  ) %>%
+  filter(!is.na(region))  %>%
+  filter(!(chl <= 0 )) %>%
   mutate(
     sal_class =
       case_when(
-        S_0_5m < 32 ~ "low",
-        between(S_0_5m, 32, 34) ~ "moderate",
-        S_0_5m >= 34 ~ "high"
+        sal < 32 ~ "Low",
+        between(sal, 32, 34) ~ "Moderate",
+        sal >= 34 ~ "Marine"
       ),
-    CHL_0_5m = if_else(CHL_0_5m < 0, 0.0001, CHL_0_5m),
-    chl_log = log10(CHL_0_5m),
+    sal_class = factor(sal_class, levels = c("Marine", "Moderate", "Low")),
+    sal       = if_else(sal < 0, 0.0001, sal),
+    chl_log   = log10(chl),
+    
+     region = factor(
+      region,
+      levels = c(
+        "Ten_Thousand_Islands", "Everglades",
+        "Lower_Keys", "Middle_Keys", "Upper_Keys"
+      )
+    )
   ) %>%
-  ggplot(aes(y = CHL_0_5m, x = region, color = sal_class)) +
-  geom_boxplot(aes()) +
-  geom_jitter(aes(), alpha = 0.5, position = position_jitterdodge()) +
+  filter(!is.na(sal_class))  %T>% 
+  print() %>%
+    
+  ggplot(aes(y = chl, x = region, color = sal_class)) +
+  geom_boxplot(aes(fill = after_scale(prismatic::clr_lighten(color))), 
+               box.color = "black", position = position_dodge2(preserve = "single")
+               ) +
+  geom_jitter(aes(fill = after_scale(prismatic::clr_darken(color))), 
+              alpha = 0.5, position = position_jitterdodge(), show.legend = FALSE,) +
   scale_y_log10(
-    breaks = 10^(-2:2),
+    breaks = 10^(-2:1),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  scale_color_manual(values = rev(c("#457db4", "#39a585", "#cfcfcf"))) +
+  annotation_logticks(side = "l") +
+  coord_cartesian(ylim = c(NA, max(c(df0$chl, 20), na.rm = TRUE))) +
+  theme_bw()) /
+
+(df0 %>%
+  filter(!(chl <= 0 )) %>%
+  mutate(
+    sal_class =
+      case_when(
+        sal < 32 ~ "Low",
+        between(sal, 32, 34) ~ "Moderate",
+        sal >= 34 ~ "Marine"
+      ),
+    sal_class = factor(sal_class, levels = c("Marine", "Moderate", "Low")),
+    sal       = if_else(sal < 0, 0.0001, sal),
+    chl_log   = log10(chl),
+  ) %>%
+  ggplot(aes(y = chl, x = region, color = sal_class)) +
+  geom_boxplot(aes(fill = after_scale(prismatic::clr_lighten(color))), box.color = "black") +
+  geom_jitter(aes(fill = after_scale(prismatic::clr_darken(color))), 
+              alpha = 0.5, position = position_jitterdodge(), show.legend = FALSE,) +
+  scale_y_log10(
+    breaks = 10^(-2:1),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  scale_color_manual(values = rev(c("#457db4", "#39a585", "#cfcfcf"))) +
+  annotation_logticks(side = "l") +
+  coord_cartesian(ylim = c(NA, max(c(df0$chl, 20)))) +
+  theme_bw())
+```
+```{r}
+sfer_summ_reg <- 
+  left_join(
+  sfer_data,
+  station
+  ) %>%
+  filter(!is.na(region))  %>%
+  filter(!(chl <= 0 )) %>%
+  mutate(
+    sal_class =
+      case_when(
+        sal < 32 ~ "Low",
+        between(sal, 32, 34) ~ "Moderate",
+        sal >= 34 ~ "Marine"
+      ),
+    sal_class = factor(sal_class, levels = c("Marine", "Moderate", "Low")),
+    # sal_class = fct_na_level_to_value()
+    sal       = if_else(sal < 0, 0.0001, sal),
+    chl_log   = log10(chl),
+    
+     region = factor(
+      region,
+      levels = c(
+        "Ten_Thousand_Islands", "Everglades",
+        "Lower_Keys", "Middle_Keys", "Upper_Keys"
+      )
+    )
+  ) %>%
+  filter(!is.na(sal_class)) %>%
+   
+  summarise(
+    .by = c(cruise_id, region, sal_class),
+    chl = mean(chl, na.rm = TRUE)
+  ) %T>% 
+  print() %T>% 
+  {
+    count(., region, sal_class) %>%
+    print()
+  }
+
+(sfer_summ_reg %>%
+    
+  ggplot(aes(y = chl, x = region, color = sal_class)) +
+  geom_boxplot(aes(fill = after_scale(prismatic::clr_lighten(color))), 
+               box.color = "black", position = position_dodge(1, preserve = "single")
+               ) +
+  geom_jitter(aes(fill = after_scale(prismatic::clr_darken(color))), 
+              alpha = 0.5, position = position_jitterdodge(1), show.legend = FALSE,) +
+  
+  geom_point(
+    data = tibble(x = c(1, 3), y = c(1,1)),
+    aes(x = x, y = y), color = "red", inherit.aes = FALSE
+    ) +
+  geom_point(
+    data = tibble(x = c(1, 3) + 0.33, y = c(1,1)),
+    aes(x = x, y = y), color = "red", inherit.aes = FALSE
+    ) +
+  
+  scale_y_log10(
+    breaks = 10^(-2:1),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  scale_color_manual(values = rev(c("#457db4", "#39a585", "#cfcfcf"))) +
+  scale_x_discrete(drop = FALSE) +
+  annotation_logticks(side = "l") +
+  coord_cartesian(ylim = c(NA, max(c(df0$chl, 20)))) +
+  theme_bw()
+  
+  ) /
+
+(df0 %>%
+  filter(!(chl <= 0 )) %>%
+  mutate(
+    sal_class =
+      case_when(
+        sal < 32 ~ "Low",
+        between(sal, 32, 34) ~ "Moderate",
+        sal >= 34 ~ "Marine"
+      ),
+    sal_class = factor(sal_class, levels = c("Marine", "Moderate", "Low")),
+    sal       = if_else(sal < 0, 0.0001, sal),
+    chl_log   = log10(chl),
+  ) %>%
+  summarise(
+    .by = c(cruise_id, region, sal_class),
+    chl = mean(chl, na.rm = TRUE)
+  ) %>%
+  ggplot(aes(y = chl, x = region, color = sal_class)) +
+  geom_boxplot(aes(fill = after_scale(prismatic::clr_lighten(color))), box.color = "black",
+              position = position_dodge(1, "single")) +
+  geom_jitter(aes(fill = after_scale(prismatic::clr_darken(color))), 
+              alpha = 0.5, position = position_jitterdodge(), show.legend = FALSE,) +
+  scale_y_log10(
+    breaks = 10^(-2:1),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  scale_color_manual(values = rev(c("#457db4", "#39a585", "#cfcfcf"))) +
+  annotation_logticks(side = "l") +
+  coord_cartesian(ylim = c(NA, max(c(df0$chl, 20)))) +
+  theme_bw())
+```
+
+```{r}
+# df1 %>%
+df0 %>%
+   mutate(
+    region = factor(
+      region_label,
+      levels = c(
+        "Ten Thousand Islands", "Everglades",
+        "Lower Keys", "Middle Keys", "Upper Keys"
+      )
+    ),
+    sal_class =
+      case_when(
+        sal < 32 ~ "Low",
+        between(sal, 32, 34) ~ "Moderate",
+        sal >= 34 ~ "Marine"
+      ),
+     sal_class = factor(sal_class, levels = c("Marine", "Moderate", "Low"))
+    ) %T>%
+  {
+    count(., cruise_id, region, sal_class) %>%
+      mutate(
+        sor_rec = if_else(str_detect(region, "(?i)keys"), "Recieve", "Source")
+      ) %>%
+      filter(!str_detect(sal_class, "Marine")) %>%
+      summarise(
+        .by = c(cruise_id, sor_rec, sal_class),
+        n = sum(n, na.rm = TRUE)
+      ) %>%
+      pivot_wider(
+        data         = .,
+        id_cols      = c(cruise_id), # *optional* vector of unaffected columns,
+        names_from   = c(sor_rec, sal_class), # category column(s) to pivot wide
+        values_from  = c(n), # value column(s) that hold data for each category column
+        names_sep    = "_",
+        names_repair = janitor::make_clean_names
+        ) %>%
+      select(cruise_id, source_moderate, source_low, recieve_moderate, recieve_low) %>%
+      mutate(
+        source_moderate = source_moderate + source_low,
+        recieve_moderate = recieve_moderate + recieve_low
+      ) %>%
+      filter(
+        str_detect(
+          cruise_id,
+          "WS0603|WS1018|WS14335|WS16004|WS17282|WS18008|WS20342|WB22215|WS22281|WS23011")
+      ) %>%
+      print()
+  } %>%
+  count(region, sal_class) %>%
+  mutate(
+    .by    = region,
+    tot    = sum(n),
+    prop   = (n / tot),
+    pct    = scales::label_percent(0.01)(prop),
+    region = factor(
+      region,
+      levels = c(
+        "Ten Thousand Islands", "Everglades",
+        "Lower Keys", "Middle Keys", "Upper Keys"
+      )
+    ),
+  ) %T>% 
+  print() %T>% 
+  {
+      text_annotate <<- filter(., !str_detect(sal_class, "Marine")) %>%
+      summarise(
+        .by = region, 
+        prop_sum = sum(prop),
+        pct = scales::label_percent(0.01)(prop_sum)
+        ) %T>%
+      print()
+  } %>%
+  ggplot(aes(x = region, y = prop, fill = sal_class)) +
+  geom_col() +
+  geom_text(
+    data = text_annotate,
+    aes(x = region, y = prop_sum + 0.025, label = pct),
+    inherit.aes = FALSE,
+    vjust = 0.5
+  ) +
+  labs(
+    x = NULL,
+    y = "Percent (%)",
+    fill = "Salinity Class"
+  ) +
+  scale_fill_manual(drop = FALSE, values = rev(c("#457db4", "#39a585", "#cfcfcf"))) +
+  scale_y_continuous(expand = expansion(), labels = scales::label_percent(1)) +
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  )
+  
+```
+
+
+```{r}
+sfer_summ_reg %>%
+  ggplot(aes(y = chl, x = region, color = sal_class)) +
+  geom_boxplot(aes(fill = after_scale(prismatic::clr_lighten(color)),
+                   group = interaction(region, sal_class)),
+    box.color = "black", position = position_dodge(1, preserve = "single")
+  ) +
+  geom_point(
+    aes(fill = after_scale(prismatic::clr_darken(color)),
+        group = interaction(region, sal_class)),
+    alpha = 0.5,
+    position = position_jitter(
+      width = 0.03,
+      height = 0
+    ), 
+    show.legend = FALSE,
+  ) +
+  scale_y_log10(
+    breaks = 10^(-2:1),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  scale_color_manual(drop = FALSE, values = rev(c("#457db4", "#39a585", "#cfcfcf"))) +
+  scale_x_discrete(drop = FALSE) +
+  scale_fill_discrete(drop = FALSE) +
+  annotation_logticks(side = "l") +
+  coord_cartesian(ylim = c(NA, max(c(df0$chl, 20)))) +
+  theme_bw()
+
+library(dplyr)
+library(ggplot2)
+
+region_lvls <- levels(factor(sfer_summ_reg$region))
+sal_lvls <- levels(factor(sfer_summ_reg$sal_class))
+
+df1 <- 
+  sfer_summ_reg %>%
+  mutate(
+    region     = factor(region, levels = region_lvls),
+    sal_class  = factor(sal_class, levels = sal_lvls),
+    region_num = as.numeric(region),
+    sal_num    = as.numeric(sal_class),
+    x          = region_num + (sal_num - 2) * 0.33,
+    # region_num = as.character(region),
+  )
+
+ggplot(df1, aes(y = chl)) +
+  geom_boxplot(
+    mapping = aes(x = region_num, group = interaction(region, sal_class), color = sal_class),
+    position = position_dodge(width = 1, preserve = "single"),
+    # aes(fill = after_scale(prismatic::clr_lighten(color))),
+    box.color = "black",
+    outlier.shape = NA
+  ) +
+  geom_point(
+    mapping = aes(x = x, color = sal_class, fill = after_scale(prismatic::clr_darken(color))),
+    alpha = 0.5,
+    position = position_jitter(width = 0.03, height = 0),
+    show.legend = FALSE
+  ) +
+  scale_x_continuous(breaks = seq_along(region_lvls), labels = region_lvls) +
+  scale_color_manual(drop = FALSE, values = rev(c("#457db4", "#39a585", "#cfcfcf"))) +
+  scale_y_log10(
+    breaks = 10^(-2:1),
     labels = scales::trans_format("log10", scales::math_format(10^.x))
   ) +
   annotation_logticks(side = "l") +
-  coord_cartesian(ylim = c(NA, 200)) +
+  coord_cartesian(ylim = c(NA, max(c(df0$chl, 20)))) +
   theme_bw()
 ```
+
+
 
 # ============================================================================ #
 # Functions:
