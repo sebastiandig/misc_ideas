@@ -449,7 +449,7 @@ cruis_id <-
 ```
 
 ```{r}
-dir_create(here("data", "raw", "ctd", unique(cruis_id$title_2_3)))
+dir_create(here("data", "raw", "raw_ctd_data", unique(cruis_id$title_2_3)))
 
 
 cruis_id %>% 
@@ -495,6 +495,36 @@ cruis_id %>%
 
 
 
+```
+
+```{r}
+all_dat <- 
+  here("data", "raw") %>% 
+  dir_ls(regexp = "ctd") %>% 
+  dir_ls(regexp = "csv", recurse = 1) %>%
+  tibble(x = .) %>% 
+  # slice(c(1:5, 110:118)) %>%
+  mutate(
+    data = map(
+      x, 
+      \(.x) read_csv(.x, n_max = 1, show_col_types = FALSE) %>% 
+        mutate(
+          across(everything(), \(.x) as.character(.x))
+          # station = as.character(station))
+      )
+    )
+  )
+
+
+unnest(all_dat, data)
+
+# save_tops <- rstudioapi::selectDirectory()
+save_tops <- "C:/Users/sebastian15/Box/sebastian15"
+
+all_dat
+
+unnest(all_dat, data) %>% 
+  write_csv(here(save_tops, "ctd_first.csv"))
 ```
 
 
