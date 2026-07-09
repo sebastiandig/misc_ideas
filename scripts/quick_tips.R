@@ -1592,3 +1592,39 @@ tibble::tibble(col1 = c(1:5)) |>
   )
   
 # ============================================================================ #
+
+
+# ============================================================================ #
+# ---- Modify Package Function Temporarily ---- #
+# ============================================================================ #
+# Jul 09, 2026
+# This is useful if there is a problem in a package that you need to fix 
+# temporarily. When R is reset, and the package is reloaded, the function will
+# go back to normal
+
+# Step 1: Load Package
+library(metR)
+metR::Angle
+metR::Angle(5, 6)
+
+# Step 2: Copy Function and Make Edits
+angle2 <- function (x, y) {
+  print("Hi")                    # <---------- added edit
+  atan2(y, x) * 180/pi
+}
+
+# Step 3: Assign New Function
+assignInNamespace("Angle", angle2, ns = "metR")
+metR::Angle
+
+# Step 4: Test and Use 
+metR::Angle(5, 6)
+
+pacman::p_unload("all")
+
+# alternate way to modify function once:
+# library(metR)
+# fixInNamespace("Angle", "metR")
+# Angle(5, 6)
+
+# ============================================================================ #
