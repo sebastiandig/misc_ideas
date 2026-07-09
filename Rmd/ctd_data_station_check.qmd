@@ -323,13 +323,14 @@ NOTE: some cruise IDs were modified because there is some slight difference in
 # this covers all possible cruises to download more than necessary
 all_cruise_info <-
   ed_search_adv(
-    query     = "Walton Smith",
-    maxTime   = "2025-01-01T01:00:00Z",
+    # query     = "Walton Smith",
+    query     = "SFER ",
+    maxTime   = "2026-06-01T01:00:00Z",
     page_size = 10000
   )
 
 all_cruise_ids <-
-  str_extract(all_cruise_info$info$title, "(WS|SAV|WB|H|HG)\\d{3,5}") %>%
+  str_extract(all_cruise_info$info$title, "(WS|SAV|WB|H|HG|SV)\\d{3,5}") %>%
   unique()
 
 
@@ -348,50 +349,136 @@ cli::cli_alert_info(
 ## Separate results info into tab delim results
 
 ```{r}
-cruis_id <- 
+cruis_id <-
   all_cruise_info$info %>%
-  separate_wider_delim(title, delim = ", ", names_sep = "_") %T>%
+  separate_wider_delim(title, delim = ", ", names_sep = "_") %>%
+  mutate(
+    # title_2 = str_replace(title_2, "(57)_(\\d)", "\\1.\\2"),
+    title_2 = str_replace(title_2, "_(57|22|15|21)_(\\d)", "_\\1.\\2"),
+    title_2 = str_replace(title_2, "(_\\d{1,2})_(5|75)$", "\\1.\\2"),
+    title_2 = str_replace(title_2, " cast ", "_"),
+  ) %>%
+  separate_wider_delim(title_2, delim = "_", names_sep = "_", too_few = "align_start", cols_remove = FALSE) %>% 
   print() %>%
   mutate(
-    .before = title_5,
-    title_5 = str_replace(title_5, " 82W", " 82.0W"),
-    lat_lon = parse_llstr(title_5),
-    station = str_to_upper(title_3),
-    station = str_remove(station, " "),
-    station = str_replace(station, "WS20278", "WS20279"),
-    station = str_replace(station, "WS21277", "WS21278"),
-    station = str_replace(station, "WS23011", "WS23010"), # weird
-    station = str_remove_all(station, "_AUG_2011_|2022_08_WEATHERBIRD_SMITH_CTD_|KELBLE_|HEX|SFP_"),
-    station = str_remove_all(station, title_2),
-    station = str_remove(station, "^_-|^_{1,2}"),
-    station = str_remove(station, "^\\."),
-    station = str_remove(station, "\\s?(^STA|^STN)\\.?_?"),
-    station = str_remove(station, "^0{1,2}"),
-    station = str_replace(station ,"(UK|EK|Z\\d{2})(_|-)(.*)", "\\1\\3"),
-    station = str_replace(station ,"_", "."),
-    station = str_replace(station, "(DT)0(\\d{1,2})", "\\1\\2"),
-    station = str_replace(station, "(^\\d{1,2})-(\\d{1,2})", "\\1.\\2"),
-    station = if_else(str_detect(station, "LK|^21$"), "21LK", station),
-    date    = as_date(title_4)
-  ) %>%
-  unnest(lat_lon) %>%
-  arrange(date) %>%
-  rename("cruise_id" = title_2) %T>% 
-  print() %>%
- select(
-   dataset_id, 
-   cruise_id,
-   date, 
-   lon, lat,
-   station,
-  ) %>% 
-  mutate(
-   cruise_id_og = cruise_id,
-   station_og  = station
-  ) %>%
-  relocate(cruise_id_og, .before = cruise_id) %>% 
-  relocate(station_og, .before = station) %T>% 
+    title_2_title_2 = str_remove(title_2_title_2, title_2_1),
+    title_2_title_2 = str_remove(title_2_title_2, title_2_2),
+    title_2_title_2 = str_remove(title_2_title_2, title_2_3),
+    title_2_title_2 = str_remove(title_2_title_2, "___"),
+  ) #%>%
+  # distinct(title_2_4, title_2_5, title_2_title_2) %>%
+  # arrange(title_2_title_2)
+  # filter(str_detect(title_2_title_2, "__"))
+  # filter(str_detect(dataset_id, "_2$"))
+  filter_out(is.na(title_2_5))
+ #  %T>%
+ #  print() %>%
+ #  mutate(
+ #    .before = title_4,
+ #    title_5 = str_replace(title_4, " 82W", " 82.0W"),
+ #    lat_lon = parse_llstr(title_5),
+ #    station = str_to_upper(title_2),
+ #    # station = str_remove(station, " "),
+ #    # station = str_replace(station, "WS20278", "WS20279"),
+ #    # station = str_replace(station, "WS21277", "WS21278"),
+ #    # station = str_replace(station, "WS23011", "WS23010"), # weird
+ #    # station = str_remove_all(station, "_AUG_2011_|2022_08_WEATHERBIRD_SMITH_CTD_|KELBLE_|HEX|SFP_"),
+ #    station = str_remove_all(station, title_2),
+ #    station = str_remove(station, "^_-|^_{1,2}"),
+ #    station = str_remove(station, "^\\."),
+ #    station = str_remove(station, "\\s?(^STA|^STN)\\.?_?"),
+ #    station = str_remove(station, "^0{1,2}"),
+ #    station = str_replace(station ,"(UK|EK|Z\\d{2})(_|-)(.*)", "\\1\\3"),
+ #    station = str_replace(station ,"_", "."),
+ #    station = str_replace(station, "(DT)0(\\d{1,2})", "\\1\\2"),
+ #    station = str_replace(station, "(^\\d{1,2})-(\\d{1,2})", "\\1.\\2"),
+ #    station = if_else(str_detect(station, "LK|^21$"), "21LK", station),
+ #    date    = as_date(title_4)
+ #  ) %>%
+ #  unnest(lat_lon) %>%
+ #  arrange(date) %>%
+ #  rename("cruise_id" = title_2) %T>% 
+ #  print() %>%
+ # select(
+ #   dataset_id, 
+ #   cruise_id,
+ #   date, 
+ #   lon, lat,
+ #   station,
+ #  ) %>% 
+ #  mutate(
+ #   cruise_id_og = cruise_id,
+ #   station_og  = station
+ #  ) %>%
+ #  relocate(cruise_id_og, .before = cruise_id) %>% 
+ #  relocate(station_og, .before = station) %T>% 
+ #  print()
+```
+
+```{r}
+shelf(oce)
+ctd_cast <- 
+  cruis_id %>%
+  # filter(str_detect(title_2, "SV18067_54")) %>%
+  # filter(str_detect(title_2, "SV18067_17")) %>%
+  # filter(str_detect(title_2, "SV18067_45")) %>%
+  filter(str_detect(title_2, "WS1116_19")) %>%
+  pull(dataset_id) %T>% 
   print()
+  
+# get data
+out <- info(ctd_cast)
+
+ctd_data <- tabledap(out, url = eurl(), store = disk())
+
+# # save data
+# # write.csv(ctd_data, file_path)
+# ctd_obj <-  with(
+#       ctd_data,
+#       as.ctd(
+#         salinity    = sea_water_salinity,
+#         temperature = sea_water_temperature,
+#         pressure    = sea_water_pressure,
+#         station     = station[1],
+#         cruise      = cruiseID,
+#         longitude   = longitude,
+#         latitude    = latitude,
+#         time        = time
+#       )
+#     )
+# plot(ctd_obj)
+
+# visdat::vis_miss(ctd_data)
+ctd_obj2 <- as.data.frame(ctd_data) %>%
+  janitor::remove_empty("cols") %>%
+  select(!matches("qc_(agg|gap|syntax|location|gross_range|flat_line|spike|rate_of|climatology|decreasing_radiance)")) %$% 
+   as.ctd(
+        salinity    = sea_water_salinity,
+        temperature = sea_water_temperature,
+        pressure    = sea_water_pressure,
+        station     = paste("Staiton", station[1]),
+        cruise      = cruiseID,
+        longitude   = longitude,
+        latitude    = latitude,
+        time        = time
+      )
+plot(ctd_obj2)
+
+```
+
+
+```{r}
+trimmed_cast <- ctdTrim(ctd_obj2)
+decimated_cast <- ctdDecimate(trimmed_cast, p = 0.1, na.rm = TRUE)
+
+# plotting can cause the xlim failure
+plot(decimated_cast)
+```
+
+
+```{r}
+decimated_cast@data
+ctd_obj2@data
 ```
 
 ```{r}
