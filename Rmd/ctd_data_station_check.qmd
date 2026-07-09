@@ -277,6 +277,39 @@ dat3 %>%
 
 ```{r libs}
 shelf(rerddap, cli, parzer)
+
+rerddap:::set_units
+```
+
+
+```{r libs}
+# fixes an issue with "time_elapse" column where converts to numeric
+# instead of datatime
+set_units2 <- function (temp_t, dds) {
+  for (i in seq(3, (nrow(dds) - 2))) {
+    var_type <- dds[i, 1]
+    var_name <- dds[i, 2]
+    var_name <- substr(var_name, 1, nchar(var_name) - 1)
+    if (var_name == "time" | var_name == "time_elapsed") {
+      temp_time <- suppressWarnings(lubridate::as_datetime(temp_t$time))
+      if (!any(is.na(temp_time))) {
+        temp_t$time <- temp_time
+      }
+    }
+    else {
+      if (grepl("Float", var_type)) {
+        temp_t[[var_name]] <- as.numeric(temp_t[[var_name]])
+      }
+      else if (grepl("Int", var_type)) {
+        temp_t[[var_name]] <- as.integer(temp_t[[var_name]])
+      }
+    }
+  }
+  return(temp_t)
+}
+
+assignInNamespace("set_units", set_units2, ns = "rerddap")
+rerddap:::set_units
 ```
 
 ## Set database Website
@@ -370,7 +403,7 @@ cruis_id <-
   # arrange(title_2_title_2)
   # filter(str_detect(title_2_title_2, "__"))
   # filter(str_detect(dataset_id, "_2$"))
-  filter_out(is.na(title_2_5))
+  # filter_out(is.na(title_2_5))
  #  %T>%
  #  print() %>%
  #  mutate(
@@ -416,13 +449,63 @@ cruis_id <-
 ```
 
 ```{r}
+dir_create(here("data", "raw", "ctd", unique(cruis_id$title_2_3)))
+
+
+cruis_id %>% 
+  mutate(
+    .after = 3,
+    .by = title_2_3,
+    cruise_num = cur_group_id(),
+    station_num = row_number(),
+    station_max = max(station_num)
+  ) %>% 
+  mutate(
+    .after = cruise_num,
+    cruise_max = max(cruise_num)
+  ) %$%
+  pwalk(
+    list(
+    .x = title_2_3, 
+    .y = dataset_id, 
+    cr_n = cruise_num,
+    cr_max   = cruise_max,
+    stn_n    = station_num,
+    stn_max  = station_max
+    ),
+    \(.x, .y, cr_n, cr_max, stn_n, stn_max) {
+      message(paste("\n--\n"))
+      message(glue("Cruise ID: {.x} ({cr_n} of {cr_max})"))
+      message(glue("Dataset ID: {.y} ({stn_n} of {stn_max})"))
+
+      file_name <- here("data", "raw", "ctd", .x, paste0(.y, ".csv"))
+      if (file_exists(file_name)) {
+        message("File exist. Skipping!")
+        return()
+      }
+
+      message("Dowloading file!")
+      # get data
+
+      out <- info(.y)
+      ctd_raw <- suppressWarnings(tabledap(out, url = eurl(), store = disk()))
+      write_csv(as.data.frame(ctd_raw), file_name)
+    }
+  )
+
+
+
+```
+
+
+```{r}
 shelf(oce)
 ctd_cast <- 
   cruis_id %>%
   # filter(str_detect(title_2, "SV18067_54")) %>%
   # filter(str_detect(title_2, "SV18067_17")) %>%
   # filter(str_detect(title_2, "SV18067_45")) %>%
-  filter(str_detect(title_2, "WS1116_19")) %>%
+  filter(str_detect(dataset_id, "WS1116_19")) %>%
   pull(dataset_id) %T>% 
   print()
   
