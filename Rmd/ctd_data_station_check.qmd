@@ -524,7 +524,7 @@ save_tops <- "C:/Users/sebastian15/Box/sebastian15"
 all_dat
 
 unnest(all_dat, data) %>% 
-  write_csv(here(save_tops, "ctd_first.csv"))
+  write_csv(here(save_tops, "ctd_first.csv"), na = "")
 ```
 
 
