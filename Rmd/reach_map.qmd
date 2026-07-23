@@ -114,10 +114,10 @@ loc_other <-
     "lat" = lat_in_degree, "long" = lon_in_degree, 
     ) %>%
   mutate(
-    waypoint = str_remove(waypoint, "_(D|R|S)")
+    waypoint = str_remove(waypoint, "_(D|R|S|cal|drop)")
     ) %>%
   filter_out(
-    waypoint %in% str_remove(loc_dat$waypoint, "_(D|R|S)") |
+    waypoint %in% str_remove(loc_dat$waypoint, "_(D|R|S|cal|drop)") |
     waypoint %in% str_remove(loc_dat$waypoint, "S\\d{2}/")
   ) %>%
   distinct() %T>%
@@ -437,8 +437,8 @@ loc_map_pts <-
   coord_sf(expand = FALSE, xlim = bounds[1:2], ylim = bounds[3:4]) +
   guides(
     color = guide_legend(
-      keywidth     = 0.05,
-      keyheight    = 0.05,
+      keywidth     = 0.08,
+      keyheight    = 0.08,
       default.unit = "inch"
     ),
     shape = guide_legend(position = "bottom", nrow = 1),
@@ -448,7 +448,7 @@ loc_map_pts <-
   theme(
     legend.position        = "inside",
     legend.position.inside = c(0.91, 0.8),
-    legend.text            = element_text(size = 7)
+    legend.text            = element_text(size = 10)
   )
 ```
 
