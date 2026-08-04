@@ -44,7 +44,10 @@ conflicts_prefer(
 dir_path <- 
   here() %>%
   rstudioapi::selectDirectory()
+```
 
+
+```{r load-data}
 sheet_names <- 
   dir_path %>%
   dir_ls(regexp = "(?i)schedule")  %>%
@@ -118,7 +121,8 @@ loc_other <-
     ) %>%
   filter_out(
     waypoint %in% str_remove(loc_dat$waypoint, "_(D|R|S|cal|drop)") |
-    waypoint %in% str_remove(loc_dat$waypoint, "S\\d{2}/")
+    waypoint %in% str_remove(loc_dat$waypoint, "S\\d{2}/") |
+    str_detect(waypoint, paste(filter(loc_dat, str_detect(waypoint, "C"))$waypoint, collapse = "|"))
   ) %>%
   distinct() %T>%
   print() 
@@ -344,7 +348,8 @@ scale_key <-
                    "Bongo/Tucker",     22,    "yellow", "black",
                          "Tucker",     22,     "green", "black",
                "Surface Buoy/CTD",     25,      "blue", "black",
-                         "Missed",      4,       "red",   "red"
+           "Surface Buoy Service",     25,      "blue", "black",
+                         "Missed",      4,       "red",   "red",
   )
 
 loc_map_pts <-
