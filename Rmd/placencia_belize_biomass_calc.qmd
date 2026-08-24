@@ -77,6 +77,10 @@ region_col <- c(
   "Upper" = "#c2b3ff", 
   "Lower" = "#ff9ebd", 
   "Main Creeks" = "#f89943")
+region_col <- c(
+  "Upper" = "#0072B2", 
+  "Lower" = "#D55E00", 
+  "Main Creeks" = "#CC79A7")
 # region_col <-
 #   prismatic::clr_alpha(region_col, 0.75) %>%
 #   as.vector() %>%
@@ -396,6 +400,8 @@ if (FALSE) {
   write.csv(here("data", "raw", "placencia", "placencia_biomass_density.csv"))
 }
 ```
+
+
 ```{r}
 biomass_select <- 
   biomass_dat %>%
@@ -808,50 +814,68 @@ if (FALSE) {
 # 6.0 IDW Interpolation
 
 ```{r idw-interp}
-idw_sf_utm <-
-  gstat::gstat(
-    # formula   = total_biomass_kg ~ 1,
-    formula   = total_biomass_per_100_sq_m ~ 1,
-    data      = as.data.frame(biom_df),
-    locations = ~ x + y,
-    set       = list(idp = idw_options$idp_pow),
-    maxdist   = idw_options$maxdist_m,
-    nmin      = idw_options$nmin_nb,
-    nmax      = idw_options$nmax_nb
-  )
+idw_path_tiff <- 
+ here("data", "raw", "placencia") %>%
+  dir_ls(regexp = "placencia_mangrove_map_interp.*tiff") %>%
+  sort(decreasing = TRUE) %>%
+  .[1]
 
-# create a blank grid based on spatial extent of mangrove cropped area
-# edit `res` to desired resolution in meters
-# rast_test <- rast(ext(mang_crop), res = 1000, crs = paste0("EPSG:", belize_epsg))
-rast_test <- rast(ext(mang_crop), res = 10, crs = paste0("EPSG:", belize_epsg))
+if (!is.na(idw_path_tiff) && TRUE) {
+  message("Skipping IDW and loading previous saved")
+  # load tiff
+  idw_rast_smooth <- 
+    idw_path_tiff %>%
+    # rast(tiff_save) %T>% 
+    rast() 
+} else {
+  
 
-idw_rast_smooth <- 
-  # run model on grid
-  terra::interpolate(rast_test, idw_sf_utm) %>%
-  
-  # gaussian smooth
-  terra::focal(
-    w         = gaussian_kernel(size = 10, sigma = 5),
-    fun       = mean,
-    na.policy = "omit",
-    na.rm     = TRUE,
-    fillvalue = NA
-  ) %>%
-  
-  # mask to valid mangrove points
-  terra::mask(
-    terra::vect(
-      as.data.frame(mang_crop, xy = TRUE), 
-      crs = paste0("EPSG:", belize_epsg)
-      )
+  idw_sf_utm <-
+    gstat::gstat(
+      # formula   = total_biomass_kg ~ 1,
+      formula   = total_biomass_per_100_sq_m ~ 1,
+      data      = as.data.frame(biom_df),
+      locations = ~ x + y,
+      set       = list(idp = idw_options$idp_pow),
+      maxdist   = idw_options$maxdist_m,
+      nmin      = idw_options$nmin_nb,
+      nmax      = idw_options$nmax_nb
     )
+  
+  # create a blank grid based on spatial extent of mangrove cropped area
+  # edit `res` to desired resolution in meters
+  # rast_test <- rast(ext(mang_crop), res = 1000, crs = paste0("EPSG:", belize_epsg))
+  rast_test <- rast(ext(mang_crop), res = 10, crs = paste0("EPSG:", belize_epsg))
+  
+  idw_rast_smooth <- 
+    # run model on grid
+    terra::interpolate(rast_test, idw_sf_utm) %>%
+    
+    # gaussian smooth
+    terra::focal(
+      w         = gaussian_kernel(size = 10, sigma = 5),
+      fun       = mean,
+      na.policy = "omit",
+      na.rm     = TRUE,
+      fillvalue = NA
+    ) %>%
+    
+    # mask to valid mangrove points
+    terra::mask(
+      terra::vect(
+        as.data.frame(mang_crop, xy = TRUE), 
+        crs = paste0("EPSG:", belize_epsg)
+        )
+      )
+}
 ```
 
 
 ## 6.1 Plot IDW Interpolation onto Map
 
 ```{r plot-idw}
-ggplot() +
+idw_plot <- 
+  ggplot() +
   geom_sf(data = belize_sf, fill = "grey", alpha = 0.5) + # gray basemap
   # geom_spatraster_rgb(data = belize_tile) + # dark base map
   
@@ -859,7 +883,7 @@ ggplot() +
   
   # add interpolated map
   tidyterra::geom_spatraster(
-    data = idw_rast_smooth,
+    data = mutate(idw_rast_smooth, var1.pred = var1.pred / 10),
     aes(fill = var1.pred),
     na.rm   = TRUE,
     maxcell = Inf
@@ -870,7 +894,7 @@ ggplot() +
     data = biom_df,
     # aes(fill = total_biomass_kg, geometry = geometry),
     # aes(fill = total_biomass_per_100_sq_m, geometry = geometry),
-    aes(fill = total_biomass_per_100_sq_m, geometry = geometry, color = upper_lower),
+    aes(fill = total_biomass_per_100_sq_m / 10, geometry = geometry, color = upper_lower),
     alpha  = 0.75,
     size   = rel(1.5),
     stroke = rel(0.75),
@@ -882,14 +906,12 @@ ggplot() +
   ggrepel::geom_text_repel(
     data = biom_df,
     aes(x = x, y = y, label = station_id, color = upper_lower),
+    size = rel(7),
     min.segment.length = 0,
     max.overlaps       = 100,
-    # color              = "white",
-    bg.color           = "black",
+    bg.color           = "white",
     segment.color      = "black",
-    # bg.color           = "white",
-    bg.r = 0.05,
-    # segment.color      = "white",
+    bg.r = 0.1,
     alpha              = 0.75,
     show.legend = FALSE
   ) +
@@ -903,12 +925,13 @@ ggplot() +
   
   scale_fill_stepsn(
     # name     = "Total Biomass (kg)",
-    name     = expression("Total Biomass (kg"~100~m^-2*")"),
+    # name     = expression("Total Biomass (kg"~100~m^-2*")"),
+    name     = expression("Total Biomass (Mg"~ha^-1*")"),
     colours  = viridisLite::viridis(length((breaks_8))),
     na.value = NA,
     oob      = scales::squish,
-    breaks   = ceiling(breaks_8),
-    limits   = c(0, 11000),
+    breaks   = ceiling(breaks_8 / 10),
+    limits   = c(0, 11000) / 10,
     trans    = "sqrt",
     # breaks   = c(0, 25, 50, 75, 100, 200, 400),
     # breaks   = c(0, 500, 1000, 2000, 3000, 6000, 8000, 11000),
@@ -951,7 +974,7 @@ ggplot() +
     axis.ticks             = element_blank()
   )
 
-
+idw_plot
 ```
 
 ## 6.2 Save Interpolation Map
@@ -959,22 +982,39 @@ ggplot() +
 # set location and name to save plot
 plt_save3 <- 
   here("data", "raw", "placencia",
-  paste0("placencia_mangrove_map_interp_l", Sys.Date(), ".jpeg")
+  paste0("placencia_mangrove_map_interp2_", Sys.Date(), ".jpeg")
   # paste0("placencia_mangrove_map_interp_black2_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
 if (FALSE) {
-  ggsave(
-    filename = plt_save3,
-    plot = last_plot(),
-    device   = "jpeg",
-    dpi      = 600,
-    width    = 8.5,
-    height   = 9,
-    units    = "in",
-    bg       = "white"
-  )
+  {
+    # create image file
+    jpeg(
+      plt_save3,
+      # width  = 2000,
+      # height = 1500,
+      res    = 300,
+      type   = "cairo",
+      # dpi      = 600,
+      width    = 8.5,
+      height   = 9,
+      units    = "in",
+      bg       = "white"
+      ) 
+    print(idw_plot) 
+    dev.off()
+  }
+  # ggsave(
+  #   filename = plt_save3,
+  #   plot = last_plot(),
+  #   device   = "jpeg",
+  #   dpi      = 600,
+  #   width    = 8.5,
+  #   height   = 9,
+  #   units    = "in",
+  #   bg       = "white"
+  # )
 
   ggsave(
     filename = str_replace(plt_save3, "jpeg", "svg"),
