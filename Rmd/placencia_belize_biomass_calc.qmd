@@ -186,10 +186,11 @@ ggplot() +
 ```{r path-data}
 # mangrove tiff file
 mang_tiff <- 
-  here("data", "raw", "placencia") %>%
+  here("data", "raw", "placencia", "tiff") %>%
   dir_ls(regexp = "tif") %>%
   str_subset("~", negate = TRUE) %>% 
-  str_subset("2025") %T>% 
+  str_subset("2025_Aug_26") %T>%
+  # str_subset("2025") %T>% 
   print()
 
 # biomass excel file
@@ -199,9 +200,14 @@ biomass_path <-
   str_subset("update2") %>% 
   str_subset("~", negate = TRUE) %T>% 
   print()
+
+# small island mask
+polygon_mask_file <- 
+  here("data", "raw", "placencia", "tiff") %>%
+  dir_ls(regexp = "shp") %>%
+  str_subset("island_mask") %T>% 
+  print()
 ```
-
-
 
 # 3.0 Load Placencia Mangrove tiff
 
@@ -241,8 +247,51 @@ ggplot() +
 mang_crop <- 
   mang_load %>%
   crop(bbox)
-```
 
+plot(mang_crop)
+
+# mask small island
+if (length(polygon_mask_file) == 0) {
+  # create mask if not available
+   poly_mask <-
+    mapview::mapView(mang_crop, layer = "co") %>%
+    mapedit::editMap()
+
+  polygon_mask <- poly_mask$finished
+
+  names(polygon_mask) <- c("id1" ,"id", "type", "geometry")
+
+  # save island mask
+  st_write(
+    polygon_mask,
+    here("data", "raw", "placencia", "tiff", "island_mask.shp")
+  )
+} else {
+  polygon_mask <- st_read(polygon_mask_file)
+}
+
+# mask small island
+poly_mask_vect <- 
+  st_transform(polygon_mask, crs(mang_crop)) %>%
+  vect()
+
+mang_crop <- mask(mang_crop, poly_mask_vect, inverse = TRUE) 
+plot(mang_crop)
+
+
+# calc area of each pixel
+mg_cell_size <- 
+  cellSize(mang_crop, unit = "km", transform = TRUE) 
+mg_area <- zonal(mg_cell_size, mang_crop, "sum", na.rm = TRUE)
+
+mg_area %>%
+  mutate(
+    tot_area = sum(area),
+    prop = area / tot_area
+    )
+```
+Co-produced composite: 14.00204 km^2
+Image Based: 27.462 km^2
 
 
 ## 3.1 Plot Mangrove on Belize Map
@@ -287,17 +336,23 @@ placencia_map <-
 
 placencia_map
 ```
+
+
+
 ## 3.2 Save Mangrove Belize Map
 
 ```{r save-base-map}
 # set location and name to save plot
 plt_save <- 
-  here("data", "raw", "placencia",
+  here("data", "raw", "placencia", "fig", Sys.Date(),
   paste0("placencia_mangrove_map_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
 if (FALSE) {
+  
+  dir_create(dirname(plt_save))
+  
   ggsave(
     filename = plt_save,
     plot = placencia_map,
@@ -474,10 +529,12 @@ WRS2::mcp2atm(dbh_cm ~ morphotype*upper_lower, data = biomass_select)
 
 # set location and name to save plot
 box_save <- 
-  here("data", "raw", "placencia",
+  here("data", "raw", "placencia",  "fig", Sys.Date(),
   paste0("placencia_box_", c("upper_lower_", "east_west_", "loc_"), Sys.Date(), ".jpeg")
   ) %T>% 
   print()
+
+dir_create(dirname(box_save)[1])
 shell.exec(dirname(box_save)[1])
 
 biomass_select %>%
@@ -768,8 +825,9 @@ placencia_map +
     aes(x = x, y = y, label = station_id, color = upper_lower),
     min.segment.length = 0,
     max.overlaps       = 100,
+    size = rel(7),
     # color              = "white",
-    bg.color           = "black",
+    bg.color           = "white",
     segment.color      = "black", 
     alpha              = 0.75,
     show.legend = FALSE
@@ -788,13 +846,16 @@ placencia_map +
 ```{r save-points-map}
 # set location and name to save plot
 plt_save2 <- 
-  here("data", "raw", "placencia",
+  here("data", "raw", "placencia", "fig", Sys.Date(),
   paste0("placencia_mangrove_map_w_points_update2_", Sys.Date(), ".jpeg")
   # paste0("placencia_mangrove_map_w_points_all_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
 if (FALSE) {
+  
+  dir_create(dirname(plt_save2))
+  
   ggsave(
     filename = plt_save2,
     plot = last_plot(),
@@ -814,13 +875,17 @@ if (FALSE) {
 # 6.0 IDW Interpolation
 
 ```{r idw-interp}
+# select whether to overwrite previous interpolated tiff
+overwrite <- TRUE
+overwrite <- FALSE
+
 idw_path_tiff <- 
- here("data", "raw", "placencia") %>%
+ here("data", "raw", "placencia", "tiff") %>%
   dir_ls(regexp = "placencia_mangrove_map_interp.*tiff") %>%
   sort(decreasing = TRUE) %>%
   .[1]
 
-if (!is.na(idw_path_tiff) && TRUE) {
+if (!is.na(idw_path_tiff) && !overwrite) {
   message("Skipping IDW and loading previous saved")
   # load tiff
   idw_rast_smooth <- 
@@ -981,13 +1046,16 @@ idw_plot
 ```{r save-interp}
 # set location and name to save plot
 plt_save3 <- 
-  here("data", "raw", "placencia",
+  here("data", "raw", "placencia",  "fig", Sys.Date(),
   paste0("placencia_mangrove_map_interp2_", Sys.Date(), ".jpeg")
   # paste0("placencia_mangrove_map_interp_black2_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
 if (FALSE) {
+  
+  dir_create(dirname(plt_save3))
+  
   {
     # create image file
     jpeg(
@@ -1057,7 +1125,7 @@ if (FALSE) {
 #   ) %>%
 #   openproj(projection = paste("EPSG:", belize_epsg))
 
-# plot openstree
+# plot openstreet
 # 
 ggplot() + 
   geom_spatraster_rgb(data = belize_tile) +
@@ -1067,7 +1135,7 @@ ggplot() +
   
   # add interpolated map
   tidyterra::geom_spatraster(
-    data = idw_rast_smooth,
+    data = mutate(idw_rast_smooth, var1.pred = var1.pred / 10),
     aes(fill = var1.pred),
     na.rm   = TRUE,
     maxcell = Inf
@@ -1078,7 +1146,8 @@ ggplot() +
     data = biom_df,
     # aes(fill = total_biomass_kg, geometry = geometry),
     # aes(fill = total_biomass_per_100_sq_m, geometry = geometry),
-    aes(fill = total_biomass_per_100_sq_m, geometry = geometry, color = upper_lower),
+    # aes(fill = total_biomass_per_100_sq_m, geometry = geometry, color = upper_lower),
+    aes(fill = total_biomass_per_100_sq_m / 10, geometry = geometry, color = upper_lower),
     alpha  = 0.75,
     size   = rel(1.5),
     stroke = rel(0.75),
@@ -1092,12 +1161,10 @@ ggplot() +
     aes(x = x, y = y, label = station_id, color = upper_lower),
     min.segment.length = 0,
     max.overlaps       = 100,
-    # color              = "white",
-    bg.color           = "black",
+    size               = rel(7),
+    bg.color           = "white",
     segment.color      = "black",
-    # bg.color           = "white",
-    bg.r = 0.05,
-    # segment.color      = "white",
+    bg.r               = 0.1,
     alpha              = 0.75,
     show.legend = FALSE
   ) +
@@ -1111,12 +1178,13 @@ ggplot() +
   
   scale_fill_stepsn(
     # name     = "Total Biomass (kg)",
-    name     = expression("Total Biomass (kg"~100~m^-2*")"),
+    # name     = expression("Total Biomass (kg"~100~m^-2*")"),
+    name     = expression("Total Biomass (Mg"~ha^-1*")"),
     colours  = viridisLite::viridis(length((breaks_8))),
     na.value = NA,
     oob      = scales::squish,
-    breaks   = ceiling(breaks_8),
-    limits   = c(0, 11000),
+    breaks   = ceiling(breaks_8 / 10),
+    limits   = c(0, 11000) / 10,
     trans    = "sqrt",
     # breaks   = c(0, 500, 1000, 2000, 3000, 6000, 8000, 11000),
     # breaks   = c(0, 25, 50, 75, 100, 200, 400),
@@ -1161,12 +1229,15 @@ ggplot() +
 ```{r save-interp}
 # set location and name to save plot
 plt_save4 <- 
-  here("data", "raw", "placencia",
+  here("data", "raw", "placencia", "fig", Sys.Date(),
   paste0("placencia_mangrove_map_interp_imagery_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
 if (FALSE) {
+  
+  dir_create(dirname(plt_save4))
+  
   ggsave(
     filename = plt_save4,
     plot = last_plot(),
@@ -1186,8 +1257,9 @@ if (FALSE) {
 
 ```{r save-tiff}
 idw_rast_smooth
+
 tiff_save <- 
-  here("data", "raw", "placencia",
+  here("data", "raw", "placencia", "tiff",
   paste0("placencia_mangrove_map_interp_", Sys.Date(), ".tiff")
   ) %T>% 
   print()
@@ -1195,12 +1267,14 @@ terra::writeRaster(idw_rast_smooth, tiff_save)
 
 # load tiff
 mang_bio <- 
-  here("data", "raw", "placencia") %>%
+  here("data", "raw", "placencia", "tiff") %>%
   dir_ls(regexp = "placencia_mangrove_map_interp.*tiff") %>%
   sort(decreasing = TRUE) %>%
-  .[1] %>%
+  .[1] %T>%
+  print() %>%
   # rast(tiff_save) %T>% 
   rast() 
+
 mang_bio %T>% 
   print() %>%
   plot()
@@ -1284,13 +1358,16 @@ ggplot() +
 
 ```{r}
 plt_save5 <- 
-  here("data", "raw", "placencia",
+  here("data", "raw", "placencia", "fig", Sys.Date(),
   paste0("placencia_mangrove_map_section", Sys.Date(), ".jpeg")
   # paste0("placencia_mangrove_map_interp_black2_", Sys.Date(), ".jpeg")
   ) %T>% 
   print()
 
 if (FALSE) {
+  
+  dir_create(dirname(plot_save5))
+  
   ggsave(
     filename = plt_save5,
     plot = last_plot(),
@@ -1320,7 +1397,9 @@ if (FALSE) {
 
 ```{r}
 plot(st_geometry(sector_shp), main = "Total Area")
+
 upper_region <- sector_shp[sector_shp$region2 == "Upper", ]
+
 plot(st_geometry(upper_region), main = "Upper")
 
 upper_bio <- crop(mang_bio, vect(upper_region))
@@ -1375,6 +1454,7 @@ upper_region %>%
     ) %>%
   summarise(sum = sum(area_km)) %>%
   as.data.frame()
+
 lower_region %>%
   mutate(
     area    = st_area(geometry),
@@ -1383,6 +1463,7 @@ lower_region %>%
     ) %>%
   summarise(sum = sum(area_km)) %>%
   as.data.frame()
+
 main_region %>%
   mutate(
     area    = st_area(geometry),
