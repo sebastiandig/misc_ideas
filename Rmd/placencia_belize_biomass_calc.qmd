@@ -1474,3 +1474,177 @@ main_region %>%
   as.data.frame()
 ```
 
+
+```{r}
+sector_shp <- 
+  here("data", "raw", "placencia") %>%
+  dir_ls(regexp = "merged") %>% 
+  dir_ls(regexp = "newpoly") %>%
+  dir_ls(regexp = "shp") %>%
+  map(., \(.x) sf::st_read(.x))
+      
+# mang_vect <- 
+#   here("data", "raw", "placencia") %>%
+#   dir_ls(regexp = "tiff") %>%
+#   dir_ls(regexp = "Co-produced_composite2025") %>%
+#   rast()
+mang_vect <- mang_crop 
+
+creeks <- terra::mask(
+  mang_vect,
+  vect(sector_shp[[1]])
+  )
+
+creek_cell_Size <- cellSize(creeks, unit = "km", transform = TRUE) 
+creek_area      <- zonal(creek_cell_Size, creeks, "sum", na.rm = TRUE)
+
+creek_area %>%
+  mutate(
+    tot_area = sum(area),
+    prop = area / tot_area
+    )
+
+lower <- terra::mask(
+  mang_vect,
+  vect(sector_shp[[2]])
+  )
+
+lower_cell_Size <- cellSize(lower, unit = "km", transform = TRUE) 
+lower_area      <- zonal(lower_cell_Size, lower, "sum", na.rm = TRUE)
+
+lower_area %>%
+  mutate(
+    tot_area = sum(area),
+    prop = area / tot_area
+    )
+
+upper <- terra::mask(
+  mang_vect,
+  vect(sector_shp[[3]])
+  )
+
+upper_cell_Size <- cellSize(upper, unit = "km", transform = TRUE) 
+upper_area      <- zonal(upper_cell_Size, upper, "sum", na.rm = TRUE)
+
+upper_area %>%
+  mutate(
+    tot_area = sum(area),
+    prop = area / tot_area
+    )
+
+bind_rows(
+  creek_area %>%
+    mutate(
+      id = "creeks",
+      tot_area = sum(area),
+      prop = area / tot_area
+    ),
+  lower_area %>%
+    mutate(
+      id = "lower",
+      tot_area = sum(area),
+      prop = area / tot_area
+    ),
+  upper_area %>%
+    mutate(
+      id = "upper",
+      tot_area = sum(area),
+      prop = area / tot_area
+    )
+) %T>%
+  print() %>%
+  summarise(sum(area))
+```
+
+
+```{r}
+
+
+mang_vect
+
+mang_cell_Size <- cellSize(mang_vect, unit = "km", transform = TRUE) 
+mang_area <- zonal(mang_cell_Size, mang_crop, "sum", na.rm = TRUE)
+
+mang_area %>%
+  mutate(
+    tot_area = sum(area),
+    prop = area / tot_area
+    )
+{
+plot(mang_vect)
+plot(creeks, add = TRUE, col = "blue")
+plot(lower, add = TRUE, col = "green")
+plot(upper, add = TRUE, col = "red")
+  }
+
+upper2  <- ifel(!is.na(upper),  1, NA)
+lower2  <- ifel(!is.na(lower),  2, NA)
+creeks2 <- ifel(!is.na(creeks), 3, NA)
+
+coprod_comb <- terra::merge(
+  upper2,
+  lower2,
+  creeks2
+) 
+
+if (FALSE) {
+  terra::writeRaster(
+    overwrite = TRUE,
+    coprod_comb,
+    here(
+      "data", "raw", "placencia", "tiff",
+      paste0("co_produced_combine", format(Sys.Date(), "_%Y_%m_%d"), ".tiff")
+    )
+  )
+}
+
+
+plot(coprod_comb)
+
+coprod_cell_Size <- cellSize(coprod_comb, unit = "km", transform = TRUE) 
+coprod_area <- zonal(coprod_cell_Size, coprod_comb, "sum", na.rm = TRUE)
+
+coprod_area %>%
+  mutate(
+    tot_area = sum(area),
+    prop = area / tot_area
+    )
+{
+plot(vect(sector_shp[[1]]), col = "blue")
+plot(vect(sector_shp[[2]]), add = TRUE, col = "red")
+plot(vect(sector_shp[[3]]), add = TRUE, col = "green")
+list(
+  ifel(!is.na(creeks), 1, 0),
+  ifel(!is.na(lower),  1, 0),
+  ifel(!is.na(upper),  1, 0)
+  ) %>%
+  Reduce(`+`, .) %>%
+  ifel(. == 0, NA, .) %>%
+  plot(add = TRUE, col = c("orange", "yellow"))
+  }
+
+list(
+  ifel(!is.na(creeks), 1, 0),
+  ifel(!is.na(lower),  1, 0),
+  ifel(!is.na(upper),  1, 0)
+  ) %>%
+  Reduce(`+`, .) %>%
+ ifel(. < 2, NA, .) %>%
+  project("EPSG:4326") %>%
+  as.data.frame(
+  # r,
+  xy = TRUE,
+  na.rm = FALSE
+  ) %>%
+  filter(!is.na(co)) %>%
+  print() %$% 
+  plotly::plot_ly(x = x, y = y)
+
+here(
+  "data", "raw", "placencia", "tiff",
+  paste0("co_produced_combine", format(Sys.Date(), "_%Y_%m_%d"), ".tiff")
+  ) %>%
+  rast() %>%
+  plot()
+```
+
