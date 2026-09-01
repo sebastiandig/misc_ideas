@@ -8,7 +8,8 @@ editor: source
 
 # 1.0 ---- Summary of Document ----
 
-
+This download, loads, crops and plots an unstructured grid data example from 
+`psyplot` package in python, converted for R. 
 
 # 2.0 ---- Setup ----
 
@@ -33,18 +34,15 @@ conflicts_prefer(
   dplyr::filter(), 
   dplyr::select()
   )
-  
-
 ```
 
 # 4.0 Load Dataset
 
 ```{r load-data}
-# ---- CONFIG ----
-# Path to your UGRID NetCDF file
+# path to ugrid netcdf file
 nc_file <- here::here("data", "raw","ugrid_demo1.nc")
 
-# ---- download unstructured grid file example ---- #
+# download unstructured grid file example
 if (!fs::file_exists(nc_file)) {
   downloader::download(
     url = "https://github.com/psyplot/examples/blob/main/maps/ugrid_demo.nc",
@@ -52,7 +50,7 @@ if (!fs::file_exists(nc_file)) {
   )
 }
   
-# ---- open netcdf ---- #
+# open netcdf 
 nc <- nc_open(nc_file)
 ```
 
@@ -77,8 +75,6 @@ vars:
 print(nc$var)  # See available variables
 print(nc$dim)  # See dimensions
 tidync::tidync(nc_file)
-
-
 ```
 
 ## 4.2 Extract Variables
@@ -93,7 +89,7 @@ node_lat <- ncvar_get(nc, "Mesh2_node_y")
 # face nodes
 face_nodes <- ncvar_get(nc, "Mesh2_face_nodes")
 
-# Ensure face_nodes has one row per face and three columns
+# check face_nodes has one row per face and three columns
 if (nrow(face_nodes) == 3 && ncol(face_nodes) != 3) {
   face_nodes <- t(face_nodes)
 }
@@ -102,7 +98,8 @@ if (nrow(face_nodes) == 3 && ncol(face_nodes) != 3) {
 face_nodes <- face_nodes + 1
 
 # variable values per face
-height     <- ncvar_get(nc, "Mesh2_height")
+# height     <- ncvar_get(nc, "Mesh2_height")
+height     <- ncvar_get(nc, "Mesh2_bathy")
 
 # extract parameter as a vector
 height_face <-
@@ -115,11 +112,11 @@ height_face <-
 
 # 5.0 Spatial Filter 
 
-longitude: 0 - 360
+longitude: 0 - 360 -> need to subtract 360 from a negative longitude
 latidude: -90 - 90
 
 ```{r}
-# Gulf of Mexico
+# Gulf of Mexico filter
 nodes_in_box <- 
   cbind(
     between(node_lon, 360 - 98, 360 - 80),
@@ -128,16 +125,12 @@ nodes_in_box <-
 
 node_ids <- which(rowSums(nodes_in_box) == 2)
 
-
 face_keep <- apply(
   face_nodes,
   1,
   function(ids) any(ids %in% node_ids, na.rm = TRUE)
 )
-
-
 face_ids <- which(face_keep)
-
 
 # Remove invalid or missing connectivity values
 face_nodes[face_nodes < 1] <- NA
@@ -163,7 +156,7 @@ mesh_sf <- map_dfr(
       return(NULL)
     }
 
-    # select 3 coordinate notes
+    # select 3 coordinate nodes
     coords <- cbind(
       node_lon[ids],
       node_lat[ids]
@@ -184,6 +177,7 @@ mesh_sf <- map_dfr(
   }
 )
 
+# shift coordinates to -180 to 180 
 mesh_sf <- 
   mesh_sf %>%
   st_transform(4326) %>%
@@ -193,6 +187,9 @@ mesh_sf <-
 # 7.0 Plot Data
 
 ## 7.1 Extract Coastline
+
+US, Cubam Bahamas and Mexico
+
 ```{r maps}
 shelf(maps)
 
@@ -206,9 +203,6 @@ gulf_coast_line <- map_data(
 ## 7.2 Plot Data
 
 ```{r}
-plot(mesh_sf["height"])
-mesh_sf
-
 ggplot() +
   geom_sf(
     data = mesh_sf,
@@ -224,7 +218,7 @@ ggplot() +
     linewidth = 0.2,
     alpha     = 0.5
   ) +
-  scale_fill_viridis_c(name = "Height") +
+  scale_fill_viridis_c(name = "Bathymetry") +
   coord_sf(
     xlim = c(-100, -78.0),
     ylim = c(17, 33),
@@ -248,7 +242,7 @@ keys_bbox <- st_bbox(
 keys_box <- st_as_sfc(keys_bbox)
 
 mesh_keys <- st_crop(mesh_sf, keys_bbox)
-plot(mesh_keys[,-1])
+# plot(mesh_keys[,-1])
 
 ggplot(mesh_keys) +
   geom_sf(
@@ -264,7 +258,7 @@ ggplot(mesh_keys) +
     linewidth = 0.2,
     alpha = 0.5
   ) +
-  scale_fill_viridis_c(name = "Height") +
+  scale_fill_viridis_c(name = "Bathymetry") +
   coord_sf(
     xlim = c(-98, -80.0),
     ylim = c(18, 31),
