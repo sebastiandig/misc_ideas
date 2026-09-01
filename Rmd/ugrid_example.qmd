@@ -1,0 +1,277 @@
+---
+title: "Unstructured Grid Example"
+author: "Sebastian Di Geronimo"
+date: 2026-09-01
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+# 3.0 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, purrr, dplyr, glue, fs, magrittr, here,
+  
+  # additional
+  ncdf4,
+  sf,
+  downloader
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+# 4.0 Load Dataset
+
+```{r load-data}
+# ---- CONFIG ----
+# Path to your UGRID NetCDF file
+nc_file <- here::here("data", "raw","ugrid_demo1.nc")
+
+# ---- download unstructured grid file example ---- #
+if (!fs::file_exists(nc_file)) {
+  downloader::download(
+    url = "https://github.com/psyplot/examples/blob/main/maps/ugrid_demo.nc",
+    destfile = here::here("data", "raw", "ugrid_demo1.nc")
+  )
+}
+  
+# ---- open netcdf ---- #
+nc <- nc_open(nc_file)
+```
+
+## 4.1 Insepct Variables
+
+node names: 
+* Mesh2_node_x:     Longitude of 2D mesh nodes in degrees_east
+* Mesh2_node_y:     Latitude of 2D mesh nodes in degrees_north
+* Mesh2_face_nodes: Maps every triangular face to its three corner nodes
+* Mesh2_edge_nodes: Maps every edge to the two nodes it connects
+
+vars:
+* Mesh2_height: fluid height in m
+* Mesh2_bathy:  bathymetry in m
+* Mesh2_m_x:    momentum in x-direction in m^2/s
+* Mesh2_m_y:    momentum in y-direction in m^2/s
+* Mesh2_u_x:    velocity in x-direction in m/s
+* Mesh2_u_y:    velocity in y-direction in m/s
+* Mesh2_level:  grid level in None
+
+```{r}
+print(nc$var)  # See available variables
+print(nc$dim)  # See dimensions
+tidync::tidync(nc_file)
+
+
+```
+
+## 4.2 Extract Variables
+
+need coordinates, faces and parameter
+
+```{r}
+# coordinates
+node_lon  <- ncvar_get(nc, "Mesh2_node_x")
+node_lat <- ncvar_get(nc, "Mesh2_node_y")
+
+# face nodes
+face_nodes <- ncvar_get(nc, "Mesh2_face_nodes")
+
+# Ensure face_nodes has one row per face and three columns
+if (nrow(face_nodes) == 3 && ncol(face_nodes) != 3) {
+  face_nodes <- t(face_nodes)
+}
+
+# UGRID file uses start_index = 0
+face_nodes <- face_nodes + 1
+
+# variable values per face
+height     <- ncvar_get(nc, "Mesh2_height")
+
+# extract parameter as a vector
+height_face <-
+  if (length(dim(height)) == 2) {
+    as.vector(height[1, ])
+  } else {
+    as.vector(height)
+  }
+```
+
+# 5.0 Spatial Filter 
+
+longitude: 0 - 360
+latidude: -90 - 90
+
+```{r}
+# Gulf of Mexico
+nodes_in_box <- 
+  cbind(
+    between(node_lon, 360 - 98, 360 - 80),
+    between(node_lat, 18, 31)
+  )
+
+node_ids <- which(rowSums(nodes_in_box) == 2)
+
+
+face_keep <- apply(
+  face_nodes,
+  1,
+  function(ids) any(ids %in% node_ids, na.rm = TRUE)
+)
+
+
+face_ids <- which(face_keep)
+
+
+# Remove invalid or missing connectivity values
+face_nodes[face_nodes < 1] <- NA
+
+# filter face node and parameter within spatial filter
+height_sub <- height_face[face_ids]
+
+face_nodes_sub <- face_nodes[face_ids, , drop = FALSE]
+```
+
+
+# 6.0 Convert Each Node Face to sf Object
+
+```{r}
+mesh_sf <- map_dfr(
+  seq_along(face_ids),
+  function(i) {
+    # subset to first row
+    ids <- face_nodes_sub[i, ]
+
+    # remove NAs
+    if (anyNA(ids)) {
+      return(NULL)
+    }
+
+    # select 3 coordinate notes
+    coords <- cbind(
+      node_lon[ids],
+      node_lat[ids]
+    )
+
+    # close the triangle by adding first row to end
+    coords <- rbind(coords, coords[1, ])
+
+    # convert to sf polygon object
+    st_sf(
+      face = i,
+      height = height_sub[i],
+      geometry = st_sfc(
+        st_polygon(list(coords)),
+        crs = 4326
+      )
+    )
+  }
+)
+
+mesh_sf <- 
+  mesh_sf %>%
+  st_transform(4326) %>%
+  st_wrap_dateline(options = c("WRAPDATELINE=YES"))
+```
+
+# 7.0 Plot Data
+
+## 7.1 Extract Coastline
+```{r maps}
+shelf(maps)
+
+gulf_coast_line <- map_data(
+  "world",
+  region = c("USA", "Cuba", "Bahamas", "Mexico")
+)
+```
+
+
+## 7.2 Plot Data
+
+```{r}
+plot(mesh_sf["height"])
+mesh_sf
+
+ggplot() +
+  geom_sf(
+    data = mesh_sf,
+    aes(fill = height),
+    color     = "grey30",
+    linewidth = 0.05
+  ) +
+  geom_polygon(
+    data = gulf_coast_line,
+    aes(x = long, y = lat, group = group),
+    fill      = "grey80",
+    color     = "grey30",
+    linewidth = 0.2,
+    alpha     = 0.5
+  ) +
+  scale_fill_viridis_c(name = "Height") +
+  coord_sf(
+    xlim = c(-100, -78.0),
+    ylim = c(17, 33),
+    expand = FALSE
+    ) +
+  theme_minimal()
+```
+
+## 7.3 Further Crop to Make More Square
+```{r}
+keys_bbox <- st_bbox(
+  c(
+    xmin = -98,
+    xmax = -80,
+    ymin = 18,
+    ymax = 31
+  ),
+  crs = st_crs(4326)
+)
+
+keys_box <- st_as_sfc(keys_bbox)
+
+mesh_keys <- st_crop(mesh_sf, keys_bbox)
+plot(mesh_keys[,-1])
+
+ggplot(mesh_keys) +
+  geom_sf(
+    aes(fill = height),
+    color = "grey30",
+    linewidth = 0.05
+  ) +
+  geom_polygon(
+    data = gulf_coast_line,
+    aes(x = long, y = lat, group = group),
+    fill = "grey80",
+    color = "grey30",
+    linewidth = 0.2,
+    alpha = 0.5
+  ) +
+  scale_fill_viridis_c(name = "Height") +
+  coord_sf(
+    xlim = c(-98, -80.0),
+    ylim = c(18, 31),
+    expand = FALSE) +
+  theme_minimal()
+
+```
+
+
+
