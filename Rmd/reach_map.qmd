@@ -142,6 +142,17 @@ whale_shp_path <-
 # load whale distrbution shapefile
 whale_shp <- st_read(whale_shp_path)
 ```
+## 2.4 Load Passive Acoustic Monitoring (PAM) Locations
+from Chad Lembke 
+In reference to our locations
+
+```{r}
+# pam_points <- rstudioapi::selectFile() 
+pam_points <-
+  here("data", "raw", "SEFSC Acoustic Mooring Sites") %>%
+  dir_ls(regexp = "\\.shp$") %>%
+  st_read()
+```
 
 # 3.0 Plot using `leaflet`
 
@@ -150,7 +161,9 @@ Overall points
 ```{r leaflet}
 leaflet::leaflet() %>%
   addTiles() %>%
-  addMarkers(loc_dat$long, loc_dat$lat)
+  addMarkers(loc_dat$long, loc_dat$lat, label = loc_dat$waypoint) %>%
+  addCircleMarkers(pam_points$Longitude, pam_points$Latitude,
+             label = pam_points$SiteID)
 ```
 
 ```{r}
@@ -238,9 +251,15 @@ contour_labels <- function(
   # ---- end of function contour_labels ---- #
   }  
   
-  
-  
-bathy_contour_label <- contour_labels(bathy, upper_lower = "upper", n_per_level = 1)
+bounds <- c(-88.5, -82, 26.5, 30.6)  
+
+bathy_contour_label <- 
+  bathy %>%
+  filter(
+    between(x, bounds[1] + 0.1, bounds[2] - 0.1),
+    between(y, bounds[3] + 0.1, bounds[4] - 0.1),
+  ) %>%
+  contour_labels(upper_lower = "upper", n_per_level = 1)
 
 ```
 
@@ -318,7 +337,15 @@ osm_map <-
     bg.colour = "gray30",
     colour    = "white",
     alpha     = 0.7
-  ))
+  ) +
+  geom_sf(
+    data = pam_points,
+    shape = 1,
+    size = rel(2.5),
+    inherit.aes = FALSE
+  )
+  
+  )
 ```
 
 
@@ -354,7 +381,6 @@ scale_key <-
 
 loc_map_pts <-
   loc_map +
-
   # add arrows for cruise track
   ggarchery::geom_arrowsegment(
     data = long_lat_lag,
