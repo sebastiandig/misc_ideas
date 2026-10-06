@@ -635,6 +635,9 @@ type    = "file",
 regexp  = "^[^~]*\\.xlsx$"
 )
 
+# alternate October 2, 2026
+fs::dir_ls(path = here::here("data", "raw")) %>%
+  stringr::str_subset("~", negate = TRUE)
 
 # ============================================================================ #
 # ---- Test if to save or not ----
