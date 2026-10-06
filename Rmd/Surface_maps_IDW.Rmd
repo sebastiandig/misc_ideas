@@ -258,15 +258,20 @@ break_df <- data.frame(
 
 # ---- all regions together ---- #
 ecdf_df <- df0 %>%
-  select("x" = sal) %>%
+  select("x" = sal, region_label) %>%
   arrange(x) %>%
   mutate(
     .keep = "used",
+    region_label = factor(
+      region_label,
+      levels = c("Lower Keys", "Middle Keys", "Upper Keys", "Everglades", "Ten Thousand Islands")
+      ),
     ecdf = seq_along(x) / length(x),
     range = between(x, 32, 34)
     )
 
-ggplot() +
+ecdf_plt <- 
+  ggplot() +
   annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
   # annotate("text", x = c(32, 34) - 0.35, y = -1, label = c("32", "34"), color = "grey50") +
   geom_rect(
@@ -281,6 +286,8 @@ ggplot() +
     color = "grey40"
   ) +
   geom_point(data = ecdf_df, aes(x = x, y = ecdf), color = "black", alpha = 0.7, size = rel(1)) +
+  # geom_point(data = ecdf_df, aes(x = x, y = ecdf, color = region_label), alpha = 0.7, size = rel(1),
+             # key_glyph = "rect") +
   geom_step(data = ecdf_df, aes(x = x, y = ecdf), color = "blue", alpha = 1) +
   # geom_vline(xintercept = brk_int$brks, color = "grey", linewidth = 0.4,
   geom_vline(xintercept = c(32, 34), color = "grey", linewidth = 1,
@@ -288,8 +295,8 @@ ggplot() +
   annotate(
     "text",
     x = c(
-    (10 + 32) / 2, 
-    33, 
+    (10 + 32) / 2,
+    33,
     (max(ecdf_df$x[ecdf_df$x > 34]) + 34) / 2
     ),
     y     = -0.15 / 2,
@@ -302,7 +309,8 @@ ggplot() +
   labs(
     # title = paste("ECDF with", brk_num, "Breaks"),
     x = "Salinity",
-    y = "Cumulative Proportion"
+    y = "Cumulative Proportion",
+    color = "Region"
   ) +
   # facet_wrap(~region) +
   # scale_fill_manual(values = viridisLite::viridis(nrow(break_df)), guide = "none") +
@@ -319,7 +327,40 @@ ggplot() +
     axis.text.y        = element_text(angle = 90, hjust = 0.5),
     axis.text          = element_text(size = rel(1.5)),
     axis.line          = element_line(linewidth = rel(1.5))
-  )
+  ) 
+
+# ecdf_plt +
+#   facet_wrap(~region_label) +
+#   geom_text(
+#     data =
+#       tibble(
+#         x = c(
+#           (10 + 32) / 2,
+#           33,
+#           (max(ecdf_df$x[ecdf_df$x > 34]) + 34) / 2
+#         ),
+#         y = -0.15 / 2,
+#         size = rel(3.9),
+#         label = c("Low Salinity (<32)", "Moderate\n(32-<34)", "Marine/Background (≥34)"),
+#         color = c("white", "white", "black")
+#       ),
+#     aes(
+#       x = x,
+#       y = y,
+#       label = label,
+#       color = I(color)
+#     ),
+#     size = rel(2),
+#     lineheight = 0.8,
+#     fontface = "bold",
+#     inherit.aes = FALSE,
+#     show.legend = FALSE
+#   )
+
+
+
+
+ecdf_plt 
 
 if (FALSE) {
   ggsave(
@@ -334,20 +375,22 @@ if (FALSE) {
 
 ```{r salinity-ecdf}
 # ---- ecdf by each region ---- #
-ecdf_df <- df0 %>%
+ecdf_df <- 
+  df0 %>%
   select("x" = sal, region) %>%
   arrange(x) %>%
   mutate(
     .by = region,
     .keep = "used",
     ecdf = seq_along(x) / length(x),
+    region = str_replace_all(region, "_", " "),
     region = factor(
       region,
       levels = c(
-        "Ten_Thousand_Islands", "Everglades",
-        "Lower_Keys", "Middle_Keys", "Upper_Keys"
+        "Lower Keys", "Middle Keys", "Upper Keys",
+        "Ten Thousand Islands", "Everglades"
       )
-    )
+    ),
   )
 
 ggplot() +
@@ -386,7 +429,7 @@ ggplot() +
   )
 
 if (FALSE) {
-  ggsave(here(base_dir, "salinity_edcf_each_regions.jpeg"), width = 10, height = 5)
+  ggsave(here(base_dir, "salinity_edcf_each_regions2.jpeg"), width = 10, height = 5)
   shell.exec(base_dir)
 }
 
@@ -401,11 +444,12 @@ ecdf_df <-
     .by = region,
     .keep = "used",
     ecdf = seq_along(x) / length(x),
+    region = str_replace_all(region, "_", " "),
     region = factor(
       region,
       levels = c(
-        "Ten_Thousand_Islands", "Everglades",
-        "Lower_Keys", "Middle_Keys", "Upper_Keys"
+        "Lower Keys", "Middle Keys", "Upper Keys",
+        "Ten Thousand Islands", "Everglades"
       )
     ),
     # date = mdy(date),
@@ -413,8 +457,8 @@ ecdf_df <-
     month = format(date, "%B"),
     month = factor(month, levels = month.name)
   )
-test_plt <- 
-ggplot() +
+ecdf_region_month <- 
+  ggplot() +
   annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = NA) +
   geom_rect(
     # data = break_df,
@@ -435,7 +479,8 @@ ggplot() +
              linetype = "dashed") +
   labs(
     x = "Salinity",
-    y = "Cumulative Proportion"
+    y = "Cumulative Proportion",
+    color = "Month"
   ) +
   facet_wrap(~region) +
   scale_color_manual(values = palette_12) +
@@ -451,11 +496,21 @@ ggplot() +
     strip.background = element_rect(fill = "white")
   )
 
-plotly::ggplotly(test_plt)
+plotly::ggplotly(ecdf_region_month)
 
-
+if (FALSE) {
+  ggsave(here(base_dir, "salinity_edcf_each_regions_month.jpeg"), ecdf_region_month, width = 10, height = 5)
+  shell.exec(base_dir)
+}
 
 ```
+
+```{r}
+df0 %>%
+  # filter(str_detect(station, "65|66|67|68|69|70|71")) %>%
+  View()
+```
+
 
 ```{r}
 sfer_data <- 
