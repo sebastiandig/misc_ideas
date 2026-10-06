@@ -67,8 +67,8 @@ create_dir <- function(
   
   subDir_deflt <- c(
     here(.loc, "data", c("raw", "processed", "plots", "metadata")),
-    here(.loc, "Rmd"),
-    here(.loc, "scripts")
+    here(.loc, "qmd"),
+    here(.loc, "R")
   )
   
   subDir <- c(subDir_deflt, cust_dir)
