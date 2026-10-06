@@ -1610,9 +1610,10 @@ coprod_area %>%
     prop = area / tot_area
     )
 {
-plot(vect(sector_shp[[1]]), col = "blue")
-plot(vect(sector_shp[[2]]), add = TRUE, col = "red")
-plot(vect(sector_shp[[3]]), add = TRUE, col = "green")
+plot(coprod_comb, legend = FALSE)
+plot(vect(sector_shp[[1]]), add = TRUE, col = "blue",  legend = FALSE, alpha = 0.7)
+plot(vect(sector_shp[[2]]), add = TRUE, col = "red",   legend = FALSE, alpha = 0.7)
+plot(vect(sector_shp[[3]]), add = TRUE, col = "green", legend = FALSE, alpha = 0.7)
 list(
   ifel(!is.na(creeks), 1, 0),
   ifel(!is.na(lower),  1, 0),
@@ -1620,8 +1621,13 @@ list(
   ) %>%
   Reduce(`+`, .) %>%
   ifel(. == 0, NA, .) %>%
-  plot(add = TRUE, col = c("orange", "yellow"))
+  plot(
+    add = TRUE, 
+    col = c("orange", "yellow"), 
+    type = "classes", levels = c("Area", "Overlap")
+    ) 
   }
+
 
 list(
   ifel(!is.na(creeks), 1, 0),
