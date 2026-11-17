@@ -1,0 +1,281 @@
+---
+title: "Read REACH Shipboard Data"
+author: "Sebastian Di Geronimo"
+date: 2026-11-17
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+This file is used to read the GPS data exported from the R/V WeatherBird II or 
+the R/V Hogarth. The file extenstions are '.aoc' with a file name containing 
+GGA. If need to determine column names, the same file name with the '.tpl' 
+extension explains each column with the exception of the first few that 
+correspond to date and time.
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+```{r}
+# function factory to pre-set metric used to summarise
+set_func <- function(metric_name, ...) {
+  fun <- switch(
+    metric_name,
+    mean   = mean,
+    median = median,
+    min    = min,
+    max    = max,
+    stop("Unknown metric")
+  )
+  
+  function(x, ...) {
+    fun(x, na.rm = TRUE, ...)
+  }
+}
+
+func <- set_func("median")
+
+# function factory to pre-set time rounding
+set_time_func <- function(metric_name, sec, ...) {
+  fun <- switch(
+    metric_name,
+    trunc = hms::trunc_hms,
+    round = hms::round_hms,
+    stop("Unknown metric")
+  )
+  
+  function(x, ...) {
+    fun(x, sec * 60, ...)
+  }
+}
+
+# number of minutes to bin by
+min_bin <- 5
+
+time_fun <- set_time_func("trunc", sec = min_bin)
+```
+
+
+## 2.2 Load Dataset
+
+```{r load-data}
+ship_dir <- rstudioapi::selectDirectory()
+```
+
+
+```{r load-data}
+ship_path <- 
+  ship_dir %>%
+  dir_ls(regexp = "GGA.aco") %T>% 
+  print()
+```
+
+```{r}
+if (str_detect(ship_path, "(?i)northstar")) {
+  ship_data <-
+    read_csv(
+      ship_path,
+      col_names = c("year", "jullian_day_hour", "julian_day", "time",
+                    "col1", "col2", "col3", "col4",
+                    "lat_dd", "lon_dd", "col5", "col6", "col7")
+    ) %>%
+    janitor::remove_empty("cols") %>%
+    mutate(
+      .after = year,
+      date   = as_date(paste(year, julian_day), format = "%Y %j"),
+      time   = hms::hms(days = time),
+      time2  = time_fun(time)
+    )
+    
+  ship_summary <- 
+    ship_data %>%
+    summarise(
+      .by = c(date, time2),
+      across(c(lat_dd, lon_dd), ~ func(.x)),
+    )
+  
+} else {
+  
+
+  ship_data <-
+    read_csv(
+      ship_path,
+      col_names = c("year", "jullian_day_hour", "julian_day", "time",
+                    "lat_deg_dec", "lat_hemi", "lon_deg_dec", "lon_hemi", "empty"),
+      col_types = cols("lat_deg_dec" = col_character(), "lon_deg_dec" = col_character())
+    ) %>%
+    janitor::remove_empty("cols") %>%
+    separate_wider_regex(
+      lat_deg_dec,
+      c(lat_deg = "\\d{2}", lat_min = ".*")
+    ) %>%
+    separate_wider_regex(
+      lon_deg_dec,
+      c(lon_deg = "\\d{3}", lon_min = ".*")
+    ) %>%
+    hablar::retype() %>%
+    mutate(
+      .before = lat_deg,
+      lat_dd  = lat_deg + lat_min / 60,
+      lon_dd  = lon_deg + lon_min / 60,
+      lon_dd  = if_else(lon_hemi == "W", -lon_dd, lon_dd)
+    ) %>%
+    mutate(
+      .after = year,
+      date   = as_date(paste(year, julian_day), format = "%Y %j"),
+      time   = hms::hms(days = time),
+      time2  = time_fun(time)
+    )
+  
+  ship_summary <- 
+    ship_data %>%
+    summarise(
+      .by = c(date, time2),
+      across(c(lat_dd, lon_dd), ~ func(.x)),
+      across(c(lat_hemi, lon_hemi), ~ first(.x)),
+    )
+}
+
+slice(ship_data, 1:10)
+slice(ship_summary, 1:10)
+distinct(ship_summary, date)
+```
+
+
+```{r}
+ship_summary <- 
+  ship_data %>%
+  summarise(
+    .by = c(date, time2),
+    across(c(lat_dd, lon_dd), ~ func(.x)),
+    across(c(lat_hemi, lon_hemi), ~ first(.x)),
+  )
+
+ship_summary
+```
+
+```{r}
+ship_plt <-
+  ggplot(ship_summary) +
+  geom_path(aes(x = lon_dd, y = lat_dd, color = as.character(date), label = time2)) +
+  geom_point(data = test,
+             aes(x = x, y = y, label = station), color = "red")
+  labs(x = NULL, y = NULL, color = "Date") +
+  theme_classic()
+  ggplot(ship_summary) +
+   geom_sf(
+    data = ship_data %>%
+          filter_out(is.na(lon_dd) | is.na(lat_dd)) %>%
+          st_as_sf(coords = c("lon_dd", "lat_dd"), crs = "EPSG:4326") %>%
+          st_transform(crs = "EPSG:2237")
+  ) +
+    # geom_path(aes(x = lon_dd, y = lat_dd, color = as.character(date))) +
+  labs(x = NULL, y = NULL) +
+  theme_classic()
+ship_plt
+  loc_map + 
+  geom_sf(
+    data = ship_data %>%
+          filter_out(is.na(lon_dd) | is.na(lat_dd)) %>%
+          st_as_sf(coords = c("lon_dd", "lat_dd"), crs = "EPSG:4326") %>%
+          st_transform(crs = "EPSG:2237")
+  ) +
+  # geom_path(data = ship_summary, aes(x = lon_dd, y = lat_dd, color = as.character(date))) +
+  geom_point(data = test,
+             aes(x = x, y = y), color = "red") +
+  labs(x = NULL, y = NULL, color = "Date") +
+  theme_classic()
+
+test <-
+tribble(
+~station,  ~x, ~y,
+"S23",	-86.5373666666667,	30.1435333333333,
+"S22",	-86.8674666666667,	29.7664166666667,
+"S21",	-87.2482166666667,	29.4080666666667,
+"S20",	-87.7184666666667,	29.0350166666667,
+"S19",	-87.2921333333333,	28.7103333333333,
+"S18",	-86.8096333333333,	29.1159666666667,
+"S17/C26",	-86.5148666666667,	29.4171166666667,
+"S16/C24",	-86.2587,	29.7425,
+"S15",	-85.9255,	29.9556333333333,
+"S14",	-86.1201333333333,	29.1409,
+"S13",	-86.2731666666667,	28.5906333333333,
+"S12",	-86.4455333333333,	27.9549333333333,
+"S11",	-86.0975333333333,	28.2850833333333,
+"S10/C25",	-85.6995,	28.7130333333333,
+"S09/C23",	-85.3029666666667,	29.0469333333333,
+"S08",	-84.8978833333333,	29.3244833333333,
+"S07",	-85.1705833333333,	28.4978833333333,
+"S06",	-85.3503333333333,	28.0006666666667,
+"S05",	-85.5471666666667,	27.4491166666667,
+"S04",	-85.0267666666667,	27.5920833333333,
+"S03",	-84.6336666666667,	27.7532666666667,
+"S02",	-84.2298666666667,	27.9085666666667,
+)
+```
+
+```{r}
+plotly::ggplotly(ship_plt)
+```
+
+```{r}
+
+ship_data %>%
+  filter_out(is.na(lon_dd) | is.na(lat_dd)) %>%
+  st_as_sf(coords = c("lon_dd", "lat_dd"), crs = "EPSG:4326") %>%
+  st_transform(crs = "EPSG:2237") %>%
+  mutate(
+    lon = st_coordinates(geometry)[,1]
+  )
+  as_tibble()
+
+slice(ship_data, 1:10) %>%
+  mutate(
+    datetime = ymd_hms(paste(date, time2))
+  )
+
+ship_summary %>%
+  filter(if_any(everything(), ~is.na(.x))) %>%
+  distinct(pick(date, time2)) %>%
+  mutate(
+    datetime = ymd_hms(paste(date, time2))
+  ) %>%
+  inner_join(
+    ship_data,
+    by = c("date", "time2")
+  )
+```
+
+```{r}
+ship_plt <-
+  ggplot(ship_data) +
+  geom_path(aes(x = lon_dd, y = lat_dd, color = as.character(date))) +
+  labs(x = NULL, y = NULL, color = "Date") +
+  theme_classic()
+ship_plt
+```
+
