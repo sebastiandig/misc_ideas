@@ -1,0 +1,1039 @@
+---
+title: "Check CTD hex Files"
+author: "Sebastian Di Geronimo"
+date: 2026-09-29
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+To improve processing, may require to modify hex files to remove lines that have
+errors. These are typically found when the length is either too short or too 
+long compared to the majority. 
+
+Each files from a cruise should be copied and read to identify profiles that 
+need manual editing.
+
+
+Steps:
+
+1. Create cruise folder with a `raw` folder
+2. Copy .hex, .hdr, and .xlmcon files into raw
+3. Run section 2.2 Load Cruise
+  * edit `cruise_id`
+  * finds .hex files and creates all folders, copies all `raw` files into `raw_backup`
+  * copies .xlmcon files into `derive`
+4. Run section 2.3
+5. Delete any rows with errors
+6. Copy previous psa files into psa
+7. Open Sbedataprocessing
+8. Run steps in order:
+  1: 01DatCnv
+  2: 02WildEdit
+  3: 03CellTM
+  4: 04Filter
+  5: 05LoopEdit
+  6: 06Derive
+  (optional steps)
+  7: 07BinAverage
+  8: 08Buoyancy
+9. Convert .cnv into dataframe by usine `oce` package
+10. Remove upcast and inspect
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+# Manually extracted hexidecimal ODV colour palette
+ODV_colours <- c("#feb483", "#d31f2a", "#ffc000", "#27ab19", "#0db5e6", "#7139fe", "#d16cfa")
+```
+
+## 2.2 Load Cruise
+
+```{r load-data}
+# cruise
+cruise_id <- "REACH007"
+
+# hex file path
+ctd_raw_path <- 
+  here("../reach_ctd_data", cruise_id, "raw") %>%
+  dir_ls(regexp = "hex$") %>%
+  print()
+
+# xmlcon path
+xml_path <- 
+  here("../reach_ctd_data", cruise_id, "raw") %>% 
+  dir_ls(regexp = "(?i)xmlcon$") %>%
+  print()
+
+# create folders for each procesing step
+dir_create(
+  fs::path(
+    dirname(ctd_raw_path)[1], "..", 
+      c("psa", "datcnv", "filter", "wildedit", "loopedit", "derive", "celltm",
+        "binned", "buoyancy")
+    )
+  )
+
+# create README for when changing files or psa files
+file_create(here(dirname(ctd_raw_path)[1], "..", "README.md"))
+
+# copy xmlcon files to 'loopedit' because needed for 'derive' step
+file_copy(
+  xml_path,
+   fs::path(dirname(ctd_raw_path)[1], "..", "loopedit")
+)
+
+# create copy of raw files before editing
+if (!dir_exists(here(dirname(ctd_raw_path)[1], "..", "raw_backup"))) {
+  message("Copying raw files to backup directory.")
+  dirname(ctd_raw_path)[1] %>%
+    unique() %>%
+    dir_copy(here(dirname(.), "raw_backup"))
+} else {
+  message("Skipping copying of raw files.")
+}
+
+```
+
+## 2.3 Check date errors
+
+This looks for rows ending in *0000* that signify corrupt date that sets it to
+2000-01-01. After reading all files, this will open files with errors to delete
+the bad rows.
+
+```{r}
+hex_date_err <-
+  # identify date errors
+  map(
+    .x = ctd_raw_path,
+    \(.x) {
+      raw_dat <- read_lines(.x)
+
+      # lines for the header
+      header <- which(str_detect(raw_dat, "(?i)\\*end\\*"))
+
+      raw_filt <- raw_dat[-c(1:header)]
+      raw_count <- str_sub(raw_filt, start = -4)
+
+      # check if ending of row ends in "000" which should signify date error
+      bad_row <- which(raw_count == "0000")
+
+      if (length(bad_row) > 0) {
+        tibble(
+          bad_rows = bad_row + header,
+          total_row = length(raw_count)
+        )
+      }
+    }
+  ) %>%
+  bind_rows(.id = "file") %>%
+  pivot_wider(
+    data         = .,
+    id_cols      = file, 
+    names_from   = bad_rows,
+    values_from  = bad_rows,
+    names_sep    = "_",
+    names_repair = janitor::make_clean_names
+  )
+  
+
+hex_date_err
+
+# open files with errors to remove those lines
+for (j in unique(hex_date_err$file)) {
+  shell(glue("start notepad++ {j}"))
+}
+
+```
+
+Identify rows that may be short. This row may include errors, but most likely
+not
+
+```{r}
+map(
+  .x = ctd_raw_path,
+  \(.x) {
+    raw_dat <- read_lines(.x) 
+    
+    # lines for the header
+    header <- which(str_detect(raw_dat, "(?i)\\*end\\*"))
+    
+    raw_filt <- raw_dat[-c(1:header)] 
+    # raw_count <- str_sub(raw_filt, start = -4)
+    
+    raw_count <- str_count(raw_filt)
+    
+    freq_table <- table(raw_count)
+    
+    most_frequent <- names(freq_table)[which.max(freq_table)] %>%
+    as.numeric()
+    
+    bad_row <- which(raw_count != most_frequent)
+    
+    if (length(bad_row) > 0) {
+      tibble(
+        bad_rows = bad_row + header,
+        total_row = length(raw_count)) 
+    }
+  }
+) %>%
+   bind_rows(.id = "file")
+```
+
+## Create batch File for SBEDataProcessing 
+
+```{r}
+input_path <-
+  here("../reach_ctd_data", cruise_id) %>%
+  normalizePath(, winslash = "\\")
+
+batch_path <- here(input_path, glue("batch_{cruise_id}.txt"))
+
+batch_ctd <-
+  glue(
+    "@ This batch file can be used to batch process all of the cruise's files with one command.\n",
+    "@ Modify the paths below to match the current cruise folder\n",
+    "@ How to launch:\n",
+    "@ > SBEBatch.exe <path_to_batch_file>\\batch_<cruise id>.txt\n",
+    "\n",
+    "\n",
+    "datcnv /p{input_path}\\psa\\01DatCnv_{str_to_lower(cruise_id)}.psa /i{input_path}\\raw\\*.hex /o{input_path}\\datcnv /w\n",
+    "wildedit /p{input_path}\\psa\\02WildEdit_{str_to_lower(cruise_id)}.psa /i{input_path}\\datcnv\\*.cnv /o{input_path}\\wildedit\n",
+    "celltm /p{input_path}\\psa\\03CellTM_{str_to_lower(cruise_id)}.psa /i{input_path}\\wildedit\\*.cnv /o{input_path}\\celltm\n",
+    "filter /p{input_path}\\psa\\04Filter_{str_to_lower(cruise_id)}.psa /i{input_path}\\celltm\\*.cnv /o{input_path}\\filter\n",
+    "@ needs psa file -> alignctd /p{input_path}\\psa\\<name>_{str_to_lower(cruise_id)}.psa /i{input_path}\\filter\\*.cnv /o{input_path}\\align\n",
+    "loopedit /p{input_path}\\psa\\05LoopEdit_{str_to_lower(cruise_id)}.psa /i{input_path}\\filter\\*.cnv /o{input_path}\\loopedit\n",
+    "derive /p{input_path}\\psa\\06Derive_{str_to_lower(cruise_id)}.psa /i{input_path}\\loopedit\\*.cnv  /o{input_path}\\derive /w\n",
+    "binavg /p{input_path}\\psa\\07BinAvg_{str_to_lower(cruise_id)}.psa /i{input_path}\\derive\\*.cnv  /o{input_path}\\binned\n",
+    "buoyancy /p{input_path}\\psa\\08Buoyancy_{str_to_lower(cruise_id)}.psa /i{input_path}\\binned\\*.cnv  /o{input_path}\\buoyancy\n",
+  )
+
+batch_ctd
+
+# create batch file
+sink(batch_path)
+batch_ctd
+sink()
+
+# run batch file
+if (FALSE) {
+  # will pause at steps `datcnv` and `derive` to check input params before continuing
+  # remove `/w` if want to skip this
+  glue("SBEBatch.exe {batch_path}") %>%
+  system()
+}
+```
+
+
+# 3.0 Read CTD Files
+
+```{r}
+shelf(oce)
+
+cruise_id <- paste0("REACH00", 7)
+# cruise_id <- paste0("REACH00", 2:7)
+
+ctd_proc_path <- 
+  here("../reach_ctd_data", cruise_id, "derive") %>%
+  # here("../reach_ctd_data", cruise_id, "datcnv_fio") %>%
+  # here("../reach_ctd_data", cruise_id, "REACH007_CTD_updated") %>%
+  dir_ls(regexp = "cnv$", recurse = TRUE) %>%
+  # str_subset("reach007_s23_01", negate = TRUE) %>%
+  print() 
+
+ctd_all <-
+  map(
+    .x = ctd_proc_path,
+    \(.x) {
+      stn_name <-
+        str_remove(.x, "_processed")  %>%
+        # str_remove("^.*(?=S|GR|s)") %>%
+        str_to_upper(.x) %>%
+        str_remove("^.*(?=S|GR|s)") %>%
+        str_remove("_.*")  %>%
+        str_replace("(C\\d{2})", "/\\1")
+      cruise <- str_extract(.x, "REACH\\d{3}")
+      message(paste(cruise, ":", stn_name))
+
+      # browser()
+      ctd_open <-
+        read.ctd(.x, station = stn_name, cruise = cruise) %>%
+        oceSetMetadata(name = "cruise", value = cruise) %>%
+        subset(flag >= 0) %>%
+        ctdTrim()
+
+      return(ctd_open)
+    }
+  )
+
+# plot profile
+# walk(.x = ctd_all, ~ plot(.x))
+
+
+```
+
+
+## 3. Plot CTD Profiles of Select Variables
+
+```{r}
+iwalk(
+  .x = ctd_all[1],
+  \(.x, .y) {
+    message(paste(basename(.y)))
+    if (nrow(as.data.frame(.x@data)) == 0) {
+      message(paste("skipping", basename(.y)))
+      return()
+    # plot(.x)
+    print(oce::plotProfile(.x, xtype = "fluorescence"))
+    }
+    
+  }
+)
+old_oma <- par("oma")
+par(oma = c(0,0,3,0))
+
+{oce::plotProfile(, xtype = "fluorescence")
+mtext(text = ".y", outer = TRUE)
+}
+
+map(
+  c
+)
+ctd_all[[4]]
+
+# str_detect(names(ctd_all), "REACH003_S05_05.cnv")
+as.data.frame(ctd_all[str_detect(names(ctd_all), "REACH003_S05")][[1]]@data)
+```
+
+
+```{r}
+map(
+  ctd_all,
+  \(.x) {
+    
+    stn <- str_remove(.x@metadata$station, "/")
+    # cruise_name <- paste0("FIO_",.x@metadata$cruise)
+    cruise_name <- paste0("",.x@metadata$cruise)
+    cast_num <- 
+      basename(.x@metadata$filename) %>%
+      str_extract("(\\d{2})\\.cnv", group = 1)
+    
+    message(paste0(cruise_name, ": ", stn, " Cast: ", cast_num))
+    ctd_data<- as_tibble(.x@data) 
+    
+    save_dir <- here("data", "plots", glue("{cruise_name}"))
+    dir_create(save_dir)
+    
+    for (nm in names(ctd_data)) {
+      ctd_data %>%
+      ggplot(aes(y = depth)) +
+      scale_y_continuous(transform = "reverse") +
+      scale_x_continuous(position = "top") +
+      scale_color_manual(values = colorRampPalette(ODV_colours)(23)) +
+      # geom_path(aes(x = fluorescence), linewidth = rel(0.5)) +
+      geom_path(aes(x = get(nm)), linewidth = rel(0.5)) +
+      labs(
+        title = paste0(cruise_name, ": ", stn),
+         x = nm,
+         y = "Depth [m]"
+         ) +
+      theme_bw()
+      
+      ggsave(here(save_dir, glue("{nm}_{cruise_name}_{stn}_{cast_num}.png")))
+    }
+  }
+)
+
+
+```
+
+## 3. Compile All Cast and Save
+
+```{r}
+ctd_tib <-
+  imap(
+    ctd_all,
+    \(.x, .y) {
+      
+      # cruise     <- str_extract(.y, "REACH\\d{3}")
+      cruise     <- .x@metadata$cruise
+      station    <- .x@metadata$station
+      start_time <- .x@metadata$startTime
+      cast_num <- 
+        basename(.x@metadata$filename) %>%
+        str_extract("(\\d{2})\\.cnv", group = 1)
+      
+      dat <- 
+        as_tibble(.x@data) %>%
+        mutate(
+          .before = 1, 
+          cruise = cruise, 
+          station = station, 
+          cast_num = cast_num,
+          time = start_time) %>%
+        filter(!is.na(scan))
+    }
+  ) %>%
+  list_rbind() %>%
+  print()
+
+
+ctd_units <-
+  ctd_all %$%
+  map(
+    .x = .,
+    \(.x) {
+      .x@metadata$units %>%
+        imap(~ tibble(
+          param = .y,
+          unit  = as.character(.x$unit),
+          scale = (.x$scale)
+        )) |>
+        list_rbind() %>%
+        bind_rows(
+          data.frame(
+            param = c("cruise", "station", "time", "scan", "salinity", "flag"),
+            unit = c("string", "string", "yyyy-mm-dd HH:MM:SS", "string", "PSU", ""),
+            scale = c("", "", "", "", "", "")
+          ),
+          .
+        ) %>%
+        mutate(
+          param2 = replace_values(
+            param, 
+            "theta"         ~ "potential_temp",
+            "fluorescence"  ~ "chla_fluorescence",
+            "fluorescence2" ~ "cdom_fluorescence"
+            ),
+          unit = case_when(
+            str_detect(param2, "lat|long") ~ "deg",
+            str_detect(param2, "temp")     ~ "degC",
+            str_detect(param2, "timeJ")    ~ "julian_day",
+            str_detect(param2, "theta")    ~ "julian_day",
+            .default = unit
+          ),
+          plot_label = recode_values(
+            param2,
+            "temperature"       ~ "Temperature (°C)",
+            "salinity"          ~ "Salinity",
+            "oxygen"            ~ "Dissolved Oxygen (mg/L)",
+            "chla_fluorescence" ~ "Chlorophyll-a (mg/m^3)",
+            "cdom_fluorescence" ~ "CDOM (mg/m^3)",
+            "turbidity"         ~ "Turbidity (NTU)",
+            "density"           ~ "Density (kg/m^3)"
+            
+          )
+        )
+    }
+  )  %>%
+  list_rbind() %>%
+  distinct() %>%
+  print()
+```
+
+
+## 3. Save CTD Cast by Cruise
+
+
+```{r}
+cruise_location <- here("data", "processed", "reach_ctd", "data_processed") 
+dir_create(cruise_location)
+
+if (length(unique(ctd_tib$cruise)) > 1) {
+  
+  ctd_tib %>%
+  mutate(cruise_id = cruise) %>%
+  nest(.by = cruise_id) %$%
+    walk2(
+      .x = data,
+      .y = cruise_id,
+      loc = cruise_location,
+      \(.x, .y, loc) {
+        write_csv(
+          .x,
+          here(loc, glue(.y, "_ctd.csv"))
+        )
+      }
+    )
+} else {
+  write_csv(
+    ctd_tib,
+    here(cruise_location, glue(cruise_id, "_ctd.csv"))
+  )
+}
+
+# here(cruise_location, "..", "data_with_units") %>%
+#   dir_ls(regexp = cruise_id) %>%
+#   shell.exec()
+distinct(ctd_tib, pick(1:3))
+```
+
+## 3.x Plot Cruise Profiles
+
+* Salinity
+* Temperature (°C)
+* Chlorophyll-a (mg/m^3)
+* CDOM (mg/m^3)
+* Turbidity (NTU)
+* Density (kg/m^3)
+* Dissolved Oxygen (mg/L)
+
+
+```{r}
+params <- ctd_units %>%
+  filter_out(is.na(plot_label)) %>%
+  print()
+
+ctd_img  <- here(cruise_location, "..", "figure")
+ctd_img2 <- here(cruise_location, "..", "figure_upper250")
+dir_create(ctd_img)
+dir_create(ctd_img2)
+
+nest(ctd_tib, .by = cruise)  %$%
+  # filter(str_detect(cruise, "REACH003")) %$%
+  walk2(
+    .x = data,
+    .y = cruise,
+    save_plt = TRUE,
+    # save_plt = FALSE,
+    \(.x, .y, save_plt) {
+      
+      for (i in seq(nrow(params))) {
+        column <- params[i, ]
+        
+        if (!column[[1]] %in% names(.x)) {
+          next
+        }
+        
+        # full profiles
+        print(ggplot(.x, aes(y = depth, color = station, group = time)) +
+          scale_y_continuous(transform = "reverse") +
+          scale_x_continuous(position = "top") +
+          scale_color_manual(values = colorRampPalette(ODV_colours)(23)) +
+          geom_path(aes(x = get(column[[1]][1])), linewidth = rel(0.5)) +
+          theme_bw() +
+          labs(
+            x = column$plot_label,
+            y = "Depth [db]",
+            color = "Station",
+            title = .y
+          ))
+
+
+        print(params$param2[i])
+        
+        if (save_plt) {
+          ggsave(
+            here(ctd_img, glue(.y, "_{params$param2[i]}.png")),
+            device = "png",
+            width  = 8,
+            height = 8,
+            units  = "in",
+            dpi    = 600
+            )
+          }
+        
+        # up to 250 m profiles
+        print(ggplot(.x, aes(y = depth, color = station, group = time)) +
+          scale_y_continuous(transform = "reverse") +
+          scale_x_continuous(position = "top") +
+          scale_color_manual(values = colorRampPalette(ODV_colours)(23)) +
+          geom_path(aes(x = get(column[[1]][1])), linewidth = rel(0.5)) +
+          theme_bw() +
+          coord_cartesian(ylim = c(250, NA)) +
+          labs(
+            x = column$plot_label,
+            y = "Depth [db]",
+            color = "Station",
+            title = .y
+          ))
+
+        if (save_plt) {
+          ggsave(
+            here(ctd_img2, glue(.y, "_{params$param2[i]}_upper250.png")),
+            device = "png",
+            width  = 8,
+            height = 8,
+            units  = "in",
+            dpi    = 600
+          )
+        }
+
+      }
+      
+      viewer <- getOption("viewer")
+      viewer(ctd_img2)
+    }
+  )
+
+
+```
+
+
+
+```{r}
+ctd_section <- as.section(ctd_all)
+
+ctd_section@metadata %>%
+  as.tibble() %>%
+  ggplot(aes(x = longitude, y = latitude)) +
+  geom_point() +
+  ggrepel::geom_text_repel(aes(label = stationId), min.segment.length = 0)
+
+leaflet::leaflet() %>%
+  leaflet::addTiles() %>%
+  leaflet::addMarkers(
+    lng = ctd_section@metadata$longitude, 
+    lat = ctd_section@metadata$latitude,
+    label = ctd_section@metadata$stationId,
+    labelOptions = leaflet::labelOptions(noHide = TRUE)
+    )
+```
+
+```{r}
+# Manually extracted hexidecimal ODV colour palette
+ODV_colours <- c("#feb483", "#d31f2a", "#ffc000", "#27ab19", "#0db5e6", "#7139fe", "#d16cfa")
+
+sel_stn1 <- c(
+  "S08|S07|S06|S05",
+  "S01|S02|S03|S04|S05",
+  "S08|S09|S10|S11|S12",
+  "S15|S16|S17|S18|S19",
+  "S23|S22|S21|S20",
+  "S15|S14|S13|S12",
+  "S20|S19|S12|S05"
+) %>%
+  paste0("(?i)", .)
+
+
+
+for (sel_stn in sel_stn1) {
+  sel_stn_num <- which(str_detect(names(ctd_all), sel_stn))
+
+  if (length(sel_stn_num) < 2) {
+    message("Not enough stations to plot, skipping.")
+    next
+  }
+
+  ctd_section <- as.section(ctd_all[str_detect(names(ctd_all), sel_stn)])
+  plot(ctd_section)
+  plot(
+    ctd_section,
+    which = "temperature",
+    xtype = "track", ztype = "image",
+    showBottom = TRUE,
+    showStations = TRUE,
+    # zcol = oce::oceColorsTemperature
+    zcol = rev(ODV_colours)
+  )
+
+  plot(
+    ctd_section,
+    which = "salinity",
+    xtype = "track", ztype = "image",
+    showBottom = TRUE,
+    showStations = TRUE,
+    # zcol = oce::oceColorsTemperature
+    zcol = rev(ODV_colours)
+  )
+}
+```
+```{r}
+  plot(
+    ctd_section,
+    which = "salinity",
+    xtype = "track", ztype = "image",
+    showBottom = TRUE,
+    showStations = TRUE,
+    # zcol = oce::oceColorsTemperature
+    zcol = rev(ODV_colours),
+    main = "FDada"
+  )
+
+```
+
+
+
+```{r}
+ctd_path3 <- 
+  here("../reach_ctd_data", cruise_id, "derive") %>%
+  # here("../reach_ctd_data", cruise_id) %>%
+  # dir_ls(regexp = "cnv$") %>%
+  # str_subset("test") %>%
+   # here("../reach_ctd_data", cruise_id, "datcnv_fio") %>%
+  dir_ls(regexp = "cnv$") %>%
+  # dir_ls(regexp = "asc$") %>%
+  # str_subset("test") %>%
+  # str_subset("s02_23") %>%
+  print()
+  ctd_test <- oce::read.ctd(ctd_path3[1])
+for (i in ctd_path3) {
+  ctd_test <- oce::read.ctd(i)
+  if (year(ctd_test@metadata$startTime) < 2024) {
+    print(i)
+    # summary(ctd_test)
+  }
+  # plot(ctd_test)
+  # plotProfile(ctd_test)
+}
+
+
+nums <- 5
+i <- ctd_path3[nums]
+
+for (ctd_i in ctd_path3) {
+  ctd_test <- oce::read.ctd(ctd_i, station = path_ext_remove(path_file(ctd_i))) %>%
+    oce::subset(flag >= 0) %>%
+    ctdTrim(method = "sbe") %>%
+    ctdDecimate()
+  
+  message(paste("File:", ctd_test@metadata$station))
+  
+  for (ctd_j in names(ctd_test@data)) {
+    
+    if (str_detect(ctd_j, "latitude|longitude|timeJ|timeS|pressure|altimeter|descentRate|depth|flag")) {
+      message("Skipping")
+      next
+    }
+    
+    oce::plotProfile(ctd_test, xtype = ctd_j)
+
+    # oce::plotProfile(oce::subset(ctd_test, flag >= 0), xtype = ctd_j)
+  }
+  
+  
+  # oce::plot(oce::subset(ctd_test, flag >= 0), which = 3)
+  # plot(oce::subset(ctd_test, flag >= 0))
+  
+  readline("Hit enter to continue")
+}
+
+```
+
+
+```{r}
+ctd_path3 <- rstudioapi::selectDirectory(path = here("../reach_ctd_data"))  %>%
+  dir_ls(regexp = "cnv$")
+
+i2 <- ctd_path32[nums]
+
+for (i2 in ctd_path32) {
+  ctd_test2 <- oce::read.ctd(i2, station = path_ext_remove(path_file(i2))) 
+  
+  for (j2 in names(ctd_test2@data)) {
+    
+    if (str_detect(j2, "latitude|longitude|timeJ|timeS|pressure|altimeter|descentRate|depth|flag")) {
+      message("Skipping")
+      next
+    }
+    
+    # oce::plotProfile(ctd_test, xtype = j)
+
+    oce::plotProfile(oce::subset(ctd_test2, flag >= 0), xtype = j2)
+  }
+  
+  oce::plot(oce::subset(ctd_test2, flag >= 0), which = 3)
+  plot(oce::subset(ctd_test2, flag >= 0))
+  
+  readline("Hit enter to continue")
+}
+```
+
+```{r}
+prev_upload <- 
+  here("data", "processed", "reach_ctd", "data_processed")  %>%
+  dir_ls(regexp = "csv") %>%
+  str_subset(cruise_id) %>%
+  str_subset("ignore", negate = TRUE) %>%
+  read_csv(show_col_types = FALSE) %>%
+  nest(.by = c(station, time))
+  filter(str_detect(station, "S04"))
+
+test <- 
+  list(
+    temp = c("temperature", "Temperature (°C)"),
+    sal = c("salinity", "Salinity"),
+    o2 = c("oxygen", "Dissolved Oxygen (mg/L)"),
+    turb = c("turbidity", "Turbidity")
+  )
+
+
+
+for (i in 1:length(test)) {
+  column <- test[i]
+
+  print(
+    ggplot(
+      slice(prev_upload, nums) %>%
+        unnest(data),
+      aes(y = depth, color = station)
+    ) +
+    scale_y_continuous(transform = "reverse") +
+    scale_x_continuous(position = "top") +
+    # scale_color_manual(values = colorRampPalette(ODV_colours)(12)) +
+    # scale_color_manual(values = colorRampPalette(ODV_colours)(18)) +
+    # scale_color_manual(values = colorRampPalette(ODV_colours)(23)) +
+    # lemon::geom_pointline(aes(x = temperature), linewidth = rel(1), size = rel(0.1)) +
+    # geom_path(aes(x = get(column[[1]][1])), size = rel(0.5)) +
+    geom_path(aes(x = get(column[[1]][1])), linewidth = rel(0.5)) +
+    geom_path(
+      # data = as.data.frame(oce::subset(ctd_test, flag >= 0)@data),
+      data = as.data.frame(ctd_test@data),
+      aes(x = get(column[[1]][1]), y = pressure), color = "green", alpha = 0.5
+    ) +
+    theme_bw() +
+    labs(
+      x = column[[1]][2],
+      y = "Depth [db]",
+      color = "Station"
+    )
+  )
+}
+
+```
+
+
+
+```{r}
+ctd_test <- oce::read.ctd(i, missingValue = NULL) 
+ctd_df <- as.data.frame(ctd_test@data) 
+  filter_out(ctd_df, flag < 0)
+
+(ggplot() +
+  geom_path(
+    data = filter_out(ctd_df, flag < 0),
+    aes(x = salinity, y = pressure, group = "good")
+  ) +
+  geom_path(
+    data = filter_out(ctd_df, flag >= 0),
+    aes(x = salinity, y = pressure, group = "bad"),
+    color = "blue",
+    linetype = "dashed"
+  ) +
+  scale_y_reverse()) %>%
+  plotly::ggplotly()
+
+(ggplot() +
+  geom_path(
+    data = filter_out(ctd_df, flag < 0),
+    aes(x = temperature, y = pressure, group = "good"),
+    color = "red"
+  ) +
+  # geom_path(
+  #   data = filter_out(ctd_df, flag >= 0),
+  #   aes(x = temperature, y = pressure, group = "bad"),
+  #   color = "blue",
+  #   linetype = "dashed"
+  # ) +
+  geom_point(
+    data = filter_out(ctd_df, flag >= 0),
+    aes(x = temperature, y = pressure, group = "bad"),
+    color = "blue",
+    linetype = "dashed",
+    alpha = 0.5
+  ) +
+  scale_y_reverse()) %>%
+  plotly::ggplotly()
+
+    
+filter_out(ctd_df, flag < 0)
+  ctd_df %>%
+  mutate(
+    .keep = "used",
+    scan,
+    dT_dz = (temperature - dplyr::lag(temperature)) /
+    (pressure - dplyr::lag(pressure)),           # °C per m
+    # m_per_1C_drop = if_else(dT_dz < 0, -1 / dT_dz, NA_real_)
+  ) 
+```
+
+
+# Read xmlcon File
+
+```{r read-xmlcon}
+shelf(xml2)
+
+ctd_xml_path <- 
+  # here("../reach_ctd_data", cruise_id, "raw") %>%
+  # here("../reach_ctd_data", "REACH007", "raw") %>%
+  here("../reach_ctd_data", "REACH007", "raw_backup") %>%
+  dir_ls(regexp = "(?i)xml") %>%
+  print() 
+
+
+# see all sensor names to use in xml_find_first
+ctd_sensors <- 
+  ctd_xml_path %>%
+  map(
+    \(.x) {
+      ctd_xml <- read_xml(.x)
+      
+      # temp, conductivity, pressure
+      tcp <-
+        xml_find_all(ctd_xml, ".//TCP_Sensors") %>% 
+        xml_children() %>%
+        xml_children() %>%
+        xml_name()
+        
+      # all other sensors
+      other <-
+        xml_find_all(ctd_xml, ".//ExternalVoltageSensors ") %>% 
+        xml_children() %>%
+        xml_children() %>%
+        xml_name()
+      
+      list("tcp" = tcp, "other" = other)
+    }
+  )
+
+ctd_sensors %>%
+  list_flatten() %>%
+  list_c() %>%
+  tibble(sensors = .) %>%
+  count(sensors)
+  
+
+ctd_xml <-
+  ctd_xml_path %>%
+  map(
+    .x = .,
+    \(.x) {
+      ctd_xml <- 
+        read_xml(.x) %>%
+        # search for fluorescence calibration
+        xml_find_first(".//FluoroWetlabECO_AFL_FL_Sensor") %>%
+        xml_children()
+
+      tibble(
+        field = xml_name(ctd_xml),
+        value = xml_text(ctd_xml)
+      ) %>%
+        pivot_wider(
+          data         = .,
+          names_from   = c(field),
+          values_from  = c(value),
+          names_sep    = "_",
+          names_repair = janitor::make_clean_names
+        ) %>%
+        mutate(
+          
+          file_full = .x, 
+          file = basename(.x), 
+          .before = 1
+          )
+    }
+  ) %>%
+  list_rbind() 
+
+ctd_xml
+
+# filter for specific scaling factor
+ctd_xml %>%
+  mutate(
+    scale_factor = as.numeric(scale_factor)
+  ) %>%
+  filter(scale_factor == 6) %>%
+  pull(file) %>%
+  cat(sep = "\n*") 
+
+
+write_csv(ctd_xml, here("data", "metadata", "REACH007_instrument_cal.csv"))
+
+```
+
+
+
+```{r}
+# reacho007 second update
+ctd_cnv_path <- 
+  here("../reach_ctd_data", "REACH007", "REACH007_CTD_updated") %>%
+  dir_ls(regexp = "(?i)cnv", recurse = TRUE) %>%
+  print()
+
+map(
+  ctd_cnv_path,
+  # search = "FluoroWetlabECO_AFL_FL_Sensor",
+  search = "TurbidityMeter",
+  \(.x, search) {
+    message(basename(.x))
+    ctd_lines <- readLines(.x)
+
+
+    header <-
+      ctd_lines[seq_len(which(trimws(ctd_lines) == "*END*") - 1L)] %>%
+      str_remove("^(\\s?#|\\*)\\s?")
+
+
+    start <- grep(paste0(search, "\\b"), header)
+    end <- grep(paste0("</", search, ">"), header)
+
+    fields <-
+      paste(header[start:end], collapse = "\n") %>%
+      read_xml() %>%
+      xml_children()
+
+    # sensor_info <-
+    tibble(
+      field = xml_name(fields),
+      value = xml_text(fields)
+    ) %>%
+      pivot_wider(
+        data         = .,
+        names_from   = c(field),
+        values_from  = c(value),
+        names_sep    = "_",
+        names_repair = janitor::make_clean_names
+      ) %>%
+    mutate(
+      .before = 1,
+      file = paste("*", basename(.x))
+    )
+  }
+) %>%
+  list_rbind()
+```
+
+
+
+```{r}
+ctd_xml_path <- 
+  # here("../reach_ctd_data", cruise_id, "raw") %>%
+  # here("../reach_ctd_data", "REACH007", "raw") %>%
+  here("../reach_ctd_data", "REACH007", "raw") %>%
+  dir_ls(regexp = "(?i)xml") %>%
+  print() 
+
+# open files with errors to remove those lines
+for (j in ctd_xml_path) {
+  shell(glue("start notepad++ {j}"))
+}
+```
+
+
+
+
+
+
+
+
