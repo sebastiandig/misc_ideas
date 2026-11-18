@@ -1,0 +1,553 @@
+---
+title: "Placencia, Belize Station Maps with Waterways"
+author: "Sebastian Di Geronimo"
+date: 2026-11-17
+format: html
+editor: source
+---
+
+# 1.0 ---- Summary of Document ----
+
+
+
+# 2.0 ---- Setup ----
+
+
+## 2.1 Load Libraries
+
+```{r setup, include=FALSE}
+if (!nzchar(system.file(package = "librarian"))) 
+  install.packages("librarian")
+
+librarian::shelf(
+  quiet = TRUE,
+  librarian, conflicted, ggplot2, tibble, tidyr, readr, purrr, dplyr, stringr,
+  forcats, lubridate, glue, fs, magrittr, here,
+  
+  # additional
+  sf, geodata, ggrepel, tidyterra,
+  readxl, janitor, cowplot
+)
+
+conflicts_prefer(
+  dplyr::filter(), 
+  dplyr::select()
+  )
+  
+
+```
+
+```{r placencia-bbox}
+# projection
+wgs_crs     <- 4326 # WGS 84
+belize_epsg <- 32616 # for Belize
+
+placencia_bbox <-
+  tribble(
+    ~lon,    ~lat,
+    -88.440, 16.5,
+    -88.440, 16.685,
+    -88.303, 16.685,
+    -88.303, 16.5
+  ) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = wgs_crs) %>%
+  st_combine() %>%
+  st_cast("POLYGON") %>%
+  # convert to projection in meters
+  st_transform(crs = belize_epsg) %T>%
+  print()
+
+# bounding box 
+bbox <- st_bbox(placencia_bbox) %T>% 
+  print()
+
+# convert to wgs
+st_transform(bbox, crs = wgs_crs)
+
+
+region_col <- c(
+  "Upper" = "#0072B2", 
+  "Lower" = "#D55E00", 
+  "Main Creeks" = "#CC79A7")
+
+# print without degree symbol or N/S/E/W
+plain_coord <- function(x) sprintf("%.2f", x)
+```
+
+```{r belize-map}
+# belize map object from geodata then projected
+belize_sf <- 
+  geodata::gadm(country = "Belize", level = 0, path = tempdir()) %>%
+  st_as_sf() %>%
+  st_transform(belize_epsg) %>% 
+
+  # crop belize to mangrove bounds
+  st_crop(bbox)
+
+belize_sf
+plot(belize_sf[2])
+
+if (FALSE) {
+  # dark basemap
+  shelf(maptiles)
+  
+  belize_tile <- 
+    st_transform(bbox, crs = wgs_crs) %>% # convert to WGS
+    # get_tiles(provider = "CartoDB.DarkMatterNoLabels", zoom = 14) %>%
+    get_tiles(provider = "Esri.WorldImagery", zoom = 14) %>%
+    project(paste0("EPSG:", belize_epsg)) # project to Belize UTM
+  
+  ggplot() +
+    geom_spatraster_rgb(data = belize_tile)
+}
+```
+
+## 2.2 Load Dataset
+
+```{r shp-dir}
+# belize_dir <- rstudioapi::selectDirectory()
+belize_dir <- here("data", "raw", "placencia", "belize-shapefiles")
+```
+
+From <https://download.geofabrik.de/central-america/belize.html>
+
+```{r shp-file}
+dir_ls(belize_dir, regexp = "shp$") %>%
+  basename()
+
+# extract belize water ways
+belize_dat <-
+  belize_dir %>%
+  dir_ls(regexp = "waterways.*.shp$") %>%
+  st_read()
+
+belize_dat <- 
+  belize_dat %>%
+  st_transform(crs = belize_epsg) %>%
+  # crop belize to mangrove bounds
+  st_crop(bbox)
+
+plot(belize_dat["fclass"])
+
+# extract northern boundary road 'Caribbean Way'
+road_dat <-
+  belize_dir %>%
+  dir_ls(regexp = "roads.*.shp$") %>%
+  st_read()
+
+road_dat <-
+  road_dat %>%
+  st_transform(crs = belize_epsg) %>%
+  filter(str_detect(name, "(?i)Caribbean Way"))
+
+# extract northern boundary road 'Caribbean Way'
+places_dat <-
+  belize_dir %>%
+  dir_ls(regexp = "places_free.*.shp$") %>%
+  st_read()
+
+places_dat <-
+  places_dat %>%
+  st_transform(crs = belize_epsg) %>%
+  # crop belize to mangrove bounds
+  # st_crop(bbox) %>%
+  filter(str_detect(name, "(?i)Placencia$|Seine Bight|Maya Beach|Riversdale|Plantation"))
+
+plot(places_dat["name"])
+```
+
+## 2.5 Path for Mangrove Map and Data
+
+```{r path-data}
+# biomass excel file
+biomass_path <- 
+  here("data", "raw", "placencia") %>%
+  dir_ls(regexp = "Placencia") %>% 
+  str_subset("update2") %>% 
+  str_subset("~", negate = TRUE) %T>% 
+  print()
+```
+
+```{r}
+# read mangrove biomass dataset
+biomass_dat <- 
+  readxl::read_xlsx(biomass_path) %>%
+  janitor::clean_names() %>%
+  select(-x5) %>%
+  janitor::remove_empty("cols") %>%
+  janitor::remove_empty("rows") %>%
+  mutate(
+    upper_lower = if_else(str_detect(upper_lower, "Mango"), "Main Creeks", upper_lower),
+    side = ifelse(long < -88.38, "west", "east")
+  ) 
+biomass_dat
+
+# locations as dataframe
+biomass_loc <- 
+  biomass_dat %>%
+  select(
+    station_id,
+    "point" = samplingpoint,
+    "lat"   = lat,
+    "long"  = long,
+    upper_lower,
+    side
+    ) %>%
+  distinct() %>%
+  drop_na(lat, long) %>%
+  mutate(lat = as.numeric(lat)) %>%
+  st_as_sf(coords = c("long", "lat"), remove = FALSE, crs = wgs_crs) %>%
+  # convert to projection in meters
+  st_transform(crs = belize_epsg) %>%
+  mutate(
+    x = st_coordinates(geometry)[, 1],
+    y = st_coordinates(geometry)[, 2],
+  ) %>%
+  filter(
+    between(y, bbox[2], bbox[4]),
+    between(x, bbox[1], bbox[3]),
+  )
+count(biomass_loc, station_id)
+
+```
+
+# 3.0 Create Maps
+
+## 3.1 Create Plot Labels
+```{r plt-labels}
+# Labels for the neighbors (placed by hand; adjust to taste)
+country_labels <- tibble(
+    name  = c("MEXICO",  "GUATEMALA", "BELIZE"),
+    lon   = c(-89.0,     -89.3,       -88.7   ),
+    lat   = c(18.1,      17,          17.2    ),
+    angle = c(0,         90,          0       ),
+    color = c("black",   "black",     "white" )
+  ) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_transform(crs = paste0("EPSG:", belize_epsg))
+
+waterway_labels <- 
+  tribble(
+    ~name,                ~lon,     ~lat,   ~color,
+    "Flour\nCamp\nCreek", -88.392, 16.599, "black",
+    # "Mango\nCreek",       -88.417, 16.560, "black",
+    "Mango\nCreek",       -88.410, 16.547, "black",
+    "Santa Maria Creek",  -88.398, 16.630, "black",
+    "Big Creek",          -88.437, 16.507, "black",
+    "Placencia\nLagoon",  -88.394, 16.536, "black",
+    "Placencia\nLagoon",  -88.369, 16.615, "black",
+    "Caribbean Sea",      -88.325, 16.590, "black"
+  ) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_transform(crs = paste0("EPSG:", belize_epsg))
+
+# used to specify east/west for plotting station labels
+ew_line <- 
+  tribble(
+    ~ew,       ~lon,    ~lat,
+    "x_west",  -88.417, 16.60,
+    "x_west2", -88.400, 16.60,
+    "x_51",    -88.395, 16.561,
+    "x_east",  -88.350, 16.600
+  ) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_transform(crs = paste0("EPSG:", belize_epsg)) %>%
+  st_coordinates()
+  
+ew_line <- c(
+  purrr::set_names(ew_line[,1], c("x_west", "x_west2", "x_51", "x_east")),
+  purrr::set_names(ew_line[,2] , c("y_west", "y_west2", "y_51", "y_east"))
+)
+  
+```
+
+## 3.2 Create Placencia Lagoon Map 
+
+```{r}
+belize_stn_map <- 
+  ggplot() +
+  # geom_spatraster_rgb(data = belize_tile) + # esri imagery
+  geom_sf(data = belize_sf, fill = "#ccfce5", alpha = 1) + # gadm image
+  
+  # unnamed waterways
+  geom_sf(
+    data  = filter(belize_dat, is.na(name)), 
+    color = prismatic::clr_lighten("#46b7ee", 0.2)
+    ) +
+  
+  # named waterways
+  geom_sf(
+    data = filter_out(belize_dat, is.na(name)), 
+    color = "#46b7ee",
+    linewidth = rel(1.5)
+    ) +
+
+  # named road
+  geom_sf(
+    data = road_dat,
+    color = "grey",
+    linetype = "dashed",
+    linewidth = rel(1.5)
+    ) +
+  
+  # road labels
+  geom_sf_text(
+     data    = slice(road_dat, 1), 
+    aes(label = name), 
+    angle = -90,
+    color    = "black",
+    fontface = "bold",
+    hjust = 0,
+    nudge_x = 0.4 * 1000,
+    nudge_y = 0.2 * 1000,
+    size = rel(2.5)
+  ) +
+  
+   # cities
+  geom_sf(
+    data = places_dat,
+    color = "red",
+    shape = 17,
+    size = rel(1.5)
+    ) +
+  
+  # city labels
+  geom_sf_text(
+    data    = places_dat,
+    aes(label = name), 
+    # angle = -90,
+    color    = "black",
+    fontface = "bold",
+    hjust = 0.0,
+    nudge_x = -c(0, 0.8, 0.5, 0.12) * 1000,
+    nudge_y = c(0, 0.35, 0.3, 0.5) * 1000,
+    size = rel(4)
+  ) +
+  
+  # waterway labels
+  geom_sf_text(
+     data    = waterway_labels, 
+    aes(label = name), 
+    color    = "black",
+    fontface = "bold",
+    hjust = 0,
+    size = rel(3)
+  ) +
+  
+  # ---- plot eastern site labels ---- #
+  ggrepel::geom_label_repel(
+    data = filter(biomass_loc, side == "east"),
+    aes(x = x, y = y, label = station_id, color = upper_lower),
+    min.segment.length = 0,
+    max.overlaps       = Inf,
+    size               = rel(4),
+    segment.color      = "black",
+    segment.alpha     = 0.7,
+    # segment.curvature = 0.5,
+    show.legend        = FALSE,
+    xlim               = c(ew_line["x_east"], NA),
+    max.time = 2
+  ) +
+  
+  # ---- plot western site labels ---- #
+  ggrepel::geom_label_repel(
+    data = filter(biomass_loc, side == "west")  %>%
+      filter_out(station_id %in% c(51, 52, 54, 29)),
+    aes(x = x, y = y, label = station_id, color = upper_lower),
+    min.segment.length = 0,
+    max.overlaps       = Inf,
+    size               = rel(4),
+    segment.color      = "black",
+    segment.alpha     = 0.7,
+    segment.inflect = -0.5,
+    show.legend        = FALSE,
+    xlim               = c(NA, ew_line["x_west"]),  
+    max.time = 2
+  ) +
+
+  # ---- plot other site labels ---- #
+  ggrepel::geom_label_repel(
+    data = filter(biomass_loc, side == "west", station_id %in% c(54,29)),
+    aes(x = x, y = y, label = station_id, color = upper_lower),
+    min.segment.length = 0,
+    max.overlaps       = Inf,
+    size               = rel(4),
+    segment.color      = "black",
+    segment.alpha     = 0.7,
+    segment.inflect = -0.5,
+    show.legend        = FALSE,
+    xlim               = c(ew_line["x_west2"], NA),  
+    max.time = 2
+  ) +
+
+  # ---- plot site 51 labels ---- #
+  ggrepel::geom_label_repel(
+    data = filter(biomass_loc, side == "west", station_id %in% c(51, 52)),
+    aes(x = x, y = y, label = station_id, color = upper_lower),
+    min.segment.length = 0,
+    max.overlaps       = Inf,
+    size               = rel(4),
+    segment.color      = "black",
+    segment.alpha     = 0.7,
+    segment.inflect = -0.5,
+    show.legend        = FALSE,
+    xlim               = c(ew_line["x_51"], NA),  
+    ylim               = c(ew_line["y_51"], NA),  
+    max.time = 2
+  ) +
+  
+  # ---- plot sample locations ---- #
+  geom_sf(
+    data = biomass_loc,
+    aes(color = upper_lower),
+    size = rel(1.5),
+    key_glyph = draw_key_rect
+  ) +
+  
+  ggspatial::annotation_north_arrow(
+    location = "br",
+    pad_y    = unit(0.4, "in"),
+    style    = ggspatial::north_arrow_orienteering(fill = c("white", "white"))
+    ) + 
+  ggspatial::annotation_scale(location = "br") +
+  
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  
+  scale_fill_continuous(na.value = "transparent") +
+  scale_y_continuous(breaks = seq(16.52, 16.68, 0.02), labels = plain_coord,
+                     expand = expansion()) +
+  scale_x_continuous(breaks = seq(-88.44, -88.32, 0.02), labels = plain_coord) +
+  scale_color_manual(
+    name   = "Region",
+    values = region_col,
+    breaks = names(region_col)
+    ) +
+  coord_sf(
+    expand     = FALSE,
+    ylim       = bbox[c(2,4)],
+    xlim       = bbox[c(1,3)],
+    label_axes = "ENEN"
+  ) +
+  theme_bw() +
+  theme(
+    panel.background       = element_rect(fill = "#46b7ee"),
+    legend.position        = "inside",
+    legend.position.inside = c(0.89, 0.2),
+    legend.background      = element_rect(fill = "white")
+  )
+
+belize_stn_map
+# plotly::ggplotly(belize_stn_map)
+```
+
+## 3.3 Save Plot
+
+```{r}
+stn_map_sv <- 
+ here("data", "raw", "placencia", "fig", Sys.Date(),
+  paste0("placencia_stn_map_rd", Sys.Date(), ".jpeg")
+  ) %T>% 
+  print()
+
+if (FALSE) {
+  
+  dir_create(dirname(stn_map_sv))
+  
+  ggsave(
+    filename = stn_map_sv,
+    plot = belize_stn_map,
+    device   = "jpeg",
+    dpi      = 600,
+    width    = 8.5,
+    height   = 9,
+    units    = "in",
+    bg       = "white"
+  )
+  
+} else {
+  message("Not saving mangrove map with points!")
+}
+
+
+```
+
+
+## 3.4 Belize Inset Map
+
+
+```{r belize}
+shelf(rnaturalearth, rnaturalearthdata)
+belize_bounds <-
+  tibble(
+    lon = c(-89.5, -87.8), lat = c(15.8, 18.5)
+  ) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = wgs_crs) %>%
+  # convert to projection in meters
+  st_transform(crs = belize_epsg) %>%
+  st_bbox()
+
+# ---- Country polygons for the inset ---- #
+countries <- 
+  ne_countries(scale = "large", returnclass = "sf") %>%
+  st_transform(crs = paste0("EPSG:", belize_epsg))
+
+# --- inset plot ---- #
+inset <-
+  ggplot() +
+  geom_sf(data = countries, fill = "grey90", color = "grey50", linewidth = 0.2) +
+
+  geom_sf(
+    data = subset(countries, name == "Belize"),
+    fill = "#435e7b", color = "grey30", linewidth = 0.3
+    ) +
+  # bounding box
+  geom_sf(data = placencia_bbox, fill = NA, color = "red", linewidth = 0.8) +
+
+  # country labels
+  geom_sf_text(
+    data = country_labels, 
+    aes(label = name, angle = angle),
+    size = 2.5, fontface = "bold", 
+    color = country_labels$color
+    ) +
+  coord_sf(
+    xlim = belize_bounds[c(1,3)],
+    ylim = belize_bounds[c(2,4)],
+    expand = FALSE
+    ) +
+  ggmap::theme_inset() +
+  theme(
+    panel.background = element_rect(fill = "aliceblue", color = "black"),
+    panel.border     = element_rect(fill = NA, color = "black", linewidth = 0.8)
+  )
+inset
+```
+
+## 3.5 Create Placencia with Inset Map
+
+```{r placencia-inset-plt}
+ggdraw() +
+  draw_plot(belize_stn_map) +
+  draw_plot(inset, x = 0.16, y = 0.675, width = 0.17, height = 0.3)
+
+stn_map_inset_sv <- 
+ here("data", "raw", "placencia", "fig", Sys.Date(),
+  paste0("placencia_stn_map_inset", Sys.Date(), ".jpeg")
+  ) %T>% 
+  print()
+
+   ggsave(
+    filename = stn_map_inset_sv,
+    plot = last_plot(),
+    device   = "jpeg",
+    dpi      = 600,
+    width    = 8.5,
+    height   = 9,
+    units    = "in",
+    bg       = "white"
+  )
+```
+
