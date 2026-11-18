@@ -132,8 +132,8 @@ placencia_bbox <-
     ~lon,               ~lat,
     -88.440, 16.5,
     -88.440, 16.685,
-    -88.303, 16.5,
-    -88.303, 16.685
+    -88.303, 16.685,
+    -88.303, 16.5
   ) %>%
   st_as_sf(coords = c("lon", "lat"), crs = wgs_crs) %>%
   st_combine() %>%
@@ -968,18 +968,18 @@ idw_plot <-
     key_glyph = draw_key_rect
   ) +
   
-  ggrepel::geom_text_repel(
-    data = biom_df,
-    aes(x = x, y = y, label = station_id, color = upper_lower),
-    size = rel(7),
-    min.segment.length = 0,
-    max.overlaps       = 100,
-    bg.color           = "white",
-    segment.color      = "black",
-    bg.r = 0.1,
-    alpha              = 0.75,
-    show.legend = FALSE
-  ) +
+  # ggrepel::geom_text_repel(
+  #   data = biom_df,
+  #   aes(x = x, y = y, label = station_id, color = upper_lower),
+  #   size = rel(7),
+  #   min.segment.length = 0,
+  #   max.overlaps       = 100,
+  #   bg.color           = "white",
+  #   segment.color      = "black",
+  #   bg.r = 0.1,
+  #   alpha              = 0.75,
+  #   show.legend = FALSE
+  # ) +
   
   # region colors
   scale_color_manual(
