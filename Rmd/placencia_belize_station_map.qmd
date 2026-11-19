@@ -127,7 +127,7 @@ belize_dat <-
   # crop belize to mangrove bounds
   st_crop(bbox)
 
-plot(belize_dat["fclass"])
+plot(belize_dat["fclass"], main = "Rivers")
 
 # extract northern boundary road 'Caribbean Way'
 road_dat <-
@@ -138,8 +138,16 @@ road_dat <-
 road_dat <-
   road_dat %>%
   st_transform(crs = belize_epsg) %>%
-  filter(str_detect(name, "(?i)Caribbean Way"))
+  filter(str_detect(name, "(?i)Caribbean Way")) %>%
+  mutate(
+    line_center = st_line_interpolate(geometry, 500),
+    x = st_coordinates(line_center)[, 1],
+    y = st_coordinates(line_center)[, 2],
+  )
 
+plot(road_dat["name"], main = "Road")
+
+class(road_dat$geometry)
 # extract northern boundary road 'Caribbean Way'
 places_dat <-
   belize_dir %>%
@@ -153,7 +161,7 @@ places_dat <-
   # st_crop(bbox) %>%
   filter(str_detect(name, "(?i)Placencia$|Seine Bight|Maya Beach|Riversdale|Plantation"))
 
-plot(places_dat["name"])
+plot(places_dat["name"], main = "City Centers")
 ```
 
 ## 2.5 Path for Mangrove Map and Data
@@ -235,7 +243,7 @@ waterway_labels <-
     "Santa Maria Creek",  -88.398, 16.630, "black",
     "Big Creek",          -88.437, 16.507, "black",
     "Placencia\nLagoon",  -88.394, 16.536, "black",
-    "Placencia\nLagoon",  -88.369, 16.615, "black",
+    "Placencia\nLagoon",  -88.370, 16.614, "black",
     "Caribbean Sea",      -88.325, 16.590, "black"
   ) %>%
   st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
@@ -291,19 +299,31 @@ belize_stn_map <-
     ) +
   
   # road labels
-  geom_sf_text(
-     data    = slice(road_dat, 1), 
-    aes(label = name), 
+  # geom_sf_text(
+  #    data    = slice(road_dat, 1), 
+  #   aes(label = name), 
+  #   angle = -90,
+  #   color    = "black",
+  #   fontface = "bold",
+  #   hjust = 0,
+  #   nudge_x = 0.4 * 1000,
+  #   nudge_y = 0.2 * 1000,
+  #   size = rel(2.5)
+  # ) +
+  ggrepel::geom_text_repel(
+    data = slice(road_dat, 1),
+    aes(x = x, y = y, label = name),
+    min.segment.length = 0,
     angle = -90,
-    color    = "black",
-    fontface = "bold",
-    hjust = 0,
-    nudge_x = 0.4 * 1000,
-    nudge_y = 0.2 * 1000,
-    size = rel(2.5)
+    max.overlaps       = Inf,
+    size               = rel(2.5),
+    segment.color      = "black",
+    # segment.curvature = 0.5,
+    show.legend        = FALSE,
+    nudge_x = 0.5 * 1000
   ) +
-  
-   # cities
+
+  # cities
   geom_sf(
     data = places_dat,
     color = "red",
@@ -343,7 +363,6 @@ belize_stn_map <-
     size               = rel(4),
     segment.color      = "black",
     segment.alpha     = 0.7,
-    # segment.curvature = 0.5,
     show.legend        = FALSE,
     xlim               = c(ew_line["x_east"], NA),
     max.time = 2
